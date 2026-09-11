@@ -52,6 +52,7 @@ const baseSettings = {
         promptLabelMode: 'head',
         hideOfficialNavigation: true,
         rightInsetPx: 0,
+        previewMaxChars: 600,
     },
     chatgptBehavior: {
         restorePositionAfterSend: true,
@@ -166,6 +167,7 @@ describe('SettingsTabView', () => {
         expect(chatGptGroup.querySelector('[data-role="settings-chatgpt-directory-mode"]')).toBeTruthy();
         expect(chatGptGroup.querySelector('[data-role="settings-chatgpt-directory-prompt-label-mode"]')).toBeTruthy();
         expect(chatGptGroup.querySelector('[data-role="settings-chatgpt-directory-right-inset"]')).toBeTruthy();
+        expect(chatGptGroup.querySelector('[data-role="settings-chatgpt-directory-preview-max-chars"]')).toBeTruthy();
         expect(chatGptGroup.querySelector('[data-role="settings-chatgpt-directory-hide-official-navigation"]')).toBeNull();
         expect(chatGptGroup.textContent).toContain('chatgptDirectoryEnabledDesc');
 
@@ -303,6 +305,7 @@ describe('SettingsTabView', () => {
         const mode = root.querySelector<HTMLElement>('[data-role="settings-chatgpt-directory-mode"]')!;
         const promptLabelMode = root.querySelector<HTMLInputElement>('[data-role="settings-chatgpt-directory-prompt-label-mode"]')!;
         const rightInset = root.querySelector<HTMLInputElement>('[data-role="settings-chatgpt-directory-right-inset"]')!;
+        const previewMaxChars = root.querySelector<HTMLInputElement>('[data-role="settings-chatgpt-directory-preview-max-chars"]')!;
 
         expect(root.querySelector('[data-role="settings-chatgpt-directory-retired-notice"]')).toBeNull();
         expect(root.querySelector('[data-role="settings-chatgpt-directory-hide-official-navigation"]')).toBeNull();
@@ -314,6 +317,11 @@ describe('SettingsTabView', () => {
         expect(rightInset.min).toBe('0');
         expect(rightInset.max).toBe('40');
         expect(rightInset.step).toBe('4');
+        expect(previewMaxChars.value).toBe('600');
+        expect(previewMaxChars.type).toBe('range');
+        expect(previewMaxChars.min).toBe('200');
+        expect(previewMaxChars.max).toBe('2000');
+        expect(previewMaxChars.step).toBe('200');
 
         enabled.checked = false;
         enabled.dispatchEvent(new Event('change', { bubbles: true }));
@@ -321,10 +329,13 @@ describe('SettingsTabView', () => {
         promptLabelMode.dispatchEvent(new Event('change', { bubbles: true }));
         rightInset.value = '53';
         rightInset.dispatchEvent(new Event('change', { bubbles: true }));
+        previewMaxChars.value = '1000';
+        previewMaxChars.dispatchEvent(new Event('change', { bubbles: true }));
 
         expect(onSetChatGptDirectorySettings).toHaveBeenCalledWith({ enabled: false });
         expect(onSetChatGptDirectorySettings).toHaveBeenCalledWith({ promptLabelMode: 'headTail' });
         expect(onSetChatGptDirectorySettings).toHaveBeenCalledWith({ rightInsetPx: 40 });
+        expect(onSetChatGptDirectorySettings).toHaveBeenCalledWith({ previewMaxChars: 1000 });
         expect(rightInset.value).toBe('40');
         expect(onSetChatGptDirectorySettings).not.toHaveBeenCalledWith(expect.objectContaining({ hideOfficialNavigation: expect.any(Boolean) }));
     });
@@ -482,6 +493,31 @@ describe('SettingsTabView', () => {
         toggle.dispatchEvent(new Event('change', { bubbles: true }));
 
         expect(onSetChatGptBehaviorSettings).toHaveBeenCalledWith({ promptAutocomplete: false });
+    });
+
+    it('wires the ChatGPT page selection toolbar toggle to the scoped behavior category', () => {
+        const modal = { confirm: vi.fn(async () => true) } as any;
+        const onSetChatGptBehaviorSettings = vi.fn(async () => undefined);
+
+        const view = new SettingsTabView({
+            modal,
+            actions: { setChatGptBehaviorSettings: onSetChatGptBehaviorSettings },
+        });
+        view.setState({
+            settings: structuredClone(baseSettings),
+            storageUsage: null,
+        });
+
+        const toggle = view.getElement().querySelector<HTMLInputElement>(
+            '[data-role="settings-chatgpt-show-page-selection-toolbar"]',
+        )!;
+
+        expect(toggle.checked).toBe(true);
+
+        toggle.checked = false;
+        toggle.dispatchEvent(new Event('change', { bubbles: true }));
+
+        expect(onSetChatGptBehaviorSettings).toHaveBeenCalledWith({ showPageSelectionToolbar: false });
     });
 
     it('wires ChatGPT arrow-key message navigation to the scoped behavior category', () => {

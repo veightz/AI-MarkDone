@@ -1,0 +1,42 @@
+{
+  "duration": 32.085,
+  "language": "en",
+  "source": "macOS say voice Samantha, manually mapped to storyboard beats",
+  "segments": [
+    {
+      "start": 0.0,
+      "end": 4.0,
+      "text": "ChatGPT can answer almost anything. But serious work needs more than scrolling and copying."
+    },
+    {
+      "start": 4.0,
+      "end": 8.0,
+      "text": "AI-MarkDone turns ChatGPT into a focused reading and capture workspace."
+    },
+    {
+      "start": 8.0,
+      "end": 14.0,
+      "text": "Read long answers."
+    },
+    {
+      "start": 14.0,
+      "end": 19.0,
+      "text": "Navigate long threads. Keep your place."
+    },
+    {
+      "start": 19.0,
+      "end": 25.0,
+      "text": "Copy exactly what matters, with Markdown, code, formulas, and notes intact."
+    },
+    {
+      "start": 25.0,
+      "end": 31.0,
+      "text": "Save, search, and export your best answers when the work leaves the chat."
+    },
+    {
+      "start": 31.0,
+      "end": 35.0,
+      "text": "AI-MarkDone. Read, save, export. Stay in flow."
+    }
+  ]
+}

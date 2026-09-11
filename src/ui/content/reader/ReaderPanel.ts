@@ -217,8 +217,9 @@ export class ReaderPanel {
     private annotationDocument: ReaderAnnotationDocument | null = null;
     private persistentComments = new Map<string, ReaderCommentRecord[]>();
     private persistentCommentsLoaded = false;
+    private annotationLoadGeneration = 0;
+    private showGeneration = 0;
     private unsubscribeAnnotationChanges: (() => void) | null = null;
-    private pendingAnchorStateUpdates = new Set<string>();
     private readonly focusLifecycle = new SurfaceFocusLifecycle();
     private readonly workflow = new ReaderWorkflow();
     private state: ReaderPanelState = {
@@ -387,18 +388,17 @@ export class ReaderPanel {
         if (this.overlaySession && this.closing && !this.overlaySession.cancelSurfaceClose()) {
             this.unmount();
         }
+        const generation = ++this.showGeneration;
         this.workflow.open(items, startIndex, options);
         const nextAnnotationDocument = options?.annotationDocument ?? null;
         const documentChanged = readerAnnotationDocumentKeyOrNull(this.annotationDocument) !== readerAnnotationDocumentKeyOrNull(nextAnnotationDocument);
         this.annotationDocument = nextAnnotationDocument;
         if (documentChanged) {
+            this.annotationLoadGeneration += 1;
             this.unsubscribeAnnotationChanges?.();
             this.unsubscribeAnnotationChanges = null;
             this.persistentComments.clear();
             this.persistentCommentsLoaded = false;
-        }
-        if (this.annotationDocument && !this.persistentCommentsLoaded) {
-            await this.loadPersistentComments(this.annotationDocument);
         }
         if (this.annotationDocument && !this.unsubscribeAnnotationChanges) {
             const document = this.annotationDocument;
@@ -412,6 +412,10 @@ export class ReaderPanel {
                 });
             });
         }
+        if (this.annotationDocument && !this.persistentCommentsLoaded) {
+            await this.loadPersistentComments(this.annotationDocument);
+        }
+        if (generation !== this.showGeneration) return;
         if (this.appearance.theme !== theme) {
             this.appearance = createAppearanceSnapshot(theme, this.appearance.overrides);
             this.commentPopover.setAppearance(this.appearance);
@@ -602,6 +606,8 @@ export class ReaderPanel {
     }
 
     private unmount(): void {
+        this.showGeneration += 1;
+        this.annotationLoadGeneration += 1;
         this.unsubscribeAnnotationChanges?.();
         this.unsubscribeAnnotationChanges = null;
         this.persistentCommentsLoaded = false;
@@ -1272,8 +1278,10 @@ export class ReaderPanel {
         const ctx = this.getActionContext();
         for (const action of this.workflow.options.actions) {
             const active = ctx ? Boolean(action.isActive?.(ctx)) : false;
+            const enabled = ctx ? action.isEnabled?.(ctx) !== false : true;
             const button = this.host.document.createElement('button');
             button.type = 'button';
+            button.disabled = !enabled;
             if (action.icon) {
                 button.className = `icon-btn ${active && action.toggle ? 'icon-btn--active' : ''} ${action.kind === 'danger' ? 'icon-btn--danger' : ''}`.trim();
                 button.appendChild(createIcon(action.icon));
@@ -1720,7 +1728,10 @@ export class ReaderPanel {
     }
 
     private async loadPersistentComments(document: ReaderAnnotationDocument): Promise<void> {
+        const generation = ++this.annotationLoadGeneration;
         const result = await readerAnnotationsClient.list(document);
+        if (generation !== this.annotationLoadGeneration
+            || readerAnnotationDocumentKeyOrNull(this.annotationDocument) !== readerAnnotationDocumentKey(document)) return;
         if (!result.ok) {
             this.persistentCommentsLoaded = true;
             this.notify(this.getLabel('readerCommentPersistenceUnavailable', 'Annotations could not be loaded.'));
@@ -1813,11 +1824,8 @@ export class ReaderPanel {
     }
 
     private markAnchorState(record: ReaderCommentRecord, state: 'anchored' | 'unanchored'): void {
-        if (!this.annotationDocument || record.lastKnownAnchorState === state || this.pendingAnchorStateUpdates.has(record.id) || record.revision === undefined) return;
-        this.pendingAnchorStateUpdates.add(record.id);
-        void this.persistUpdatedComment({ ...record, lastKnownAnchorState: state, updatedAt: Date.now() })
-            .catch(() => undefined)
-            .finally(() => this.pendingAnchorStateUpdates.delete(record.id));
+        // Anchor availability belongs to this rendered view, not shared storage.
+        record.lastKnownAnchorState = state;
     }
 
     private getCommentsForItem(itemId: string, sortMode: ReaderCommentSortMode): ReaderCommentRecord[] {

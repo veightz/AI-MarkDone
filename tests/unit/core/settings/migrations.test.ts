@@ -56,6 +56,14 @@ describe('settings migrations', () => {
         } as any).chatgptBehavior.atomicMarkdownCopyShortcut).toBe('mod-shift-c');
     });
 
+    it('defaults the ChatGPT page selection toolbar on while preserving an explicit opt-out', () => {
+        expect(loadAndNormalize({ version: 4, chatgptBehavior: {} } as any).chatgptBehavior.showPageSelectionToolbar).toBe(true);
+        expect(loadAndNormalize({
+            version: 5,
+            chatgptBehavior: { showPageSelectionToolbar: false },
+        } as any).chatgptBehavior.showPageSelectionToolbar).toBe(false);
+    });
+
     it('enables every ChatGPT input enhancement for a fresh install', () => {
         const next = loadAndNormalize(null);
 
@@ -245,6 +253,7 @@ describe('settings migrations', () => {
             promptLabelMode: 'head',
             hideOfficialNavigation: false,
             rightInsetPx: 40,
+            previewMaxChars: 600,
         });
         expect(next).not.toHaveProperty('chatgpt');
     });
@@ -261,7 +270,18 @@ describe('settings migrations', () => {
             promptLabelMode: 'headTail',
             hideOfficialNavigation: true,
             rightInsetPx: 0,
+            previewMaxChars: 600,
         });
+    });
+
+    it('normalizes ChatGPT directory preview length to the configured slider steps', () => {
+        expect(loadAndNormalize({ version: 5, chatgptDirectory: { previewMaxChars: 200 } } as any).chatgptDirectory.previewMaxChars).toBe(200);
+        expect(loadAndNormalize({ version: 5, chatgptDirectory: { previewMaxChars: 2000 } } as any).chatgptDirectory.previewMaxChars).toBe(2000);
+        expect(loadAndNormalize({ version: 5, chatgptDirectory: { previewMaxChars: 201 } } as any).chatgptDirectory.previewMaxChars).toBe(200);
+        expect(loadAndNormalize({ version: 5, chatgptDirectory: { previewMaxChars: 1999 } } as any).chatgptDirectory.previewMaxChars).toBe(2000);
+        expect(loadAndNormalize({ version: 5, chatgptDirectory: { previewMaxChars: 0 } } as any).chatgptDirectory.previewMaxChars).toBe(200);
+        expect(loadAndNormalize({ version: 5, chatgptDirectory: { previewMaxChars: 2200 } } as any).chatgptDirectory.previewMaxChars).toBe(2000);
+        expect(loadAndNormalize({ version: 5, chatgptDirectory: { previewMaxChars: 'bad' } } as any).chatgptDirectory.previewMaxChars).toBe(600);
     });
 
     it('defaults the ChatGPT directory to off without overriding an explicit preference', () => {
@@ -315,6 +335,7 @@ describe('settings migrations', () => {
             enableArrowKeyMessageNavigation: true,
             pageWidthScale: 100,
             pageAnnotationsEnabled: true,
+            showPageSelectionToolbar: true,
             navigationSeekStepPx: 3_000,
         });
         expect(disabled.chatgptBehavior).toEqual({
@@ -337,6 +358,7 @@ describe('settings migrations', () => {
             enableArrowKeyMessageNavigation: false,
             pageWidthScale: 145,
             pageAnnotationsEnabled: true,
+            showPageSelectionToolbar: true,
             navigationSeekStepPx: 3_000,
         });
         expect(clamped.chatgptBehavior.pageWidthScale).toBe(200);

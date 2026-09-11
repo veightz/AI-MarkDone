@@ -4,6 +4,7 @@ import type { ConversationContentSourceV1 } from '@/contracts/conversationConten
 import type { ConversationMaterializationPortV1 } from '@/contracts/conversationMaterialization';
 import { DOMContentSurfaceAdapter, type ContentSurfaceAdapter } from '@/drivers/content/adapters/ContentSurfaceAdapter';
 import { ChatGPTPageAnnotationController } from '@/ui/content/controllers/ChatGPTPageAnnotationController';
+import { toReaderAnnotationRecord } from '@/services/reader/commentSession';
 import { createPageCommentRecord } from '@/services/reader/commentAnchoring';
 
 const annotationClientMock = vi.hoisted(() => ({
@@ -11,11 +12,12 @@ const annotationClientMock = vi.hoisted(() => ({
     create: vi.fn(),
     update: vi.fn(),
     remove: vi.fn(),
+    listeners: new Set<() => void>(),
 }));
 
 vi.mock('@/drivers/shared/clients/readerAnnotationsClient', () => ({
     readerAnnotationsClient: annotationClientMock,
-    subscribeReaderAnnotationChanges: () => () => undefined,
+    subscribeReaderAnnotationChanges: (_document: unknown, listener: () => void) => { annotationClientMock.listeners.add(listener); return () => annotationClientMock.listeners.delete(listener); },
 }));
 
 function mountMessage(content: string, id = 'assistant-1'): HTMLElement {
@@ -35,6 +37,7 @@ function selectRange(range: Range): void {
 
 async function flushSelectionFrame(): Promise<void> {
     await new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve()));
+    await new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve()));
 }
 
 function dispatchPointerUp(x: number, y: number): void {
@@ -53,6 +56,21 @@ function dispatchPointerCancel(x: number, y: number): void {
 
 function dispatchWindowBlur(): void {
     window.dispatchEvent(new Event('blur'));
+}
+
+function selectionToolbarHost(): HTMLElement | null {
+    return document.querySelector<HTMLElement>('#aimd-chatgpt-page-annotation-overlay')
+        ?.shadowRoot?.querySelector<HTMLElement>('.reader-comment-action') ?? null;
+}
+
+function selectionToolbarShadow(): ShadowRoot {
+    const overlay = document.querySelector<HTMLElement>('#aimd-chatgpt-page-annotation-overlay');
+    if (!overlay?.shadowRoot) throw new Error('Expected the page annotation overlay to be mounted.');
+    return overlay.shadowRoot;
+}
+
+function selectionToolbarButton(action: string): HTMLButtonElement | null {
+    return selectionToolbarHost()?.querySelector<HTMLButtonElement>(`[data-action="${action}"]`) ?? null;
 }
 
 function mockGeometry(root: HTMLElement, codeElement: HTMLElement, range: Range): void {
@@ -191,6 +209,69 @@ function createEvidenceSurfaceAdapter(message: HTMLElement): ContentSurfaceAdapt
 describe('ChatGPTPageAnnotationController', () => {
     beforeEach(() => {
         document.body.innerHTML = '';
+        annotationClientMock.listeners.clear();
+        annotationClientMock.list.mockResolvedValue({ ok: true, data: { entries: [] } });
+    });
+
+    it('refreshes the page chip and open manager when Reader storage changes', async () => {
+        const message = mountMessage('<p>Quoted answer</p>');
+        const root = message.querySelector('.markdown.prose') as HTMLElement;
+        document.body.insertAdjacentHTML('beforeend', '<form><div><button type="button" id="composer-plus-btn">+</button></div><textarea name="prompt-textarea"></textarea></form>');
+        const controller = new ChatGPTPageAnnotationController(new ChatGPTAdapter(), { contentSource: createContentSource(), materialization: createMaterialization(message) });
+        controller.init();
+        try {
+            await vi.waitFor(() => expect(annotationClientMock.listeners.size).toBe(1));
+            const range = document.createRange();
+            range.selectNodeContents(root);
+            const record = createPageCommentRecord({ id: 'reader-note', itemId: 'chatgpt-assistant-1', comment: 'Saved in Reader', range, root, sourceMarkdown: 'Quoted answer' });
+            annotationClientMock.list.mockResolvedValue({ ok: true, data: { entries: [{ document: controller['store'].getDocument()!, annotation: toReaderAnnotationRecord(record, { assistantMessageId: 'assistant-1' }) }] } } as any);
+            for (const listener of annotationClientMock.listeners) listener();
+            await vi.waitFor(() => expect(document.querySelector('[data-aimd-role="page-annotation-composer-chip"]')).toBeTruthy());
+            document.querySelector('[data-aimd-role="page-annotation-composer-chip"]')!.shadowRoot!.querySelector<HTMLButtonElement>('button')!.click();
+            const shadow = document.querySelector('#aimd-chatgpt-page-annotation-manager-host')!.shadowRoot!;
+            expect(shadow.textContent).toContain('Saved in Reader');
+            annotationClientMock.list.mockResolvedValue({ ok: true, data: { entries: [] } });
+            for (const listener of annotationClientMock.listeners) listener();
+            await vi.waitFor(() => expect(shadow.querySelectorAll('.page-annotation-manager__item')).toHaveLength(0));
+            expect(document.querySelector('[data-aimd-role="page-annotation-composer-chip"]')).toBeNull();
+        } finally { controller.dispose(); }
+    });
+
+    it.each(['success', 'missing-composer', 'delete-failed'])('inserts through the annotation chip and manager (%s)', async (scenario) => {
+        const message = mountMessage('<p>Quoted answer</p>');
+        const root = message.querySelector('.markdown.prose') as HTMLElement;
+        document.body.insertAdjacentHTML('beforeend', '<form><div><button type="button" id="composer-plus-btn">+</button></div><textarea name="prompt-textarea">Existing draft</textarea></form>');
+        const controller = new ChatGPTPageAnnotationController(new ChatGPTAdapter(), { contentSource: createContentSource(), materialization: createMaterialization(message) });
+        controller.init();
+        try {
+            await vi.waitFor(() => expect(controller['store'].getDocument()).not.toBeNull());
+            const range = document.createRange();
+            range.selectNodeContents(root);
+            const record = createPageCommentRecord({ id: 'insert-note', itemId: 'chatgpt-assistant-1', comment: 'Keep this note', range, root, sourceMarkdown: 'Quoted answer' });
+            await controller['store'].create(record, { assistantMessageId: 'assistant-1' });
+            const chip = document.querySelector('[data-aimd-role="page-annotation-composer-chip"]')!.shadowRoot!.querySelector<HTMLButtonElement>('button')!;
+            chip.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true, composed: true }));
+            chip.click();
+            if (scenario === 'missing-composer') document.querySelector('textarea')!.remove();
+            if (scenario === 'delete-failed') vi.spyOn(controller['store'], 'removeMany').mockResolvedValue([record]);
+            const shadow = document.querySelector('#aimd-chatgpt-page-annotation-manager-host')!.shadowRoot!;
+            const button = shadow.querySelector<HTMLButtonElement>('[data-action="page-annotation-insert-and-delete"]')!;
+            expect(shadow.querySelector('[data-action="page-annotation-insert-all"]')).toBeTruthy();
+            button.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true, composed: true }));
+            button.click();
+            if (scenario === 'success') {
+                await vi.waitFor(() => expect(controller['store'].listForConversation()).toHaveLength(0));
+                expect(document.querySelector('textarea')!.value).toContain('Existing draft');
+                expect(document.querySelector('textarea')!.value).toContain('Keep this note');
+            } else if (scenario === 'delete-failed') {
+                await vi.waitFor(() => expect(document.querySelector('.aimd-toast')?.textContent).toContain('could not be deleted'));
+                expect(controller['store'].listForConversation()).toHaveLength(1);
+                expect(document.querySelector('textarea')!.value).toContain('Keep this note');
+            } else {
+                await vi.waitFor(() => expect(document.querySelector('.aimd-toast')?.textContent).toContain('Could not insert annotations'));
+                expect(controller['store'].listForConversation()).toHaveLength(1);
+            }
+        } finally { controller.dispose(); }
     });
 
     it('initializes and disposes cleanly without a canonical source', () => {
@@ -215,7 +296,7 @@ describe('ChatGPTPageAnnotationController', () => {
         controller.dispose();
     });
 
-    it('positions a copy + comment toolbar beside the pointer release position', async () => {
+    it('mounts two independent circular actions beside the mouse release point', async () => {
         const message = mountMessage('<p>before <code>inline code</code> after</p>');
         const root = message.querySelector('.markdown.prose') as HTMLElement;
         const codeElement = message.querySelector('code') as HTMLElement;
@@ -231,23 +312,49 @@ describe('ChatGPTPageAnnotationController', () => {
         dispatchPointerUp(320, 240);
         await flushSelectionFrame();
 
-        const shadow = controller['overlay'].getShadow();
+        const shadow = selectionToolbarShadow();
         const copyButton = shadow.querySelector<HTMLButtonElement>('[data-action="page-selection-copy"]');
         const commentButton = shadow.querySelector<HTMLButtonElement>('[data-action="page-comment-add"]');
+        const toolbar = selectionToolbarHost();
         expect(copyButton).toBeTruthy();
         expect(commentButton).toBeTruthy();
+        expect(toolbar?.className).toBe('reader-comment-action');
+        expect(toolbar?.style.left).toBe('328px');
+        expect(toolbar?.style.top).toBe('248px');
+        expect(toolbar?.style.background).toBe('');
+        expect(toolbar?.style.border).toBe('');
         expect(copyButton?.getAttribute('aria-label')).toBeTruthy();
         expect(copyButton?.getAttribute('title')).toBe(copyButton?.getAttribute('aria-label'));
         expect(commentButton?.getAttribute('aria-label')).toBeTruthy();
         expect(commentButton?.getAttribute('title')).toBe(commentButton?.getAttribute('aria-label'));
-        const toolbar = shadow.querySelector<HTMLElement>('.reader-comment-action');
-        expect(toolbar?.style.left).toBe('328px');
-        expect(toolbar?.style.top).toBe('248px');
+        expect(toolbar?.parentElement?.className).toBe('page-annotation-markers');
+        expect(copyButton?.closest('.reader-comment-action')).toBe(toolbar);
 
         controller.dispose();
     });
 
-    it('uses selection geometry only when no pointer anchor exists', async () => {
+    it('does not require ChatGPT official selection UI to show the actions', async () => {
+        const message = mountMessage('<p>before <code>inline code</code> after</p>');
+        const root = message.querySelector('.markdown.prose') as HTMLElement;
+        const codeElement = message.querySelector('code') as HTMLElement;
+        const codeText = codeElement.firstChild as Text;
+        const range = document.createRange();
+        range.setStart(codeText, 0);
+        range.setEnd(codeText, codeText.data.length);
+        selectRange(range);
+        mockGeometry(root, codeElement, range);
+
+        const controller = new ChatGPTPageAnnotationController(new ChatGPTAdapter());
+        controller.init();
+        dispatchPointerUp(320, 240);
+        await flushSelectionFrame();
+
+        expect(selectionToolbarHost()).toBeTruthy();
+        expect(selectionToolbarHost()?.style.left).toBe('328px');
+        controller.dispose();
+    });
+
+    it('uses selection geometry when there is no pointer anchor', async () => {
         const message = mountMessage('<p>before <code>inline code</code> after</p>');
         const root = message.querySelector('.markdown.prose') as HTMLElement;
         const codeElement = message.querySelector('code') as HTMLElement;
@@ -263,13 +370,13 @@ describe('ChatGPTPageAnnotationController', () => {
         document.dispatchEvent(new Event('selectionchange'));
         await flushSelectionFrame();
 
-        const toolbar = controller['overlay'].getShadow().querySelector<HTMLElement>('.reader-comment-action');
+        const toolbar = selectionToolbarHost();
         expect(toolbar?.style.left).toBe('49px');
         expect(toolbar?.style.top).toBe('76px');
         controller.dispose();
     });
 
-    it('flips and clamps the pointer toolbar at the viewport edge', async () => {
+    it('flips and clamps the circular actions at the viewport edge', async () => {
         const message = mountMessage('<p>before <code>inline code</code> after</p>');
         const root = message.querySelector('.markdown.prose') as HTMLElement;
         const codeElement = message.querySelector('code') as HTMLElement;
@@ -287,7 +394,7 @@ describe('ChatGPTPageAnnotationController', () => {
         dispatchPointerDown(pointerX, pointerY);
         dispatchPointerUp(pointerX, pointerY);
 
-        const toolbar = controller['overlay'].getShadow().querySelector<HTMLElement>('.reader-comment-action');
+        const toolbar = selectionToolbarHost();
         const left = Number.parseFloat(toolbar?.style.left ?? 'NaN');
         const top = Number.parseFloat(toolbar?.style.top ?? 'NaN');
         const buttonSize = controller['readPxVar']('--aimd-size-control-icon-panel', 32);
@@ -300,6 +407,37 @@ describe('ChatGPTPageAnnotationController', () => {
         expect(top + buttonSize).toBeLessThanOrEqual(window.innerHeight - edge);
         expect(left).toBeLessThan(pointerX);
         expect(top).toBeLessThan(pointerY);
+        controller.dispose();
+    });
+
+    it('hides the page selection toolbar without disabling page annotations', async () => {
+        const message = mountMessage('<p>before <code>inline code</code> after</p>');
+        const root = message.querySelector('.markdown.prose') as HTMLElement;
+        const codeElement = message.querySelector('code') as HTMLElement;
+        const codeText = codeElement.firstChild as Text;
+        const range = document.createRange();
+        range.setStart(codeText, 0);
+        range.setEnd(codeText, codeText.data.length);
+        selectRange(range);
+        mockGeometry(root, codeElement, range);
+
+        const controller = new ChatGPTPageAnnotationController(new ChatGPTAdapter());
+        controller.init();
+        document.dispatchEvent(new Event('selectionchange'));
+        await flushSelectionFrame();
+
+        expect(selectionToolbarButton('page-selection-copy')).toBeTruthy();
+        expect(selectionToolbarButton('page-comment-add')).toBeTruthy();
+
+        controller.setSelectionToolbarEnabled(false);
+        expect(selectionToolbarHost()).toBeNull();
+        expect(controller['initialized']).toBe(true);
+
+        controller.setSelectionToolbarEnabled(true);
+        document.dispatchEvent(new Event('selectionchange'));
+        await flushSelectionFrame();
+        expect(selectionToolbarButton('page-selection-copy')).toBeTruthy();
+        expect(selectionToolbarButton('page-comment-add')).toBeTruthy();
         controller.dispose();
     });
 
@@ -320,12 +458,11 @@ describe('ChatGPTPageAnnotationController', () => {
         await flushSelectionFrame();
         vi.spyOn(controller['markdownResolver'], 'resolve').mockReturnValue(null);
 
-        const shadow = controller['overlay'].getShadow();
-        shadow.querySelector<HTMLButtonElement>('[data-action="page-comment-add"]')?.click();
+        selectionToolbarButton('page-comment-add')?.click();
         await Promise.resolve();
 
         expect(document.querySelector<HTMLElement>('.aimd-toast')?.textContent).toContain('Selection unavailable');
-        expect(shadow.querySelector('[data-action="page-comment-add"]')).toBeNull();
+        expect(selectionToolbarHost()).toBeNull();
         controller.dispose();
     });
 
@@ -349,7 +486,7 @@ describe('ChatGPTPageAnnotationController', () => {
             dispatchPointerUp(320, 240);
             await flushSelectionFrame();
             const shadow = controller['overlay'].getShadow();
-            shadow.querySelector<HTMLButtonElement>('[data-action="page-comment-add"]')?.click();
+            selectionToolbarButton('page-comment-add')?.click();
             await Promise.resolve();
 
             expect(controller['mode']).toBe('editing');
@@ -377,7 +514,7 @@ describe('ChatGPTPageAnnotationController', () => {
         await flushSelectionFrame();
 
         const shadow = controller['overlay'].getShadow();
-        const commentButton = shadow.querySelector<HTMLButtonElement>('[data-action="page-comment-add"]');
+        const commentButton = selectionToolbarButton('page-comment-add');
         expect(commentButton).not.toBeNull();
 
         // A real browser may dispatch selectionchange between pointerdown and
@@ -409,8 +546,7 @@ describe('ChatGPTPageAnnotationController', () => {
         document.dispatchEvent(new Event('selectionchange'));
         await flushSelectionFrame();
 
-        const shadow = controller['overlay'].getShadow();
-        expect(shadow.querySelector('[data-action="page-selection-copy"]')).toBeNull();
+        expect(selectionToolbarHost()).toBeNull();
 
         controller.dispose();
     });
@@ -432,9 +568,8 @@ describe('ChatGPTPageAnnotationController', () => {
         dispatchPointerUp(322, 241);
         await flushSelectionFrame();
 
-        const shadow = controller['overlay'].getShadow();
-        expect(shadow.querySelectorAll('[data-action="page-selection-copy"]')).toHaveLength(1);
-        expect(shadow.querySelectorAll('[data-action="page-comment-add"]')).toHaveLength(1);
+        expect(selectionToolbarShadow().querySelectorAll('[data-action="page-selection-copy"]')).toHaveLength(1);
+        expect(selectionToolbarShadow().querySelectorAll('[data-action="page-comment-add"]')).toHaveLength(1);
 
         controller.dispose();
     });
@@ -454,10 +589,10 @@ describe('ChatGPTPageAnnotationController', () => {
         controller.init();
         dispatchPointerDown(320, 240);
         dispatchPointerCancel(320, 240);
+        await flushSelectionFrame();
 
-        const shadow = controller['overlay'].getShadow();
-        expect(shadow.querySelector('[data-action="page-selection-copy"]')).toBeTruthy();
-        expect(shadow.querySelector('[data-action="page-comment-add"]')).toBeTruthy();
+        expect(selectionToolbarButton('page-selection-copy')).toBeTruthy();
+        expect(selectionToolbarButton('page-comment-add')).toBeTruthy();
         controller.dispose();
     });
 
@@ -479,11 +614,11 @@ describe('ChatGPTPageAnnotationController', () => {
         document.dispatchEvent(new Event('selectionchange'));
         await flushSelectionFrame();
 
-        const shadow = controller['overlay'].getShadow();
-        expect(shadow.querySelector('[data-action="page-selection-copy"]')).toBeNull();
+        expect(selectionToolbarHost()).toBeNull();
 
         dispatchPointerUp(320, 240);
-        expect(shadow.querySelector('[data-action="page-selection-copy"]')).toBeTruthy();
+        await flushSelectionFrame();
+        expect(selectionToolbarButton('page-selection-copy')).toBeTruthy();
         controller.dispose();
     });
 
@@ -505,11 +640,10 @@ describe('ChatGPTPageAnnotationController', () => {
         await flushSelectionFrame();
         expect(materialize).not.toHaveBeenCalled();
 
-        const shadow = controller['overlay'].getShadow();
-        shadow.querySelector<HTMLButtonElement>('[data-action="page-selection-copy"]')?.click();
+        selectionToolbarButton('page-selection-copy')?.click();
         await Promise.resolve();
         expect(materialize).toHaveBeenCalledTimes(1);
-        shadow.querySelector<HTMLButtonElement>('[data-action="page-comment-add"]')?.click();
+        selectionToolbarButton('page-comment-add')?.click();
         await Promise.resolve();
         expect(materialize).toHaveBeenCalledTimes(1);
 
@@ -533,9 +667,9 @@ describe('ChatGPTPageAnnotationController', () => {
         await flushSelectionFrame();
 
         const shadow = controller['overlay'].getShadow();
-        shadow.querySelector<HTMLButtonElement>('[data-action="page-selection-copy"]')?.click();
+        selectionToolbarButton('page-selection-copy')?.click();
         await Promise.resolve();
-        shadow.querySelector<HTMLButtonElement>('[data-action="page-comment-add"]')?.click();
+        selectionToolbarButton('page-comment-add')?.click();
         const input = shadow.querySelector<HTMLTextAreaElement>('[data-role="input"]');
         expect(input).not.toBeNull();
         input!.value = 'Keep this context';
@@ -546,8 +680,9 @@ describe('ChatGPTPageAnnotationController', () => {
         dispatchPointerDown(320, 240);
         selectRange(range);
         dispatchPointerCancel(320, 240);
-        expect(shadow.querySelector('[data-action="page-selection-copy"]')).toBeTruthy();
-        expect(shadow.querySelector('[data-action="page-comment-add"]')).toBeTruthy();
+        await flushSelectionFrame();
+        expect(selectionToolbarButton('page-selection-copy')).toBeTruthy();
+        expect(selectionToolbarButton('page-comment-add')).toBeTruthy();
 
         controller.dispose();
     });
@@ -578,9 +713,10 @@ describe('ChatGPTPageAnnotationController', () => {
         document.dispatchEvent(new Event('selectionchange'));
         await flushSelectionFrame();
         dispatchPointerUp(320, 240);
+        await flushSelectionFrame();
 
         const shadow = controller['overlay'].getShadow();
-        shadow.querySelector<HTMLButtonElement>('[data-action="page-comment-add"]')?.click();
+        selectionToolbarButton('page-comment-add')?.click();
         const input = shadow.querySelector<HTMLTextAreaElement>('[data-role="input"]');
         expect(input).not.toBeNull();
         input!.value = 'Keep this context';
@@ -594,9 +730,10 @@ describe('ChatGPTPageAnnotationController', () => {
         document.dispatchEvent(new Event('selectionchange'));
         await flushSelectionFrame();
         dispatchPointerUp(320, 240);
+        await flushSelectionFrame();
 
-        expect(shadow.querySelector('[data-action="page-selection-copy"]')).toBeTruthy();
-        expect(shadow.querySelector('[data-action="page-comment-add"]')).toBeTruthy();
+        expect(selectionToolbarButton('page-selection-copy')).toBeTruthy();
+        expect(selectionToolbarButton('page-comment-add')).toBeTruthy();
         controller.dispose();
         if (rangeRects) Object.defineProperty(Range.prototype, 'getClientRects', { configurable: true, value: rangeRects });
         else delete (Range.prototype as any).getClientRects;
@@ -621,14 +758,14 @@ describe('ChatGPTPageAnnotationController', () => {
         controller.init();
 
         dispatchPointerUp(320, 240);
-        const shadow = controller['overlay'].getShadow();
-        expect(shadow.querySelector('[data-action="page-comment-add"]')).toBeTruthy();
+        await flushSelectionFrame();
+        expect(selectionToolbarButton('page-comment-add')).toBeTruthy();
 
         materialization.emit('materialization-2');
         await flushSelectionFrame();
 
-        expect(shadow.querySelector('[data-action="page-selection-copy"]')).toBeTruthy();
-        expect(shadow.querySelector('[data-action="page-comment-add"]')).toBeTruthy();
+        expect(selectionToolbarButton('page-selection-copy')).toBeTruthy();
+        expect(selectionToolbarButton('page-comment-add')).toBeTruthy();
         controller.dispose();
     });
 

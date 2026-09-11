@@ -271,6 +271,10 @@
         "message": "内容未找到",
         "description": "Message for contentNotFound"
     },
+    "bookmarkUnavailable": {
+        "message": "当前消息还不能保存书签",
+        "description": "当前消息缺少稳定书签数据时显示的提示"
+    },
     "copyFailed": {
         "message": "复制失败",
         "description": "Message for copyFailed"
@@ -1494,6 +1498,14 @@
     "chatgptDirectoryRightInsetDesc": {
         "message": "如果浏览器滚动条覆盖右侧目录条，可增加这个边距。",
         "description": "Message for chatgptDirectoryRightInsetDesc"
+    },
+    "chatgptDirectoryPreviewMaxCharsLabel": {
+        "message": "目录预览最大字数",
+        "description": "Message for chatgptDirectoryPreviewMaxCharsLabel"
+    },
+    "chatgptDirectoryPreviewMaxCharsDesc": {
+        "message": "设置 hover 预览框最多显示多少字。",
+        "description": "Message for chatgptDirectoryPreviewMaxCharsDesc"
     },
     "reader": {
         "message": "阅读器",
@@ -3334,6 +3346,30 @@
     "chatgptPageAnnotationsDesc": {
         "message": "在页面上直接为选中的回复添加注释。",
         "description": "Description for the ChatGPT page annotation toggle"
+    },
+    "chatgptShowPageSelectionToolbarLabel": {
+        "message": "显示选区操作按钮",
+        "description": "Toggle for the ChatGPT page selection action toolbar"
+    },
+    "chatgptShowPageSelectionToolbarDesc": {
+        "message": "选中回复文字后显示“复制 Markdown”和“添加注释”按钮。如果与其他翻译或选区工具冲突，可以关闭。",
+        "description": "Description for the ChatGPT page selection action toolbar toggle"
+    },
+    "pageControls": {
+        "message": "页面工具",
+        "description": "Label for pageControls"
+    },
+    "pageAnnotationInsertAndDelete": {
+        "message": "插入并删除",
+        "description": "Label for pageAnnotationInsertAndDelete"
+    },
+    "pageAnnotationInsertedAndDeleted": {
+        "message": "注释已插入并删除",
+        "description": "Label for pageAnnotationInsertedAndDeleted"
+    },
+    "pageAnnotationInsertedDeleteFailed": {
+        "message": "已插入；部分注释删除失败，已保留。",
+        "description": "Label for pageAnnotationInsertedDeleteFailed"
     },
     "pageAnnotationInsert": {
         "message": "插入到输入框",

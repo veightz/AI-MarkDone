@@ -18,11 +18,15 @@
   </p>
   <p><strong>Read, save, export. Stay in flow.</strong></p>
   <p><em>ChatGPT message navigation, Reader source copy, Dynamic Annotation, bookmarks, Google Drive backup, PNG export, and beautiful PDF export.</em></p>
+  <p><strong>The full conversation, without the endless scroll.</strong></p>
+  <p>Open a long conversation and click “Refresh message navigation” in the lower-right corner to load the full conversation history, show the complete message directory, and use Reader and export with the entire conversation.</p>
 
   [Official website](https://zhaoliangbin42.github.io/ai-markdone/en/) | [中文文档](./README.zh.md) | English
 </div>
 
-AI-MarkDone is an open-source ChatGPT browser extension for long conversations, research reading, source-aware copying, bookmarks, Markdown export, PDF export, and PNG image sharing. It helps users turn ChatGPT outputs into reusable knowledge without leaving the conversation page.
+AI-MarkDone is an open-source ChatGPT browser extension for loading and navigating long conversations, research reading, source-aware copying, bookmarks, Markdown export, PDF export, and PNG image sharing. It helps users turn ChatGPT outputs into reusable knowledge without leaving the conversation page.
+
+ChatGPT may load older messages incrementally in long conversations, forcing you to scroll and wait before they become available. Open the conversation, click “Refresh message navigation” in the lower-right corner, and load the full conversation history at once. The directory, Reader, and export can then use the complete conversation.
 
 **Use it for:** ChatGPT reading mode, message navigation, Markdown copy, LaTeX formula copy, formula PNG/SVG export, message bookmarks, optional Google Drive backup, Deep Research cleanup, PDF export, and shareable PNG snapshots.
 
@@ -52,7 +56,8 @@ If any of these sound familiar, **AI-MarkDone** is built exactly for you.
 
 | Need | What AI-MarkDone Provides |
 | :--- | :--- |
-| ChatGPT long conversation navigation | Optional right-side directory rail, lower-right previous/next controls, optional Left/Right arrow-key navigation, and direct jump back to the target turn |
+| ChatGPT long conversation loading | Load the full conversation history on demand and avoid repeatedly scrolling for older messages |
+| ChatGPT long conversation navigation | Optional right-side directory rail, lower-right previous/next controls, optional Left/Right arrow-key navigation, and direct jumps to conversation messages |
 | ChatGPT reading mode | A stable Reader view with Markdown rendering and keyboard navigation |
 | Copy ChatGPT answers to Markdown | Source-aware Markdown copy for formulas, code blocks, tables, images, and selected passages |
 | Export ChatGPT messages | Markdown, PDF, PNG, and ZIP workflows for reusable deliverables |
@@ -78,16 +83,18 @@ If any of these sound familiar, **AI-MarkDone** is built exactly for you.
 ## ✨ Core Features
 
 ### ⚡ ChatGPT Message Navigation
-- **Optional directory rail**: Restore the AI-MarkDone right-side conversation rail when ChatGPT does not provide one, or when you prefer the plugin rail.
+- **Full-thread loading on demand**: Click “Refresh message navigation” in the lower-right corner to load the full conversation history.
+- **Complete message directory**: See the full conversation in the right-side directory and jump directly to any message.
+- **Less repetitive scrolling**: Avoid scrolling through a long conversation again and again just to make older messages appear.
+- **Optional directory rail**: Use the AI-MarkDone right-side conversation rail when ChatGPT does not provide one, or when you prefer the plugin rail.
 - **Official rail hiding**: When the AI-MarkDone rail is enabled, ChatGPT's official conversation rail is hidden by default to avoid duplicate navigation.
-- **Lower-right stepper**: Move to the previous or next ChatGPT message without opening the directory rail.
+- **Lower-right controls**: Refresh message navigation or move to the previous or next ChatGPT message without opening the directory rail.
 - **Optional arrow keys**: Use `Left` / `Right` to move between messages when you are not typing; the setting can be turned off from ChatGPT Settings.
-- **Direct jump**: Navigation uses the same stable anchor path as ChatGPT bookmarks and Reader locate.
-- **Built for the new ChatGPT page**: Keeps navigation lightweight under ChatGPT's incremental loading model.
+- **Direct jump**: Directory navigation, Reader locate, and ChatGPT message bookmarks use the same target-navigation path.
+- **Shared conversation content**: The directory, Reader, and export use the same complete message collection after full-thread loading.
 
 ### 📚 Reading Mode (Focus View)
 - **Stable context**: A dedicated reader that renders full Markdown syntax.
-- **Full-thread loading on demand**: Click the lower-right Refresh message navigation action to load the conversation into the shared directory, Reader, and export source.
 - **Fast navigation**: Use `Left` / `Right` arrow keys to jump between messages, and `Up` / `Down` to scroll the current Reader message.
 - **Source-aware copy**: Copy formulas, code blocks, tables, images, and other closed Markdown units as source directly inside Reader.
 - **Partial source selection**: Select only the part you need; Reader maps closed units back to their original Markdown boundaries and rebuilds the copied result in selection order.
@@ -102,6 +109,7 @@ If any of these sound familiar, **AI-MarkDone** is built exactly for you.
 - **Copy as PNG**: Turn the current message into a shareable image directly from the hover toolbar.
 - **Formula assets**: Copy a single formula as Office-compatible MathML, or copy/save it as PNG or SVG from the formula hover actions.
 - **Batch PNG export**: Export selected messages as one PNG each; multiple messages are packed together as a ZIP.
+- **Full-conversation export**: After full-thread loading, export the complete conversation instead of waiting for messages to appear one by one.
 - **Image settings**: Configure PNG width and image scale from Settings to fit the target sharing platform.
 - **Deep Research cleanup**: Restore messy Deep Research outputs into readable Markdown.
 

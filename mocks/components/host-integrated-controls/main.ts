@@ -12,6 +12,7 @@ import { ChatGPTDirectoryRail } from '../../../src/ui/content/chatgptDirectory/C
 import { TaskProgressPanel } from '../../../src/ui/content/components/TaskProgressPanel';
 import { setLocale } from '../../../src/ui/content/components/i18n';
 import { ChatGPTMessageStepperController } from '../../../src/ui/content/controllers/ChatGPTMessageStepperController';
+import type { ConversationSurfaceFrameV1, ConversationSurfacePortV1 } from '../../../src/contracts/conversationSurface';
 import {
     installVisualHarnessBridge,
     type VisualHarnessVariant,
@@ -156,9 +157,36 @@ function mountDirectory(): void {
 
 function mountStepper(): void {
     stepper?.dispose();
+    const documentRef = { key: 'fixture', platformId: 'chatgpt', conversationId: 'fixture', canonicalUrl: location.href };
+    const frame: ConversationSurfaceFrameV1 = {
+        frameToken: 'fixture', surfaceToken: 'fixture', contentKind: 'ready',
+        document: documentRef, snapshot: null, projectionId: 'fixture', contentToken: 'fixture', pendingSurfaces: [],
+        obtainedTurns: groups.map((group, index) => {
+            const target = { documentKey: 'fixture', turnId: group.id, assistantMessageId: `assistant-${index + 1}`, userMessageId: `user-${index + 1}` };
+            return {
+                status: 'obtained', target,
+                turn: { key: group.id, ordinal: index + 1, identity: target, userText: group.userPromptText ?? '', assistantMarkdown: group.assistantContentRootEl?.textContent ?? '' },
+                materialization: {
+                    anchorElement: turnElements[index]!, messageElement: group.assistantMessageEl!,
+                    jumpAnchorElement: turnElements[index]!, userElement: group.userRootEl!, assistantElement: group.assistantRootEl!,
+                    groupElements: group.groupEls,
+                },
+            };
+        }),
+    };
+    const surface: ConversationSurfacePortV1 = {
+        readFrame: () => frame, subscribeFrame: (listener) => { listener(frame); return () => undefined; }, refreshSurface: () => undefined,
+        materialization: {
+            read: () => ({ materializationToken: 'fixture', contentToken: 'fixture', entries: [] }),
+            subscribe: () => () => undefined, resolveElement: () => null, locate: async () => 'missing',
+        },
+    };
     stepper = new ChatGPTMessageStepperController(adapter, {
-        onTogglePageBookmark: () => ({ saved: true }),
-        onRefreshPageBookmarkState: () => true,
+        surface,
+        onOpenBookmarksPanel: () => showToast({ text: 'Bookmarks opened' }),
+        onOpenPrompts: () => showToast({ text: 'Prompts opened' }),
+        onTogglePageBookmark: () => ({ ok: true, saved: true }),
+        onRefreshPageBookmarkState: () => ({ ok: true, saved: true }),
     });
     stepper.init();
     stepper.setPageBookmarked(true);
@@ -206,6 +234,11 @@ async function prepareForAudit(): Promise<void> {
 }
 
 await applyVariant(variant);
+
+const themeToggle = document.createElement('button');
+themeToggle.textContent = 'Toggle light / dark';
+themeToggle.addEventListener('click', () => void applyVariant({ ...variant, theme: variant.theme === 'light' ? 'dark' : 'light' }));
+document.querySelector('.page')?.prepend(themeToggle);
 
 installVisualHarnessBridge({
     applyVariant,

@@ -1,5 +1,5 @@
 import { bookmarkIcon, locateIcon, refreshCwIcon, sendIcon } from '../../../assets/icons';
-import { resolveContent } from '../../../services/reader/types';
+import { resolveContent, type ReaderItem } from '../../../services/reader/types';
 import type { ReaderPanelAction, ReaderPanelActionContext } from './ReaderPanel';
 import { t } from '../components/i18n';
 
@@ -19,6 +19,7 @@ export type ReaderBookmarkToggleResult =
 export type ConversationReaderBookmarkPort = {
     resolveUrl: () => string;
     isBookmarked: (url: string, position: number) => boolean;
+    isAvailable?: (item: ReaderItem) => boolean;
     toggle: (input: ReaderBookmarkToggleInput) => Promise<ReaderBookmarkToggleResult>;
 };
 
@@ -63,11 +64,20 @@ export function createConversationReaderActions(options: {
             placement: 'header',
             toggle: true,
             isActive: (ctx) => Boolean(ctx.item.meta?.bookmarked),
+            isEnabled: (ctx) => options.bookmark!.isAvailable?.(ctx.item) ?? true,
             onClick: async (ctx) => {
+                if (options.bookmark!.isAvailable && !options.bookmark!.isAvailable(ctx.item)) {
+                    ctx.notify(t('bookmarkUnavailable'));
+                    return;
+                }
                 const meta = (ctx.item.meta || {}) as Record<string, unknown>;
                 const url = typeof meta.url === 'string' ? meta.url : options.bookmark!.resolveUrl();
                 const position = Number(meta.position ?? 0);
-                const messageId = typeof meta.messageId === 'string' ? meta.messageId : null;
+                const messageId = typeof meta.messageId === 'string' && meta.messageId.trim()
+                    ? meta.messageId
+                    : typeof meta.assistantMessageId === 'string' && meta.assistantMessageId.trim()
+                        ? meta.assistantMessageId
+                        : null;
                 const userPrompt = String(ctx.item.userPrompt || '').trim();
                 const markdown = await resolveContent(ctx.item.content);
                 const result = await options.bookmark!.toggle({

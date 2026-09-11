@@ -2,6 +2,8 @@ import {
     CHATGPT_DIRECTORY_RIGHT_INSET_STEP_PX,
     CHATGPT_NAVIGATION_SEEK_STEP_PX_STEP,
     DEFAULT_CHATGPT_DIRECTORY_RIGHT_INSET_PX,
+    DEFAULT_CHATGPT_DIRECTORY_PREVIEW_MAX_CHARS,
+    CHATGPT_DIRECTORY_PREVIEW_MAX_CHARS_STEP,
     DEFAULT_CHATGPT_NAVIGATION_SEEK_STEP_PX,
     CHATGPT_PAGE_WIDTH_SCALE_STEP,
     DEFAULT_GLOBAL_FONT_SIZE_PX,
@@ -12,6 +14,7 @@ import {
     DEFAULT_READER_PANEL_SIZE_RATIO,
     GLOBAL_FONT_SIZE_STEP_PX,
     MAX_CHATGPT_DIRECTORY_RIGHT_INSET_PX,
+    MAX_CHATGPT_DIRECTORY_PREVIEW_MAX_CHARS,
     MAX_CHATGPT_PAGE_WIDTH_SCALE,
     MAX_CHATGPT_NAVIGATION_SEEK_STEP_PX,
     MAX_GLOBAL_FONT_SIZE_PX,
@@ -20,6 +23,7 @@ import {
     MAX_READER_PANEL_HEIGHT_RATIO,
     MAX_READER_PANEL_WIDTH_RATIO,
     MIN_CHATGPT_DIRECTORY_RIGHT_INSET_PX,
+    MIN_CHATGPT_DIRECTORY_PREVIEW_MAX_CHARS,
     MIN_CHATGPT_PAGE_WIDTH_SCALE,
     MIN_CHATGPT_NAVIGATION_SEEK_STEP_PX,
     MIN_READER_BODY_FONT_SIZE_PX,
@@ -118,7 +122,19 @@ export function normalizeChatGPTDirectorySettings(value: unknown): AppSettings['
         promptLabelMode,
         hideOfficialNavigation: Boolean((record as any).hideOfficialNavigation ?? DEFAULT_SETTINGS.chatgptDirectory.hideOfficialNavigation),
         rightInsetPx: normalizeChatGPTDirectoryRightInsetPx((record as any).rightInsetPx),
+        previewMaxChars: normalizeChatGPTDirectoryPreviewMaxChars((record as any).previewMaxChars),
     };
+}
+
+export function normalizeChatGPTDirectoryPreviewMaxChars(value: unknown): number {
+    const numeric = typeof value === 'number' ? value : Number.parseInt(String(value ?? ''), 10);
+    if (!Number.isFinite(numeric)) return DEFAULT_CHATGPT_DIRECTORY_PREVIEW_MAX_CHARS;
+    const clamped = Math.min(
+        MAX_CHATGPT_DIRECTORY_PREVIEW_MAX_CHARS,
+        Math.max(MIN_CHATGPT_DIRECTORY_PREVIEW_MAX_CHARS, numeric),
+    );
+    return Math.round(clamped / CHATGPT_DIRECTORY_PREVIEW_MAX_CHARS_STEP)
+        * CHATGPT_DIRECTORY_PREVIEW_MAX_CHARS_STEP;
 }
 
 export function normalizeChatGPTDirectoryRightInsetPx(value: unknown): number {
@@ -185,6 +201,7 @@ export function normalizeChatGPTBehaviorSettings(value: unknown): AppSettings['c
         enableArrowKeyMessageNavigation: Boolean((record as any).enableArrowKeyMessageNavigation ?? DEFAULT_SETTINGS.chatgptBehavior.enableArrowKeyMessageNavigation),
         pageWidthScale: normalizeChatGPTPageWidthScale((record as any).pageWidthScale),
         pageAnnotationsEnabled: Boolean((record as any).pageAnnotationsEnabled ?? DEFAULT_SETTINGS.chatgptBehavior.pageAnnotationsEnabled),
+        showPageSelectionToolbar: Boolean((record as any).showPageSelectionToolbar ?? DEFAULT_SETTINGS.chatgptBehavior.showPageSelectionToolbar),
         navigationSeekStepPx: normalizeChatGPTNavigationSeekStepPx((record as any).navigationSeekStepPx),
     };
 }

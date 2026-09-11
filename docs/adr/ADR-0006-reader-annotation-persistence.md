@@ -30,12 +30,14 @@ Reader 注释目前只存在于各自 Reader runtime 的内存 `Map` 中。页�
    - 使用 `storage.local`，每个 conversation 一个 canonical bundle key：`{ schemaVersion: 1, document, annotations[] }`。
    - 不建立全局持久化 index、数据库、journal、跨 key transaction 或 `storage.sync`。全局查询通过读取 annotation namespace 后在内存中搜索、分组和排序。
    - 每条注释保留轻量 `revision`；更新携带 expected revision，冲突时保留草稿并提示刷新，不做自动合并。
-   - `storage.onChanged` 只用于失效通知，收到通知后重新读取 background canonical 数据。
+   - `storage.onChanged` 只用于失效通知，收到通知后重新读取 background canonical 数据。页面控制器订阅 annotation store 的变化，及时刷新高亮、输入框计数及已打开的管理器。页面与 Reader 均先订阅再首次读取；读取带本地 generation 校验，迟到结果不得覆盖新读取或其他会话。
+   - 注释文档身份由共享 `createReaderAnnotationDocument` 从当前 source document 构造，不要求正文 snapshot 已发布；页面正文回退打开的 Reader 仍携带同一注释文档。
    - Reader session snapshot 继续只保存临时正文快照和源 tab 路由，不复制注释数据。
    - `reader.persistAnnotations` 是显式 opt-in 设置，默认关闭，但只控制未来新建注释是否写入 durable bundle。已有 durable 注释始终读取和展示，其编辑/删除继续由 background 持久化；关闭期间新建的 runtime-only 注释不会在重新开启后自动迁移。
 
 4. **锚点与失败语义**
    - 重锚顺序为：校验后的 DOM/atomic 快路径 → 校验 exact quote 的 TextPosition → 使用 prefix/suffix 消歧的 exact TextQuote → `unanchored`。
+   - 定位可用性由各渲染视图独立计算：渲染阶段只更新内存中的 `lastKnownAnchorState`，不写存储、不增加 revision 或修改 updatedAt，避免页面虚拟化与 Reader 的定位状态互相覆盖。字段继续保留在 schema 中，显式创建/编辑时可保存其当时的参考值。
    - 选区上下文必须来自真实选区 offset，不得用全文第一次 `indexOf()` 推导 prefix/suffix。
    - v1 不做编辑距离、AI 匹配或相似文本自动迁移。无法唯一确认时保留注释、显示未定位，不静默绑定到其他内容。
 

@@ -1,0 +1,23 @@
+AI-MarkDone
+Make ChatGPT feel built for serious work.
+AI-MarkDone adds Reader mode, partial Markdown copy, formula copy/export, bookmarks, batch export, and precise annotations to ChatGPT.
+Change how ChatGPT fits into your work.
+Reader
+Partial Markdown copy
+Sticky panel
+Dynamic Annotation
+Formula copy/export
+Bookmarks
+Batch export
+Settings
+Designed around your ChatGPT workflow.
+Readable
+Easy to capture
+Easy to ask
+Easy to keep
+Capability overview
+3,000+ users are using AI-MarkDone.
+Read, save, export. Stay in flow.
+Chrome Web Store
+Firefox Add-ons
+GitHub

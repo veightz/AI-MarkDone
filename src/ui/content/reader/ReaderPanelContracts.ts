@@ -24,6 +24,7 @@ export type ReaderPanelAction = {
     toggle?: boolean;
     rerenderOnClick?: boolean;
     isActive?: (ctx: ReaderPanelActionContext) => boolean;
+    isEnabled?: (ctx: ReaderPanelActionContext) => boolean;
     onClick: (ctx: ReaderPanelActionContext) => void | Promise<void>;
 };
 

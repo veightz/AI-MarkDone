@@ -1,0 +1,1204 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+
+      html,
+      body {
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: #F8FAFC;
+      }
+
+      body {
+        font-family: sans-serif;
+        color: #111827;
+      }
+
+      #root {
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: #F8FAFC;
+        isolation: isolate;
+      }
+
+      .clip {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+        opacity: 0;
+        pointer-events: none;
+        will-change: opacity, transform;
+      }
+
+      .scene {
+        position: relative;
+        width: 100%;
+        height: 100%;
+        padding: 76px 112px 128px;
+        display: flex;
+        flex-direction: column;
+        gap: 28px;
+      }
+
+      .dark-scene {
+        background:
+          radial-gradient(circle at 16% 18%, rgba(37, 99, 235, 0.16), transparent 30%),
+          radial-gradient(circle at 84% 18%, rgba(14, 165, 233, 0.14), transparent 28%),
+          radial-gradient(circle at 50% 96%, rgba(16, 185, 129, 0.10), transparent 26%),
+          linear-gradient(180deg, #FFFFFF 0%, #F8FAFC 50%, #EEF4FF 100%);
+        color: #111827;
+      }
+
+      .light-scene {
+        background:
+          radial-gradient(circle at 78% 18%, rgba(37, 99, 235, 0.14), transparent 26%),
+          radial-gradient(circle at 18% 82%, rgba(16, 185, 129, 0.10), transparent 28%),
+          linear-gradient(180deg, #FFFFFF 0%, #F8FAFC 62%, #F1F5F9 100%);
+        color: #111827;
+      }
+
+      .grid-noise,
+      .blue-sweep {
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+      }
+
+      .grid-noise {
+        opacity: 0.34;
+        background-image:
+          linear-gradient(rgba(37, 99, 235, 0.055) 1px, transparent 1px),
+          linear-gradient(90deg, rgba(37, 99, 235, 0.055) 1px, transparent 1px);
+        background-size: 64px 64px;
+        mask-image: radial-gradient(circle at 50% 50%, black, transparent 72%);
+      }
+
+      .blue-sweep {
+        opacity: 0.0;
+        background: linear-gradient(105deg, transparent 20%, rgba(37, 99, 235, 0.18) 44%, transparent 68%);
+      }
+
+      .browser {
+        position: relative;
+        border-radius: 18px;
+        border: 1px solid rgba(15, 23, 42, 0.10);
+        background: #FFFFFF;
+        box-shadow: 0 28px 80px rgba(148, 163, 184, 0.28);
+        overflow: hidden;
+      }
+
+      .browser.light {
+        border-color: rgba(0, 0, 0, 0.12);
+        box-shadow: 0 22px 56px rgba(148, 163, 184, 0.28);
+      }
+
+      .browser-bar {
+        height: 54px;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 0 18px;
+        color: #6B7280;
+        background: #F6F7F9;
+        border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+        font-size: 18px;
+      }
+
+      .dot {
+        width: 12px;
+        height: 12px;
+        border-radius: 999px;
+        background: #D1D5DB;
+      }
+
+      .dot.red { background: #ef4444; }
+      .dot.amber { background: #f59e0b; }
+      .dot.green { background: #10b981; }
+
+      .url {
+        min-width: 0;
+        flex: 1;
+        padding: 8px 14px;
+        border-radius: 999px;
+        background: #FFFFFF;
+        color: #6B7280;
+        font-size: 16px;
+      }
+
+      .hero-copy {
+        position: relative;
+        z-index: 3;
+        display: flex;
+        flex-direction: column;
+        gap: 18px;
+        max-width: 880px;
+      }
+
+      .kicker {
+        display: inline-flex;
+        width: fit-content;
+        align-items: center;
+        gap: 10px;
+        padding: 8px 13px;
+        border-radius: 999px;
+        border: 1px solid rgba(37, 99, 235, 0.35);
+        background: rgba(37, 99, 235, 0.14);
+        color: #2563eb;
+        font-size: 18px;
+        font-weight: 600;
+      }
+
+      .light-scene .kicker {
+        background: rgba(37, 99, 235, 0.12);
+        color: #2563eb;
+      }
+
+      .title {
+        font-size: 86px;
+        line-height: 0.96;
+        letter-spacing: 0;
+        font-weight: 780;
+      }
+
+      .display-title {
+        font-size: 104px;
+        line-height: 0.94;
+        letter-spacing: 0;
+        font-weight: 800;
+      }
+
+      .lede {
+        max-width: 760px;
+        color: #374151;
+        font-size: 31px;
+        line-height: 1.22;
+      }
+
+      .light-scene .lede {
+        color: #374151;
+      }
+
+      .accent {
+        color: #2563eb;
+      }
+
+      .caption {
+        position: absolute;
+        z-index: 40;
+        left: 220px;
+        right: 220px;
+        bottom: 46px;
+        min-height: 64px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 16px 28px;
+        border-radius: 18px;
+        border: 1px solid rgba(37, 99, 235, 0.20);
+        background: rgba(255, 255, 255, 0.88);
+        box-shadow: 0 18px 50px rgba(148, 163, 184, 0.24);
+        color: #111827;
+        font-size: 31px;
+        line-height: 1.2;
+        font-weight: 650;
+        text-align: center;
+      }
+
+      .chat-layout {
+        position: relative;
+        z-index: 2;
+        flex: 1;
+        display: grid;
+        grid-template-columns: 1fr 560px;
+        gap: 42px;
+        min-height: 0;
+        align-items: center;
+      }
+
+      .chat-browser {
+        height: 780px;
+      }
+
+      .chat-body {
+        position: relative;
+        height: calc(100% - 54px);
+        overflow: hidden;
+        padding: 28px 34px;
+        background: #FFFFFF;
+        color: #111827;
+      }
+
+      .chat-scroll {
+        display: grid;
+        gap: 22px;
+      }
+
+      .message {
+        display: grid;
+        gap: 12px;
+        padding: 20px;
+        border-radius: 18px;
+        background: #F6F7F9;
+        border: 1px solid rgba(0, 0, 0, 0.08);
+      }
+
+      .message.user {
+        margin-left: 170px;
+        background: rgba(37, 99, 235, 0.12);
+        border-color: rgba(37, 99, 235, 0.35);
+      }
+
+      .message h3 {
+        font-size: 24px;
+        line-height: 1.15;
+      }
+
+      .message p,
+      .message li {
+        color: #374151;
+        font-size: 17px;
+        line-height: 1.45;
+      }
+
+      .code-block {
+        padding: 15px;
+        border-radius: 12px;
+        background: #1E1E1E;
+        color: #D1D5DB;
+        font-family: monospace;
+        font-size: 15px;
+        line-height: 1.42;
+      }
+
+      .chaos-card {
+        position: absolute;
+        z-index: 4;
+        width: 230px;
+        padding: 14px 16px;
+        border-radius: 16px;
+        border: 1px solid rgba(37, 99, 235, 0.18);
+        background: rgba(255, 255, 255, 0.92);
+        box-shadow: 0 18px 50px rgba(148, 163, 184, 0.28);
+        color: #2563eb;
+        font-size: 18px;
+        font-weight: 700;
+        backdrop-filter: blur(14px);
+      }
+
+      .chaos-card.big {
+        width: 290px;
+        padding: 18px;
+        font-size: 21px;
+      }
+
+      .chaos-card.small {
+        width: 188px;
+        font-size: 16px;
+      }
+
+      .chaos-card.one { right: 420px; top: 190px; }
+      .chaos-card.two { right: 118px; top: 256px; }
+      .chaos-card.three { right: 338px; top: 342px; }
+      .chaos-card.four { right: 78px; top: 404px; }
+      .chaos-card.five { right: 560px; top: 470px; }
+      .chaos-card.six { right: 230px; top: 518px; }
+      .chaos-card.seven { right: 92px; top: 610px; }
+      .chaos-card.eight { right: 432px; top: 650px; }
+      .chaos-card.nine { right: 650px; top: 292px; }
+      .chaos-card.ten { right: 608px; top: 578px; }
+      .chaos-card.eleven { right: 262px; top: 730px; }
+
+      .product-stage {
+        position: relative;
+        z-index: 2;
+        flex: 1;
+        display: grid;
+        grid-template-columns: 620px 1fr;
+        gap: 68px;
+        align-items: center;
+        min-height: 0;
+      }
+
+      .app-icon {
+        width: 86px;
+        height: 86px;
+        border-radius: 22px;
+        box-shadow: 0 18px 50px rgba(37, 99, 235, 0.22);
+      }
+
+      .proof-browser {
+        height: 626px;
+      }
+
+      .asset-window {
+        width: 100%;
+        height: calc(100% - 54px);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 22px;
+        background: #F6F7F9;
+      }
+
+      .asset-window img,
+      .proof-card img {
+        max-width: 100%;
+        max-height: 100%;
+        border-radius: 14px;
+        border: 1px solid rgba(0, 0, 0, 0.08);
+        box-shadow: 0 10px 24px rgba(0, 0, 0, 0.18);
+        object-fit: contain;
+      }
+
+      .toolbar-mock {
+        position: absolute;
+        left: 90px;
+        bottom: 52px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 8px;
+        border-radius: 999px;
+        border: 1px solid rgba(0, 0, 0, 0.12);
+        background: #FFFFFF;
+        box-shadow: 0 18px 50px rgba(148, 163, 184, 0.28);
+      }
+
+      .tool-btn {
+        width: 40px;
+        height: 40px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 999px;
+        border: 1px solid rgba(0, 0, 0, 0.08);
+        background: #F6F7F9;
+        color: #374151;
+        font-size: 18px;
+        font-weight: 800;
+      }
+
+      .tool-btn.active {
+        background: #2563eb;
+        color: #FFFFFF;
+        border-color: #2563eb;
+      }
+
+      .tool-btn.active:nth-child(2) {
+        width: 72px;
+      }
+
+      .reader-stage {
+        position: relative;
+        z-index: 2;
+        flex: 1;
+        display: grid;
+        grid-template-columns: 1fr 420px;
+        gap: 34px;
+        min-height: 0;
+      }
+
+      .reader-panel {
+        height: 620px;
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 230px;
+        border-radius: 18px;
+        border: 1px solid rgba(0, 0, 0, 0.12);
+        background: #FFFFFF;
+        box-shadow: 0 22px 56px rgba(148, 163, 184, 0.28);
+        overflow: hidden;
+      }
+
+      .reader-main {
+        padding: 30px 40px;
+        overflow: hidden;
+      }
+
+      .reader-main h2 {
+        padding-bottom: 14px;
+        border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+        color: #111827;
+        font-size: 33px;
+        line-height: 1.18;
+      }
+
+      .reader-main p {
+        margin-top: 17px;
+        color: #374151;
+        font-size: 20px;
+        line-height: 1.55;
+      }
+
+      .reader-main pre {
+        margin-top: 18px;
+        padding: 18px;
+        border-radius: 14px;
+        background: #F6F7F9;
+        border: 1px solid rgba(0, 0, 0, 0.08);
+        color: #111827;
+        font-family: monospace;
+        font-size: 18px;
+        line-height: 1.45;
+      }
+
+      .outline {
+        padding: 28px 18px;
+        border-left: 1px solid rgba(0, 0, 0, 0.08);
+        background: #F6F7F9;
+      }
+
+      .outline h4 {
+        margin-bottom: 18px;
+        color: #111827;
+        font-size: 18px;
+      }
+
+      .outline span {
+        display: block;
+        margin-bottom: 13px;
+        padding: 10px 12px;
+        border-radius: 10px;
+        color: #6B7280;
+        font-size: 16px;
+      }
+
+      .outline span.active {
+        background: rgba(37, 99, 235, 0.12);
+        color: #2563eb;
+        font-weight: 700;
+      }
+
+      .reader-controls {
+        position: absolute;
+        left: 252px;
+        bottom: 30px;
+        display: flex;
+        gap: 10px;
+      }
+
+      .proof-stack {
+        display: grid;
+        gap: 18px;
+        align-content: center;
+      }
+
+      .proof-card {
+        height: 260px;
+        padding: 16px;
+        border-radius: 18px;
+        border: 1px solid rgba(0, 0, 0, 0.08);
+        background: #FFFFFF;
+        box-shadow: 0 18px 44px rgba(148, 163, 184, 0.24);
+        overflow: hidden;
+      }
+
+      .nav-stage {
+        position: relative;
+        z-index: 2;
+        flex: 1;
+        display: grid;
+        grid-template-columns: 1fr 380px;
+        gap: 34px;
+        align-items: center;
+        min-height: 0;
+      }
+
+      .official-page {
+        height: 700px;
+      }
+
+      .thread {
+        height: calc(100% - 54px);
+        overflow: hidden;
+        padding: 24px 120px 24px 34px;
+        background: #FFFFFF;
+        display: grid;
+        gap: 18px;
+      }
+
+      .thread-card {
+        padding: 18px 20px;
+        border-radius: 16px;
+        border: 1px solid rgba(0, 0, 0, 0.08);
+        background: #F6F7F9;
+        display: grid;
+        gap: 10px;
+      }
+
+      .thread-card small {
+        color: #6B7280;
+        font-size: 16px;
+        font-weight: 700;
+      }
+
+      .thread-card strong {
+        color: #111827;
+        font-size: 23px;
+      }
+
+      .thread-card p {
+        color: #374151;
+        font-size: 17px;
+        line-height: 1.38;
+      }
+
+      .rail-wrap {
+        height: 700px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+
+      .directory-rail {
+        width: 320px;
+        max-height: 650px;
+        padding: 12px;
+        display: grid;
+        gap: 8px;
+        border-radius: 18px;
+        border: 1px solid rgba(15, 23, 42, 0.10);
+        background: rgba(255, 255, 255, 0.96);
+        box-shadow: 0 28px 80px rgba(148, 163, 184, 0.28);
+      }
+
+      .rail-item {
+        min-height: 42px;
+        display: grid;
+        grid-template-columns: 52px minmax(0, 1fr) 10px;
+        align-items: center;
+        gap: 10px;
+        padding: 9px 10px;
+        border-radius: 12px;
+        border: 1px solid rgba(15, 23, 42, 0.08);
+        color: #374151;
+        background: #F8FAFC;
+        font-size: 17px;
+      }
+
+      .rail-item .label {
+        overflow: hidden;
+        white-space: nowrap;
+        text-overflow: ellipsis;
+        color: #6B7280;
+      }
+
+      .rail-item .mark {
+        width: 8px;
+        height: 22px;
+        border-radius: 999px;
+        background: transparent;
+      }
+
+      .rail-item.saved .mark { background: #10b981; }
+
+      .rail-item.active {
+        background: rgba(37, 99, 235, 0.12);
+        border-color: rgba(37, 99, 235, 0.38);
+        color: #111827;
+      }
+
+      .rail-item.active .label {
+        color: #2563eb;
+      }
+
+      .rail-callout {
+        position: absolute;
+        right: 408px;
+        top: 190px;
+        width: 390px;
+        padding: 24px;
+        border-radius: 18px;
+        background: #FFFFFF;
+        color: #111827;
+        border: 1px solid rgba(0, 0, 0, 0.08);
+        box-shadow: 0 18px 50px rgba(148, 163, 184, 0.26);
+      }
+
+      .rail-callout h3 {
+        font-size: 28px;
+        margin-bottom: 10px;
+      }
+
+      .rail-callout p {
+        color: #374151;
+        font-size: 20px;
+        line-height: 1.32;
+      }
+
+      .chaos-layer {
+        position: absolute;
+        inset: 0;
+        z-index: 4;
+        pointer-events: none;
+      }
+
+      .capture-grid {
+        position: relative;
+        z-index: 2;
+        flex: 1;
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 22px;
+        min-height: 0;
+        align-items: center;
+      }
+
+      .capture-card {
+        height: 530px;
+        display: grid;
+        grid-template-rows: 82px minmax(0, 1fr);
+        border-radius: 18px;
+        background: #FFFFFF;
+        border: 1px solid rgba(0, 0, 0, 0.08);
+        box-shadow: 0 22px 56px rgba(148, 163, 184, 0.28);
+        overflow: hidden;
+      }
+
+      .capture-card h3 {
+        display: flex;
+        align-items: center;
+        padding: 0 22px;
+        color: #111827;
+        font-size: 24px;
+        border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+      }
+
+      .capture-card figure {
+        min-height: 0;
+        padding: 16px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: #F6F7F9;
+      }
+
+      .capture-card img {
+        max-width: 100%;
+        max-height: 100%;
+        border-radius: 12px;
+        border: 1px solid rgba(0, 0, 0, 0.08);
+        object-fit: contain;
+      }
+
+      .formula-pop {
+        position: absolute;
+        right: 580px;
+        bottom: 150px;
+        display: flex;
+        gap: 10px;
+        padding: 12px;
+        border-radius: 999px;
+        background: #FFFFFF;
+        border: 1px solid rgba(15, 23, 42, 0.10);
+        box-shadow: 0 18px 50px rgba(148, 163, 184, 0.24);
+      }
+
+      .formula-pop span {
+        padding: 9px 13px;
+        border-radius: 999px;
+        background: rgba(37, 99, 235, 0.12);
+        color: #2563eb;
+        font-size: 16px;
+        font-weight: 700;
+      }
+
+      .save-stage {
+        position: relative;
+        z-index: 2;
+        flex: 1;
+        display: grid;
+        grid-template-columns: 1fr 500px;
+        gap: 34px;
+        align-items: center;
+        min-height: 0;
+      }
+
+      .bookmarks-proof {
+        height: 675px;
+        padding: 22px;
+        border-radius: 18px;
+        background: #FFFFFF;
+        border: 1px solid rgba(0, 0, 0, 0.08);
+        box-shadow: 0 22px 56px rgba(148, 163, 184, 0.28);
+      }
+
+      .bookmarks-proof img {
+        width: 100%;
+        height: 100%;
+        border-radius: 14px;
+        object-fit: contain;
+      }
+
+      .export-stack {
+        display: grid;
+        gap: 18px;
+      }
+
+      .export-card {
+        padding: 24px;
+        border-radius: 18px;
+        background: #FFFFFF;
+        border: 1px solid rgba(0, 0, 0, 0.08);
+        box-shadow: 0 18px 44px rgba(148, 163, 184, 0.24);
+      }
+
+      .export-card h3 {
+        color: #111827;
+        font-size: 26px;
+        margin-bottom: 12px;
+      }
+
+      .export-tags {
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+      }
+
+      .export-tags span {
+        padding: 10px 14px;
+        border-radius: 999px;
+        background: rgba(37, 99, 235, 0.12);
+        color: #2563eb;
+        font-size: 17px;
+        font-weight: 800;
+      }
+
+      .settings-mini {
+        height: 210px;
+        overflow: hidden;
+      }
+
+      .settings-mini img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        object-position: top center;
+        border-radius: 12px;
+      }
+
+      .cta-scene {
+        align-items: center;
+        justify-content: center;
+        text-align: center;
+      }
+
+      .cta-scene .hero-copy {
+        align-items: center;
+        max-width: 1200px;
+      }
+
+      .cta-logo {
+        width: 138px;
+        height: 138px;
+        border-radius: 32px;
+        box-shadow: 0 18px 50px rgba(148, 163, 184, 0.32);
+      }
+
+      .cta-title {
+        margin-top: 24px;
+        font-size: 98px;
+        line-height: 0.94;
+        font-weight: 820;
+      }
+
+      .cta-subtitle {
+        margin-top: 18px;
+        color: #374151;
+        font-size: 36px;
+        font-weight: 650;
+      }
+
+      .install-row {
+        display: flex;
+        gap: 16px;
+        margin-top: 42px;
+      }
+
+      .install-pill {
+        min-width: 260px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 12px;
+        padding: 18px 22px;
+        border-radius: 999px;
+        background: #FFFFFF;
+        color: #111827;
+        font-size: 20px;
+        font-weight: 760;
+        box-shadow: 0 18px 50px rgba(148, 163, 184, 0.26);
+      }
+
+      .install-pill img {
+        width: 30px;
+        height: 30px;
+      }
+
+      .github-dot {
+        width: 30px;
+        height: 30px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 999px;
+        background: #111827;
+        color: #FFFFFF;
+        font-size: 20px;
+        font-weight: 900;
+      }
+
+      .mini-label {
+        position: absolute;
+        z-index: 5;
+        padding: 10px 14px;
+        border-radius: 999px;
+        border: 1px solid rgba(37, 99, 235, 0.35);
+        background: #FFFFFF;
+        color: #2563eb;
+        font-size: 17px;
+        font-weight: 800;
+        box-shadow: 0 18px 44px rgba(148, 163, 184, 0.24);
+      }
+
+      .label-reader { left: 450px; top: 174px; }
+      .label-markdown { left: 292px; top: 164px; }
+      .label-export { right: 356px; top: 128px; }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="main"
+      data-start="0"
+      data-duration="35"
+      data-width="1920"
+      data-height="1080"
+    >
+      <audio
+        id="narration"
+        src="narration.wav"
+        data-start="0"
+        data-duration="32.1"
+        data-track-index="0"
+        data-volume="1"
+      ></audio>
+
+      <section id="beat-hook" class="clip" data-start="0" data-duration="4.55" data-track-index="1">
+        <div class="scene dark-scene">
+          <div class="grid-noise"></div>
+          <div class="hero-copy">
+            <div class="kicker">LONG CHATGPT THREADS</div>
+            <h1 class="display-title">Answers are easy. Working with them isn't.</h1>
+            <p class="lede">Dense text, formulas, code, and repeated copying turn serious work into scrolling.</p>
+          </div>
+          <div class="chat-layout">
+            <div class="browser chat-browser">
+              <div class="browser-bar">
+                <span class="dot red"></span><span class="dot amber"></span><span class="dot green"></span>
+                <span class="url">chatgpt.com/c/long-research-thread</span>
+              </div>
+              <div class="chat-body">
+                <div class="chat-scroll" data-layout-allow-overflow>
+                  <div class="message user"><h3>Explain the method and keep the equations.</h3></div>
+                  <div class="message">
+                    <h3>Derivation overview</h3>
+                    <p>The result depends on the boundary conditions, the approximation step, and the normalized energy term.</p>
+                    <div class="code-block">E = mc^2<br />loss = alpha * grad(theta)</div>
+                  </div>
+                  <div class="message">
+                    <h3>Implementation notes</h3>
+                    <p>Copying the useful part means preserving lists, code, formulas, and source context.</p>
+                  </div>
+                  <div class="message">
+                    <h3>Conclusion</h3>
+                    <p>The answer is valuable, but the workflow needs a better surface than manual cleanup.</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="chaos-layer">
+            <div class="chaos-card big one">SCROLLING</div>
+            <div class="chaos-card two">COPYING</div>
+            <div class="chaos-card big three">MANUAL CLEANUP</div>
+            <div class="chaos-card four">FORMULAS</div>
+            <div class="chaos-card small five">CODE BLOCKS</div>
+            <div class="chaos-card six">LOST CONTEXT</div>
+            <div class="chaos-card small seven">SOURCES</div>
+            <div class="chaos-card eight">BOOKMARKS</div>
+            <div class="chaos-card small nine">PROMPTS</div>
+            <div class="chaos-card small ten">NOTES</div>
+            <div class="chaos-card eleven">EXPORTS</div>
+          </div>
+          <div class="caption">ChatGPT can answer almost anything. But serious work needs more than scrolling and copying.</div>
+        </div>
+      </section>
+
+      <section id="beat-reveal" class="clip" data-start="3.75" data-duration="4.65" data-track-index="2">
+        <div class="scene dark-scene">
+          <div class="grid-noise"></div>
+          <div class="blue-sweep"></div>
+          <div class="product-stage">
+            <div class="hero-copy">
+              <img class="app-icon" src="capture/assets/icons/app-icon_hu_d20be2bd1ccb9322.png" alt="AI-MarkDone icon" />
+              <div class="kicker">AI-MarkDone</div>
+              <h2 class="title">A focused workspace for ChatGPT.</h2>
+              <p class="lede">Reader, toolbar actions, bookmarks, annotations, formulas, and export live in one extension layer.</p>
+            </div>
+            <div class="browser proof-browser light">
+              <div class="browser-bar">
+                <span class="dot red"></span><span class="dot amber"></span><span class="dot green"></span>
+                <span class="url">ChatGPT answer with AI-MarkDone toolbar</span>
+              </div>
+              <div class="asset-window">
+                <img src="capture/assets/home/ai-markdone-chatgpt-reader-toolbar.gif" alt="AI-MarkDone toolbar" />
+              </div>
+              <div class="toolbar-mock">
+                <span class="tool-btn active">R</span>
+                <span class="tool-btn">M</span>
+                <span class="tool-btn">★</span>
+                <span class="tool-btn">↓</span>
+              </div>
+            </div>
+          </div>
+          <div class="caption">AI-MarkDone turns ChatGPT into a focused reading and capture workspace.</div>
+        </div>
+      </section>
+
+      <section id="beat-reader" class="clip" data-start="7.75" data-duration="6.65" data-track-index="1">
+        <div class="scene light-scene">
+          <div class="mini-label label-reader">Reader mode</div>
+          <div class="hero-copy">
+            <div class="kicker">READ LONG ANSWERS</div>
+            <h2 class="title">Turn walls of text into a calm reading surface.</h2>
+          </div>
+          <div class="reader-stage">
+            <div class="reader-panel">
+              <div class="reader-main">
+                <h2>Research answer: structured reading</h2>
+                <p>Reader keeps the answer away from page noise, with a stable width, clear Markdown hierarchy, and source-aware actions nearby.</p>
+                <p>Move through nearby messages without losing context. Open the outline, compare sections, and stay in flow.</p>
+                <pre>## Key result
+copy(selection) -> Markdown
+formula -> LaTeX / PNG / SVG</pre>
+              </div>
+              <aside class="outline">
+                <h4>Outline</h4>
+                <span class="active">1. Key result</span>
+                <span>2. Method</span>
+                <span>3. Equation</span>
+                <span>4. Next prompt</span>
+              </aside>
+            </div>
+            <div class="proof-stack">
+              <div class="proof-card"><img src="capture/assets/home/chatgpt-reader-heading-outline.png" alt="Reader heading outline" /></div>
+              <div class="proof-card"><img src="capture/assets/home/chatgpt-reader-message-switching.png" alt="Reader message switching" /></div>
+            </div>
+          </div>
+          <div class="reader-controls">
+            <span class="tool-btn">‹</span>
+            <span class="tool-btn active">Read</span>
+            <span class="tool-btn">›</span>
+          </div>
+          <div class="caption">Read long answers.</div>
+        </div>
+      </section>
+
+      <section id="beat-navigation" class="clip" data-start="13.75" data-duration="5.65" data-track-index="2">
+        <div class="scene dark-scene">
+          <div class="grid-noise"></div>
+          <div class="hero-copy">
+            <div class="kicker">OPTIONAL DIRECTORY RAIL</div>
+            <h2 class="title">Long conversations need landmarks.</h2>
+          </div>
+          <div class="nav-stage">
+            <div class="browser official-page light">
+              <div class="browser-bar">
+                <span class="dot red"></span><span class="dot amber"></span><span class="dot green"></span>
+                <span class="url">chatgpt.com/c/long-conversation</span>
+              </div>
+              <div class="thread" data-layout-allow-overflow>
+                <div class="thread-card"><small>#1 Prompt</small><strong>Frame the research question</strong><p>Define the task, constraints, and expected output.</p></div>
+                <div class="thread-card"><small>#2 Prompt</small><strong>Derive the formula</strong><p>Work through assumptions, intermediate steps, and notation.</p></div>
+                <div class="thread-card"><small>#3 Prompt</small><strong>Compare alternatives</strong><p>Keep the answer structure visible while moving through the thread.</p></div>
+                <div class="thread-card"><small>#4 Prompt</small><strong>Prepare export</strong><p>Save the best result and jump back to source.</p></div>
+              </div>
+            </div>
+            <div class="rail-wrap">
+              <div class="directory-rail">
+                <div class="rail-item"><strong>#1</strong><span class="label">Research question</span><span class="mark"></span></div>
+                <div class="rail-item saved"><strong>#2</strong><span class="label">Derive formula</span><span class="mark"></span></div>
+                <div class="rail-item active"><strong>#3</strong><span class="label">Compare alternatives</span><span class="mark"></span></div>
+                <div class="rail-item"><strong>#4</strong><span class="label">Export notes</span><span class="mark"></span></div>
+                <div class="rail-item"><strong>#5</strong><span class="label">Check assumptions</span><span class="mark"></span></div>
+                <div class="rail-item saved"><strong>#6</strong><span class="label">Save conclusion</span><span class="mark"></span></div>
+                <div class="rail-item"><strong>#7</strong><span class="label">Follow-up prompt</span><span class="mark"></span></div>
+                <div class="rail-item"><strong>#8</strong><span class="label">Final answer</span><span class="mark"></span></div>
+              </div>
+            </div>
+          </div>
+          <div class="rail-callout">
+            <h3>Right-side directory for ChatGPT</h3>
+            <p>Jump across long threads, see prompt labels, and keep saved turns visible.</p>
+          </div>
+          <div class="caption">Navigate long threads. Keep your place.</div>
+        </div>
+      </section>
+
+      <section id="beat-capture" class="clip" data-start="18.75" data-duration="6.65" data-track-index="1">
+        <div class="scene light-scene">
+          <div class="mini-label label-markdown">Markdown, formulas, notes</div>
+          <div class="hero-copy">
+            <div class="kicker">CAPTURE PRECISELY</div>
+            <h2 class="title">Pull out exactly what matters.</h2>
+          </div>
+          <div class="capture-grid">
+            <article class="capture-card">
+              <h3>Partial Markdown copy</h3>
+              <figure><img src="capture/assets/home/copy-chatgpt-selection-to-markdown.gif" alt="Partial Markdown copy" /></figure>
+            </article>
+            <article class="capture-card">
+              <h3>Formula export</h3>
+              <figure><img src="capture/assets/home/chatgpt-latex-formula-copy-export.png" alt="Formula export" /></figure>
+            </article>
+            <article class="capture-card">
+              <h3>Sticky excerpts</h3>
+              <figure><img src="capture/assets/home/chatgpt-reader-sticky-excerpts-pin-important-content.png" alt="Sticky excerpts" /></figure>
+            </article>
+            <article class="capture-card">
+              <h3>Dynamic Annotation</h3>
+              <figure><img src="capture/assets/home/chatgpt-reader-dynamic-annotation-prompt.gif" alt="Dynamic Annotation" /></figure>
+            </article>
+          </div>
+          <div class="formula-pop"><span>LaTeX</span><span>PNG</span><span>SVG</span><span>MathML</span></div>
+          <div class="caption">Copy exactly what matters, with Markdown, code, formulas, and notes intact.</div>
+        </div>
+      </section>
+
+      <section id="beat-save" class="clip" data-start="24.75" data-duration="6.65" data-track-index="2">
+        <div class="scene light-scene">
+          <div class="mini-label label-export">Save, search, export</div>
+          <div class="hero-copy">
+            <div class="kicker">KEEP THE BEST ANSWERS</div>
+            <h2 class="title">From conversation to reusable knowledge.</h2>
+          </div>
+          <div class="save-stage">
+            <div class="bookmarks-proof">
+              <img src="capture/assets/home/chatgpt-bookmark-manager-folders-search.png" alt="Bookmarks manager" />
+            </div>
+            <div class="export-stack">
+              <div class="export-card">
+                <h3>Batch export</h3>
+                <div class="export-tags"><span>Markdown</span><span>PDF</span><span>PNG</span><span>ZIP</span></div>
+              </div>
+              <div class="export-card settings-mini">
+                <img src="capture/assets/home/export-chatgpt-markdown-pdf-png.png" alt="Export dialog" />
+              </div>
+              <div class="export-card settings-mini">
+                <img src="capture/assets/home/ai-markdone-chatgpt-extension-settings.png" alt="Settings" />
+              </div>
+            </div>
+          </div>
+          <div class="caption">Save, search, and export your best answers when the work leaves the chat.</div>
+        </div>
+      </section>
+
+      <section id="beat-cta" class="clip" data-start="30.75" data-duration="4.25" data-track-index="1">
+        <div class="scene dark-scene cta-scene">
+          <div class="grid-noise"></div>
+          <div class="blue-sweep"></div>
+          <div class="hero-copy">
+            <img class="cta-logo" src="capture/assets/icons/ai-markdone-icon.png" alt="AI-MarkDone icon" />
+            <h2 class="cta-title">AI-MarkDone</h2>
+            <p class="cta-subtitle">Read, save, export. Stay in flow.</p>
+            <div class="install-row">
+              <div class="install-pill"><img src="capture/assets/icons/google-chrome.svg" alt="" />Chrome Web Store</div>
+              <div class="install-pill"><img src="capture/assets/icons/firefox-browser.svg" alt="" />Firefox Add-ons</div>
+              <div class="install-pill"><span class="github-dot">G</span>GitHub</div>
+            </div>
+          </div>
+          <div class="caption">AI-MarkDone. Read, save, export. Stay in flow.</div>
+        </div>
+      </section>
+    </div>
+
+    <script>
+      window.__timelines = window.__timelines || {};
+      const tl = gsap.timeline({ paused: true });
+
+      const beats = [
+        { id: "#beat-hook", start: 0, duration: 4.55 },
+        { id: "#beat-reveal", start: 3.75, duration: 4.65 },
+        { id: "#beat-reader", start: 7.75, duration: 6.65 },
+        { id: "#beat-navigation", start: 13.75, duration: 5.65 },
+        { id: "#beat-capture", start: 18.75, duration: 6.65 },
+        { id: "#beat-save", start: 24.75, duration: 6.65 },
+        { id: "#beat-cta", start: 30.75, duration: 4.25 },
+      ];
+
+      beats.forEach((beat) => {
+        if (beat.id === "#beat-hook") {
+          tl.set(beat.id, { opacity: 1, y: 0 }, 0);
+          tl.fromTo(`${beat.id} .hero-copy`, { opacity: 0.72, y: 14 }, { opacity: 1, y: 0, duration: 0.46, ease: "power3.out", overwrite: "auto" }, 0);
+        } else {
+          tl.fromTo(beat.id, { opacity: 0, y: 18 }, { opacity: 1, y: 0, duration: 0.72, ease: "power2.inOut", overwrite: "auto" }, beat.start);
+          tl.fromTo(`${beat.id} .hero-copy`, { opacity: 0, y: 34 }, { opacity: 1, y: 0, duration: 0.62, ease: "power3.out", overwrite: "auto" }, beat.start + 0.16);
+        }
+        tl.fromTo(`${beat.id} .caption`, { opacity: 0, y: 22 }, { opacity: 1, y: 0, duration: 0.42, ease: "power2.out", overwrite: "auto" }, beat.start + 0.3);
+      });
+
+      tl.fromTo("#beat-hook .chat-browser", { opacity: 0.72, x: -34, scale: 0.97 }, { opacity: 1, x: 0, scale: 1, duration: 0.7, ease: "power3.out" }, 0);
+      tl.to("#beat-hook .chat-scroll", { y: -210, duration: 3.2, ease: "power1.inOut" }, 0.3);
+      tl.fromTo("#beat-hook .chaos-card", { opacity: 0, x: 80, scale: 0.85 }, { opacity: 1, x: 0, scale: 1, duration: 0.42, stagger: 0.07, ease: "back.out(1.8)" }, 0.82);
+      tl.to("#beat-hook .chat-browser", { scale: 0.985, x: -16, duration: 0.75, ease: "power2.inOut" }, 3.62);
+      tl.to("#beat-hook .chaos-card", { x: -26, opacity: 0.35, duration: 0.32, stagger: 0.025, ease: "power2.in" }, 3.46);
+
+      tl.fromTo("#beat-reveal .app-icon", { opacity: 0, scale: 0.62 }, { opacity: 1, scale: 1, duration: 0.48, ease: "back.out(1.8)" }, 3.96);
+      tl.fromTo("#beat-reveal .proof-browser", { opacity: 0, x: 110, scale: 0.9 }, { opacity: 1, x: 0, scale: 1, duration: 0.78, ease: "power3.out" }, 4.1);
+      tl.fromTo("#beat-reveal .toolbar-mock", { opacity: 0, y: 40, scale: 0.92 }, { opacity: 1, y: 0, scale: 1, duration: 0.48, ease: "back.out(1.5)" }, 4.9);
+      tl.fromTo("#beat-reveal .blue-sweep", { opacity: 0, x: -360 }, { opacity: 1, x: 480, duration: 1.0, ease: "power2.out" }, 4.08);
+
+      tl.fromTo("#beat-reader .reader-panel", { opacity: 0, y: 70, scale: 0.95 }, { opacity: 1, y: 0, scale: 1, duration: 0.72, ease: "power3.out" }, 8.02);
+      tl.fromTo("#beat-reader .proof-card", { opacity: 0, x: 74, scale: 0.94 }, { opacity: 1, x: 0, scale: 1, duration: 0.5, stagger: 0.22, ease: "power2.out" }, 8.52);
+      tl.fromTo("#beat-reader .outline span", { opacity: 0.34, x: 18 }, { opacity: 1, x: 0, duration: 0.3, stagger: 0.12, ease: "power2.out" }, 9.05);
+      tl.fromTo("#beat-reader .reader-controls", { opacity: 0, y: 22 }, { opacity: 1, y: 0, duration: 0.34, ease: "power2.out" }, 10.0);
+
+      tl.fromTo("#beat-navigation .official-page", { opacity: 0, x: -90, scale: 0.95 }, { opacity: 1, x: 0, scale: 1, duration: 0.62, ease: "power3.out" }, 14.02);
+      tl.fromTo("#beat-navigation .directory-rail", { opacity: 0, x: 90, scale: 0.92 }, { opacity: 1, x: 0, scale: 1, duration: 0.64, ease: "back.out(1.5)" }, 14.3);
+      tl.fromTo("#beat-navigation .rail-item", { opacity: 0, x: 28 }, { opacity: 1, x: 0, duration: 0.22, stagger: 0.055, ease: "power2.out" }, 14.74);
+      tl.to("#beat-navigation .thread", { y: -142, duration: 1.15, ease: "power2.inOut" }, 15.72);
+      tl.to("#beat-navigation .rail-item.active", { backgroundColor: "rgba(37, 99, 235, 0.38)", duration: 0.34, yoyo: true, repeat: 3, ease: "sine.inOut" }, 15.22);
+      tl.fromTo("#beat-navigation .rail-callout", { opacity: 0, y: 36 }, { opacity: 1, y: 0, duration: 0.44, ease: "power2.out" }, 16.07);
+
+      tl.fromTo("#beat-capture .capture-card", { opacity: 0, y: 78, scale: 0.93 }, { opacity: 1, y: 0, scale: 1, duration: 0.56, stagger: 0.16, ease: "power3.out" }, 19.05);
+      tl.fromTo("#beat-capture .formula-pop", { opacity: 0, y: 34, scale: 0.9 }, { opacity: 1, y: 0, scale: 1, duration: 0.44, ease: "back.out(1.5)" }, 21.1);
+      tl.to("#beat-capture .formula-pop span", { backgroundColor: "rgba(37, 99, 235, 0.42)", duration: 0.24, stagger: 0.08, yoyo: true, repeat: 1, ease: "sine.inOut" }, 21.75);
+
+      tl.fromTo("#beat-save .bookmarks-proof", { opacity: 0, x: -80, scale: 0.95 }, { opacity: 1, x: 0, scale: 1, duration: 0.62, ease: "power3.out" }, 25.0);
+      tl.fromTo("#beat-save .export-card", { opacity: 0, x: 70, scale: 0.94 }, { opacity: 1, x: 0, scale: 1, duration: 0.46, stagger: 0.17, ease: "power2.out" }, 25.6);
+      tl.fromTo("#beat-save .export-tags span", { opacity: 0, y: 16 }, { opacity: 1, y: 0, duration: 0.26, stagger: 0.08, ease: "power2.out" }, 26.3);
+
+      tl.fromTo("#beat-cta .cta-logo", { opacity: 0, scale: 0.55 }, { opacity: 1, scale: 1, duration: 0.52, ease: "back.out(1.9)" }, 30.98);
+      tl.fromTo("#beat-cta .cta-title", { opacity: 0, y: 38 }, { opacity: 1, y: 0, duration: 0.45, ease: "power3.out" }, 31.28);
+      tl.fromTo("#beat-cta .cta-subtitle", { opacity: 0, y: 26 }, { opacity: 1, y: 0, duration: 0.36, ease: "power2.out" }, 31.61);
+      tl.fromTo("#beat-cta .install-pill", { opacity: 0, y: 34, scale: 0.94 }, { opacity: 1, y: 0, scale: 1, duration: 0.34, stagger: 0.12, ease: "back.out(1.4)" }, 32.04);
+      tl.fromTo("#beat-cta .blue-sweep", { opacity: 0, x: -420 }, { opacity: 1, x: 520, duration: 1.05, ease: "power2.out" }, 31.02);
+
+      window.__timelines["main"] = tl;
+    </script>
+  </body>
+</html>

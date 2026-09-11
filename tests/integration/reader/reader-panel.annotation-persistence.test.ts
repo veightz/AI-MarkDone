@@ -8,13 +8,18 @@ const annotationClientMock = vi.hoisted(() => ({
     update: vi.fn(),
     remove: vi.fn(),
     navigate: vi.fn(),
+    listeners: new Set<() => void>(),
 }));
 
 vi.mock('@/drivers/shared/clients/readerAnnotationsClient', () => ({
     readerAnnotationsClient: annotationClientMock,
-    subscribeReaderAnnotationChanges: () => () => undefined,
+    subscribeReaderAnnotationChanges: (_document: unknown, listener: () => void) => {
+        annotationClientMock.listeners.add(listener);
+        return () => annotationClientMock.listeners.delete(listener);
+    },
 }));
 
+import { PageAnnotationStore } from '@/services/reader/pageAnnotationStore';
 import { ReaderPanel } from '@/ui/content/reader/ReaderPanel';
 
 function createSelection(range: Range): Selection {
@@ -118,6 +123,7 @@ function otherConversationEntry(): ReaderAnnotationListEntry {
 describe('ReaderPanel persistent ChatGPT annotations', () => {
     beforeEach(() => {
         document.body.innerHTML = '';
+        annotationClientMock.listeners.clear();
         annotationClientMock.list.mockReset();
         annotationClientMock.list.mockResolvedValue({ ok: true, data: { entries: [annotationEntry()] } });
         annotationClientMock.remove.mockReset();
@@ -128,6 +134,67 @@ describe('ReaderPanel persistent ChatGPT annotations', () => {
             data: { annotation: { ...annotation, revision: annotation.revision + 1 } },
         }));
         annotationClientMock.create.mockReset();
+    });
+
+    it('keeps re-anchoring local instead of rewriting shared annotation revisions during rendering', async () => {
+        const entry = annotationEntry();
+        entry.annotation.lastKnownAnchorState = 'anchored';
+        annotationClientMock.list.mockResolvedValue({ ok: true, data: { entries: [entry] } });
+        const panel = new ReaderPanel();
+        await panel.show([{ id: 'chatgpt-assistant-1', userPrompt: 'Question', content: 'Different rendered text', meta: { assistantMessageId: 'assistant-1' } }], 0, 'light', { annotationDocument: entry.document });
+        expect(annotationClientMock.update).not.toHaveBeenCalled();
+        expect(panel.getCommentExportContext()?.comments[0]?.lastKnownAnchorState).toBe('unanchored');
+        hidePanel(panel);
+    });
+
+    it('keeps page and Reader annotations in sync through storage notifications', async () => {
+        let entries = [annotationEntry()];
+        annotationClientMock.list.mockImplementation(async () => ({ ok: true, data: { entries: [...entries] } }));
+        const store = new PageAnnotationStore();
+        store.setPersistEnabled(true);
+        await store.bindDocument(annotationEntry().document);
+        const panel = new ReaderPanel();
+        panel.setReaderSettings({ ...DEFAULT_SETTINGS.reader, persistAnnotations: true });
+        await panel.show([{ id: 'chatgpt-assistant-1', userPrompt: 'Question', content: 'Persisted quote', meta: { assistantMessageId: 'assistant-1' } }], 0, 'light', { annotationDocument: annotationEntry().document });
+        try {
+            annotationClientMock.update.mockImplementation(async (_document, annotation) => {
+                const saved = { ...annotation, revision: 2 };
+                entries = [{ ...annotationEntry(), annotation: saved }];
+                for (const listener of annotationClientMock.listeners) listener();
+                return { ok: true, data: { annotation: saved } };
+            });
+            const record = store.listForConversation()[0]!;
+            await store.update({ ...record, comment: 'Edited on page' }, record.target!);
+            await vi.waitFor(() => expect(panel.getCommentExportContext()?.comments[0]?.comment).toBe('Edited on page'));
+            annotationClientMock.remove.mockImplementation(async () => {
+                entries = [];
+                for (const listener of annotationClientMock.listeners) listener();
+                return { ok: true, data: { deleted: true } };
+            });
+            const shadow = document.querySelector('#aimd-reader-panel-host')!.shadowRoot!;
+            const managerButton = shadow.querySelector<HTMLButtonElement>('[data-action="reader-comment-list"]')!;
+            managerButton.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true, composed: true }));
+            managerButton.click();
+            shadow.querySelector<HTMLButtonElement>('.reader-annotation-manager__row [data-action="delete"]')!.click();
+            await Promise.resolve();
+            shadow.querySelector<HTMLButtonElement>('.mock-modal__button--danger')!.click();
+            await vi.waitFor(() => expect(store.listForConversation()).toHaveLength(0));
+        } finally { hidePanel(panel); store.dispose(); }
+    });
+
+    it('does not overwrite newer annotations with a late initial read', async () => {
+        let finish!: (value: any) => void;
+        annotationClientMock.list.mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+        const panel = new ReaderPanel();
+        const showing = panel.show([{ id: 'chatgpt-assistant-1', userPrompt: 'Question', content: 'Persisted quote', meta: { assistantMessageId: 'assistant-1' } }], 0, 'light', { annotationDocument: annotationEntry().document });
+        expect(annotationClientMock.listeners.size).toBe(1);
+        for (const listener of annotationClientMock.listeners) listener();
+        await vi.waitFor(() => expect(annotationClientMock.list).toHaveBeenCalledTimes(2));
+        await Promise.resolve();
+        finish({ ok: true, data: { entries: [] } });
+        await showing;
+        expect(panel.getCommentExportContext()?.comments).toHaveLength(1);
+        hidePanel(panel);
     });
 
     it('hydrates the same conversation bundle for a fresh Reader instance', async () => {

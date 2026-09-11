@@ -99,6 +99,18 @@ describe('MessageToolbar', () => {
         expect(style?.textContent).toContain(':host([data-aimd-placement="actionbar"]) .icon-btn { width: var(--aimd-size-control-icon-toolbar); height: var(--aimd-size-control-icon-toolbar);');
     });
 
+    it('supports a bare embedded variant without toolbar chrome', () => {
+        const toolbar = new MessageToolbar('light', [], { variant: 'bare' });
+        const host = toolbar.getElement();
+        const style = host.shadowRoot?.querySelector<HTMLStyleElement>('style[data-aimd-style-id="aimd-toolbar-base"]');
+
+        expect(host.dataset.aimdVariant).toBe('bare');
+        expect(style?.textContent).toContain(':host([data-aimd-variant="bare"]) .bar');
+        expect(style?.textContent).toContain('background: transparent;');
+        expect(style?.textContent).toContain('border-color: transparent;');
+        toolbar.dispose();
+    });
+
     it('collapses the stats slot while pending so streaming toolbars stay compact', () => {
         const toolbar = new MessageToolbar('light', [], { showStats: true });
         toolbar.setPlacement('content');

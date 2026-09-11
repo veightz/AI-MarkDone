@@ -42,7 +42,7 @@ import {
     createDefaultReaderCommentExportSettings,
     type ReaderCommentExportSettings,
 } from '../../../core/settings/readerCommentExport';
-import { readCurrentReaderContent } from '../../../services/reader/readerContentSource';
+import { createReaderAnnotationDocument } from '../../../services/reader/readerContentSource';
 import { readComposer, replaceComposerTextRange } from '../../../drivers/content/sending/composerPort';
 import { findChatGPTComposerInputEnhancementMount } from '../../../drivers/content/chatgpt/composerInputEnhancementMount';
 import { PageAnnotationOverlay } from '../pageAnnotations/PageAnnotationOverlay';
@@ -97,6 +97,7 @@ export class ChatGPTPageAnnotationController {
     private chipVisible = false;
     private appearance: AppearanceSnapshot;
     private persistEnabled = false;
+    private selectionToolbarEnabled = true;
     private commentExportSettings: ReaderCommentExportSettings = createDefaultReaderCommentExportSettings();
 
     private readonly contentSource: ConversationContentSourceV1 | null;
@@ -127,7 +128,6 @@ export class ChatGPTPageAnnotationController {
     private turnMeta = new Map<string, TurnMeta>();
     private readonly anchorCache = new Map<string, AnchorCacheEntry>();
     private annotationRootCache = new WeakMap<HTMLElement, HTMLElement>();
-    private readonly pendingAnchorStateUpdates = new Set<string>();
     private readonly unsubscribes: Array<() => void> = [];
     private readonly pxVarCache = new Map<string, number>();
     private lastDocumentKey: string | null = null;
@@ -173,12 +173,29 @@ export class ChatGPTPageAnnotationController {
         else this.dispose();
     }
 
+    setSelectionToolbarEnabled(enabled: boolean): void {
+        if (enabled === this.selectionToolbarEnabled) return;
+        this.selectionToolbarEnabled = enabled;
+        if (!enabled) {
+            if (this.mode === 'actions') this.closeToolbar();
+            return;
+        }
+        if (this.initialized && this.mode === 'closed') {
+            const frame = this.selectionCoordinator.getCurrentFrame() ?? this.selectionCoordinator.refreshNow();
+            if (frame) this.showToolbar(frame, selectionKey(frame));
+        }
+    }
+
     init(): void {
         if (this.initialized) return;
         this.initialized = true;
         this.ensureOverlay();
         if (this.ownsSelectionCoordinator) this.selectionCoordinator.init();
         this.unsubscribeSelection = this.selectionCoordinator.subscribe(this.handleSelectionFrame);
+        this.unsubscribes.push(this.store.onChange(() => {
+            this.syncAnnotationSurface();
+            this.manager.refresh();
+        }));
         document.addEventListener('pointerdown', this.handlePointerDown, true);
         document.addEventListener('pointerup', this.handlePointerUp, true);
         document.addEventListener('pointercancel', this.handlePointerCancel, true);
@@ -263,6 +280,10 @@ export class ChatGPTPageAnnotationController {
     // ---------- selection → toolbar ----------
 
     private readonly handleSelectionFrame = (frame: ChatGPTPageSelectionFrame | null): void => {
+        if (!this.selectionToolbarEnabled) {
+            if (this.mode === 'actions') this.closeToolbar();
+            return;
+        }
         if (this.mode === 'editing') return;
         if (!frame) {
             // Clicking a Shadow DOM toolbar button can transiently collapse the
@@ -296,6 +317,7 @@ export class ChatGPTPageAnnotationController {
     };
 
     private showToolbar(frame: ChatGPTPageSelectionFrame, key: string): void {
+        if (!this.selectionToolbarEnabled) return;
         if (!this.renderToolbar(frame)) {
             this.closeToolbar();
             return;
@@ -341,49 +363,46 @@ export class ChatGPTPageAnnotationController {
     }
 
     private resolveToolbarPosition(frame: ChatGPTPageSelectionFrame): { left: number; top: number } | null {
-        // A completed mouse selection owns the toolbar anchor. Keep the
-        // actions beside the release point so the toolbar does not cover or
-        // jump above the selected text. Keyboard/programmatic selections have
-        // no pointer anchor and may fall back to selection geometry below.
         if (this.pointerAnchor && this.pointerAnchor.key === selectionKey(frame)) {
             const buttonSize = this.readPxVar('--aimd-size-control-icon-panel', 32);
             const pointerGap = this.readPxVar('--aimd-space-2', 8);
             const pointerEdge = this.readPxVar('--aimd-space-3', 12);
             const actionWidth = buttonSize * 2 + pointerGap;
             let left = this.pointerAnchor.x + pointerGap;
-            if (left + actionWidth > window.innerWidth - pointerEdge) left = Math.max(pointerEdge, this.pointerAnchor.x - actionWidth - pointerGap);
+            if (left + actionWidth > window.innerWidth - pointerEdge) {
+                left = Math.max(pointerEdge, this.pointerAnchor.x - actionWidth - pointerGap);
+            }
             let top = this.pointerAnchor.y + pointerGap;
-            if (top + buttonSize > window.innerHeight - pointerEdge) top = Math.max(pointerEdge, this.pointerAnchor.y - buttonSize - pointerGap);
+            if (top + buttonSize > window.innerHeight - pointerEdge) {
+                top = Math.max(pointerEdge, this.pointerAnchor.y - buttonSize - pointerGap);
+            }
             return { left: Math.max(pointerEdge, left), top: Math.max(pointerEdge, top) };
         }
-
         const layout = resolveSelectionLayout({
             root: frame.location.root,
             range: frame.location.range,
             selectedUnits: frame.renderedAtomicUnits,
         });
-        if (layout.unionRect) {
-            const rootRect = frame.location.root.getBoundingClientRect();
-            const viewport = {
-                left: rootRect.left + layout.unionRect.left,
-                top: rootRect.top + layout.unionRect.top,
-                width: layout.unionRect.width,
-                height: layout.unionRect.height,
-            };
-            const buttonSize = this.readPxVar('--aimd-size-control-icon-panel', 32);
-            const gap = this.readPxVar('--aimd-space-2', 8);
-            const edge = this.readPxVar('--aimd-space-3', 12);
-            const actionWidth = buttonSize * 2 + gap;
-            const left = Math.max(edge, Math.min(
-                viewport.left + viewport.width / 2 - actionWidth / 2,
-                window.innerWidth - actionWidth - edge,
-            ));
-            const preferredTop = viewport.top - buttonSize - gap;
-            const fallbackTop = viewport.top + viewport.height + gap;
-            const top = preferredTop >= edge ? preferredTop : fallbackTop;
-            return { left, top: Math.max(edge, top) };
-        }
-        return null;
+        if (!layout.unionRect) return null;
+        const rootRect = frame.location.root.getBoundingClientRect();
+        const viewport = {
+            left: rootRect.left + layout.unionRect.left,
+            top: rootRect.top + layout.unionRect.top,
+            width: layout.unionRect.width,
+            height: layout.unionRect.height,
+        };
+        const buttonSize = this.readPxVar('--aimd-size-control-icon-panel', 32);
+        const gap = this.readPxVar('--aimd-space-2', 8);
+        const edge = this.readPxVar('--aimd-space-3', 12);
+        const actionWidth = buttonSize * 2 + gap;
+        const left = Math.max(edge, Math.min(
+            viewport.left + viewport.width / 2 - actionWidth / 2,
+            window.innerWidth - actionWidth - edge,
+        ));
+        const preferredTop = viewport.top - buttonSize - gap;
+        const fallbackTop = viewport.top + viewport.height + gap;
+        const top = preferredTop >= edge ? preferredTop : fallbackTop;
+        return { left, top: Math.max(edge, top) };
     }
 
     private async copyCurrentSelection(): Promise<void> {
@@ -623,6 +642,7 @@ export class ChatGPTPageAnnotationController {
                 this.markAnchorState(record, 'unanchored');
                 continue;
             }
+            this.markAnchorState(record, 'anchored');
             let bucket = byRoot.get(root);
             if (!bucket) {
                 const rootRect = root.getBoundingClientRect();
@@ -763,12 +783,9 @@ export class ChatGPTPageAnnotationController {
     }
 
     private markAnchorState(record: ReaderCommentRecord, state: 'anchored' | 'unanchored'): void {
-        if (!this.store.getDocument() || record.lastKnownAnchorState === state || record.revision === undefined) return;
-        if (this.pendingAnchorStateUpdates.has(record.id)) return;
-        this.pendingAnchorStateUpdates.add(record.id);
-        void this.store.update({ ...record, lastKnownAnchorState: state, updatedAt: Date.now() }, record.target ?? this.targetFromItemId(record))
-            .catch(() => undefined)
-            .finally(() => this.pendingAnchorStateUpdates.delete(record.id));
+        // Virtualization and Reader rendering have independent anchor availability.
+        // A layout pass must never advance the shared annotation revision.
+        record.lastKnownAnchorState = state;
     }
 
     // ---------- chip ----------
@@ -832,6 +849,7 @@ export class ChatGPTPageAnnotationController {
                 return true;
             },
             onInsertAll: (records) => this.insertAnnotations(records),
+            onInsertAndDelete: (records) => this.insertAnnotations(records, true),
         });
     }
 
@@ -907,12 +925,9 @@ export class ChatGPTPageAnnotationController {
     private async syncDocument(): Promise<void> {
         if (!this.contentSource) return;
         const previousKey = this.lastDocumentKey;
-        const result = readCurrentReaderContent(this.adapter, null, {
-            conversationContentSource: this.contentSource,
-            conversationMaterialization: this.materialization,
-            pageUrl: this.pageUrl(),
-        });
-        const nextKey = result.annotationDocument ? readerAnnotationDocumentKey(result.annotationDocument) : null;
+        const state = this.contentSource.read();
+        const annotationDocument = createReaderAnnotationDocument(state.document, this.pageUrl());
+        const nextKey = annotationDocument ? readerAnnotationDocumentKey(annotationDocument) : null;
         if (previousKey !== null && previousKey !== nextKey) {
             // Conversation identity changed: close transient UI before swapping data.
             this.commentPopover.close(this.ensureOverlay().getShadow(), false);
@@ -929,7 +944,7 @@ export class ChatGPTPageAnnotationController {
         this.markerLayoutEpoch += 1;
         this.lastAnnotationsSyncKey = null;
         this.turnMeta.clear();
-        const snapshot = this.contentSource.read().snapshot;
+        const snapshot = state.snapshot;
         if (snapshot) {
             for (const turn of snapshot.turns) {
                 this.turnMeta.set(turn.identity.assistantMessageId, {
@@ -939,7 +954,7 @@ export class ChatGPTPageAnnotationController {
                 });
             }
         }
-        await this.store.bindDocument(result.annotationDocument ?? null);
+        await this.store.bindDocument(annotationDocument ?? null);
         this.syncAnnotationSurface();
     }
 
@@ -1000,12 +1015,14 @@ export class ChatGPTPageAnnotationController {
 
     // ---------- composer insert ----------
 
-    private async insertAnnotations(records: ReaderCommentRecord[]): Promise<void> {
+    private async insertAnnotations(records: ReaderCommentRecord[], deleteAfterInsert = false): Promise<void> {
         if (records.length < 1) {
             showToast({ text: this.getLabel('readerCommentCopyEmpty', 'No annotations to copy yet.'), tone: 'error' });
             return;
         }
         const current = readComposer(this.adapter);
+        const document = this.store.getDocument();
+        const documentKey = document ? readerAnnotationDocumentKey(document) : null;
         if (!current.ok) {
             showToast({ text: this.getLabel('pageAnnotationInsertFailed', 'Could not insert annotations'), tone: 'error' });
             return;
@@ -1020,6 +1037,21 @@ export class ChatGPTPageAnnotationController {
             replacement: text,
             cursorIndex: current.text.length + text.length,
         });
+        if (result.ok && deleteAfterInsert) {
+            const currentDocument = this.store.getDocument();
+            // A route change must not delete records from the newly opened conversation.
+            const sameDocument = documentKey !== null && currentDocument !== null
+                && readerAnnotationDocumentKey(currentDocument) === documentKey;
+            const failed = sameDocument ? await this.store.removeMany(records) : records;
+            this.syncAnnotationSurface();
+            showToast({
+                text: failed.length
+                    ? this.getLabel('pageAnnotationInsertedDeleteFailed', 'Inserted. Some annotations could not be deleted and were kept.')
+                    : this.getLabel('pageAnnotationInsertedAndDeleted', 'Annotations inserted and deleted'),
+                tone: failed.length ? 'error' : 'success',
+            });
+            return;
+        }
         showToast({
             text: result.ok
                 ? this.getLabel('pageAnnotationInserted', 'Annotations inserted')

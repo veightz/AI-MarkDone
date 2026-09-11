@@ -1,16 +1,19 @@
 import type { AppSettings } from '../../../../../core/settings/types';
 import {
     CHATGPT_DIRECTORY_RIGHT_INSET_STEP_PX,
+    CHATGPT_DIRECTORY_PREVIEW_MAX_CHARS_STEP,
     CHATGPT_NAVIGATION_SEEK_STEP_PX_STEP,
     CHATGPT_PAGE_WIDTH_SCALE_STEP,
     DEFAULT_SETTINGS,
     DEFAULT_GLOBAL_FONT_SIZE_PX,
     MAX_CHATGPT_DIRECTORY_RIGHT_INSET_PX,
+    MAX_CHATGPT_DIRECTORY_PREVIEW_MAX_CHARS,
     MAX_CHATGPT_NAVIGATION_SEEK_STEP_PX,
     MAX_CHATGPT_PAGE_WIDTH_SCALE,
     GLOBAL_FONT_SIZE_STEP_PX,
     MAX_GLOBAL_FONT_SIZE_PX,
     MIN_CHATGPT_DIRECTORY_RIGHT_INSET_PX,
+    MIN_CHATGPT_DIRECTORY_PREVIEW_MAX_CHARS,
     MIN_CHATGPT_NAVIGATION_SEEK_STEP_PX,
     MIN_CHATGPT_PAGE_WIDTH_SCALE,
     MIN_GLOBAL_FONT_SIZE_PX,
@@ -20,6 +23,7 @@ import {
 import {
     normalizeChatGPTAtomicMarkdownCopyShortcut,
     normalizeChatGPTDirectoryRightInsetPx,
+    normalizeChatGPTDirectoryPreviewMaxChars,
     normalizeChatGPTDirectorySettings,
     normalizeChatGPTNavigationSeekStepPx,
     normalizeChatGPTPageWidthScale,
@@ -157,6 +161,7 @@ type Refs = {
         inputEnhancement: HTMLInputElement;
         promptAutocomplete: HTMLInputElement;
         pageAnnotationsEnabled: HTMLInputElement;
+        showPageSelectionToolbar: HTMLInputElement;
         showMessageStepper: HTMLInputElement;
         showPageBookmarkControl: HTMLInputElement;
         showDetachedReaderControl: HTMLInputElement;
@@ -168,6 +173,7 @@ type Refs = {
         mode: SelectRef;
         promptLabelMode: HTMLInputElement;
         rightInset: SliderFieldRef;
+        previewMaxChars: SliderFieldRef;
     };
     reader: {
         defaultOpenMode: SelectRef;
@@ -346,6 +352,16 @@ export class SettingsTabView {
             'settings-chatgpt-directory-right-inset-value',
             (value) => `${value}px`,
         );
+        const chatGptDirectoryPreviewMaxChars = this.createSliderRow(
+            chatGptDirectoryGroup.body,
+            t('chatgptDirectoryPreviewMaxCharsLabel'),
+            t('chatgptDirectoryPreviewMaxCharsDesc'),
+            MIN_CHATGPT_DIRECTORY_PREVIEW_MAX_CHARS,
+            MAX_CHATGPT_DIRECTORY_PREVIEW_MAX_CHARS,
+            CHATGPT_DIRECTORY_PREVIEW_MAX_CHARS_STEP,
+            'settings-chatgpt-directory-preview-max-chars-value',
+            (value) => `${value}`,
+        );
         const chatGptRestorePositionAfterSend = this.createToggle(
             chatGptDirectoryGroup.body,
             t('chatgptRestorePositionAfterSendLabel'),
@@ -376,6 +392,11 @@ export class SettingsTabView {
             chatGptDirectoryGroup.body,
             t('chatgptPageAnnotationsLabel'),
             t('chatgptPageAnnotationsDesc'),
+        );
+        const chatGptShowPageSelectionToolbar = this.createToggle(
+            chatGptDirectoryGroup.body,
+            t('chatgptShowPageSelectionToolbarLabel'),
+            t('chatgptShowPageSelectionToolbarDesc'),
         );
         const chatGptArrowKeyMessageNavigation = this.createToggle(
             chatGptDirectoryGroup.body,
@@ -637,6 +658,7 @@ export class SettingsTabView {
                 inputEnhancement: chatGptInputEnhancement.input,
                 promptAutocomplete: chatGptPromptAutocomplete.input,
                 pageAnnotationsEnabled: chatGptPageAnnotationsEnabled.input,
+                showPageSelectionToolbar: chatGptShowPageSelectionToolbar.input,
                 showMessageStepper: chatGptShowMessageStepper.input,
                 showPageBookmarkControl: chatGptShowPageBookmarkControl.input,
                 showDetachedReaderControl: chatGptShowDetachedReaderControl.input,
@@ -648,6 +670,7 @@ export class SettingsTabView {
                 mode: chatGptDirectoryMode,
                 promptLabelMode: chatGptDirectoryPromptLabelMode.input,
                 rightInset: chatGptDirectoryRightInset,
+                previewMaxChars: chatGptDirectoryPreviewMaxChars,
             },
             reader: {
                 defaultOpenMode: readerDefaultOpenMode,
@@ -684,6 +707,7 @@ export class SettingsTabView {
         this.refs.chatgptDirectory.inputEnhancement.dataset.role = 'settings-chatgpt-input-enhancement';
         this.refs.chatgptDirectory.promptAutocomplete.dataset.role = 'settings-chatgpt-prompt-autocomplete';
         this.refs.chatgptDirectory.pageAnnotationsEnabled.dataset.role = 'settings-chatgpt-page-annotations';
+        this.refs.chatgptDirectory.showPageSelectionToolbar.dataset.role = 'settings-chatgpt-show-page-selection-toolbar';
         this.refs.chatgptDirectory.showMessageStepper.dataset.role = 'settings-chatgpt-show-message-stepper';
         this.refs.chatgptDirectory.showPageBookmarkControl.dataset.role = 'settings-chatgpt-show-page-bookmark-control';
         this.refs.chatgptDirectory.showDetachedReaderControl.dataset.role = 'settings-chatgpt-show-detached-reader-control';
@@ -695,6 +719,7 @@ export class SettingsTabView {
         this.refs.chatgptDirectory.mode.trigger.dataset.role = 'settings-chatgpt-directory-mode';
         this.refs.chatgptDirectory.promptLabelMode.dataset.role = 'settings-chatgpt-directory-prompt-label-mode';
         this.refs.chatgptDirectory.rightInset.input.dataset.role = 'settings-chatgpt-directory-right-inset';
+        this.refs.chatgptDirectory.previewMaxChars.input.dataset.role = 'settings-chatgpt-directory-preview-max-chars';
         this.refs.reader.defaultOpenMode.trigger.dataset.role = 'settings-reader-default-open-mode';
         this.refs.reader.renderCode.dataset.role = 'settings-render-code-reader';
         this.refs.reader.showOutline.dataset.role = 'settings-reader-outline';
@@ -984,6 +1009,11 @@ export class SettingsTabView {
             this.settings.chatgptBehavior.pageAnnotationsEnabled = next;
             void this.actions.setChatGptBehaviorSettings?.({ pageAnnotationsEnabled: next });
         });
+        this.refs.chatgptDirectory.showPageSelectionToolbar.addEventListener('change', () => {
+            const next = this.refs.chatgptDirectory.showPageSelectionToolbar.checked;
+            this.settings.chatgptBehavior.showPageSelectionToolbar = next;
+            void this.actions.setChatGptBehaviorSettings?.({ showPageSelectionToolbar: next });
+        });
         this.refs.chatgptDirectory.showMessageStepper.addEventListener('change', () => {
             const next = this.refs.chatgptDirectory.showMessageStepper.checked;
             this.settings.chatgptBehavior.showMessageStepper = next;
@@ -1050,6 +1080,15 @@ export class SettingsTabView {
             this.settings.chatgptDirectory.rightInsetPx = next;
             this.syncSliderValue(this.refs.chatgptDirectory.rightInset, next);
             void this.actions.setChatGptDirectorySettings?.({ rightInsetPx: next });
+        });
+        this.refs.chatgptDirectory.previewMaxChars.input.addEventListener('input', () => {
+            this.syncSliderValue(this.refs.chatgptDirectory.previewMaxChars);
+        });
+        this.refs.chatgptDirectory.previewMaxChars.input.addEventListener('change', () => {
+            const next = normalizeChatGPTDirectoryPreviewMaxChars(this.refs.chatgptDirectory.previewMaxChars.input.value);
+            this.settings.chatgptDirectory.previewMaxChars = next;
+            this.syncSliderValue(this.refs.chatgptDirectory.previewMaxChars, next);
+            void this.actions.setChatGptDirectorySettings?.({ previewMaxChars: next });
         });
         this.refs.reader.defaultOpenMode.onChange((value) => {
             const next = normalizeReaderOpenMode(value);
@@ -1150,6 +1189,7 @@ export class SettingsTabView {
         this.refs.chatgptDirectory.inputEnhancement.checked = Boolean(s.chatgptBehavior.inputEnhancement.available);
         this.refs.chatgptDirectory.promptAutocomplete.checked = Boolean(s.chatgptBehavior.promptAutocomplete);
         this.refs.chatgptDirectory.pageAnnotationsEnabled.checked = Boolean(s.chatgptBehavior.pageAnnotationsEnabled);
+        this.refs.chatgptDirectory.showPageSelectionToolbar.checked = Boolean(s.chatgptBehavior.showPageSelectionToolbar);
         this.refs.chatgptDirectory.showMessageStepper.checked = Boolean(s.chatgptBehavior.showMessageStepper);
         this.refs.chatgptDirectory.showPageBookmarkControl.checked = Boolean(s.chatgptBehavior.showPageBookmarkControl);
         this.refs.chatgptDirectory.showDetachedReaderControl.checked = Boolean(s.chatgptBehavior.showDetachedReaderControl);
@@ -1161,6 +1201,7 @@ export class SettingsTabView {
         this.refs.chatgptDirectory.mode.setValue(s.chatgptDirectory.mode === 'expanded' ? 'expanded' : 'preview');
         this.refs.chatgptDirectory.promptLabelMode.checked = s.chatgptDirectory.promptLabelMode === 'headTail';
         this.syncSliderValue(this.refs.chatgptDirectory.rightInset, normalizeChatGPTDirectoryRightInsetPx(s.chatgptDirectory.rightInsetPx));
+        this.syncSliderValue(this.refs.chatgptDirectory.previewMaxChars, normalizeChatGPTDirectoryPreviewMaxChars(s.chatgptDirectory.previewMaxChars));
         this.refs.reader.defaultOpenMode.setValue(normalizeReaderOpenMode(s.reader.defaultOpenMode));
         this.refs.reader.renderCode.checked = Boolean(s.reader.renderCodeInReader);
         this.refs.reader.showOutline.checked = Boolean(s.reader.showOutlineInReader);
@@ -1183,6 +1224,7 @@ export class SettingsTabView {
         this.syncToggle(this.refs.chatgptDirectory.inputEnhancement);
         this.syncToggle(this.refs.chatgptDirectory.promptAutocomplete);
         this.syncToggle(this.refs.chatgptDirectory.pageAnnotationsEnabled);
+        this.syncToggle(this.refs.chatgptDirectory.showPageSelectionToolbar);
         this.syncToggle(this.refs.chatgptDirectory.showMessageStepper);
         this.syncToggle(this.refs.chatgptDirectory.showPageBookmarkControl);
         this.syncToggle(this.refs.chatgptDirectory.showDetachedReaderControl);

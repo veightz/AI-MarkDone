@@ -9,6 +9,7 @@ import type { ReaderAnnotationDocument } from '../../contracts/readerAnnotations
 import type {
     ConversationContentSourceV1,
     ConversationContentStateV1,
+    ConversationDocumentRefV1,
     ConversationSnapshotV1,
 } from '../../contracts/conversationContent';
 import type {
@@ -30,6 +31,8 @@ export type ReaderContentSourceOptions = {
     conversationContentSource?: ConversationContentSourceV1 | null;
     /** DOM-only identity/materialization port used to resolve an initial item. */
     conversationMaterialization?: ConversationMaterializationPortV1 | null;
+    /** Canonical identity used when the requested turn is not mounted. */
+    conversationTarget?: ConversationTargetV1 | null;
     pageUrl?: string;
 };
 
@@ -62,6 +65,20 @@ export type FreshReaderItemResult = {
     item: ReaderItem;
     sourceRevision?: ReaderContentSourceRevision;
 };
+
+/** Annotation identity is available before the first conversation body is published. */
+export function createReaderAnnotationDocument(
+    document: ConversationDocumentRefV1 | null | undefined,
+    pageUrl: string,
+): ReaderAnnotationDocument | undefined {
+    if (!document || document.platformId !== 'chatgpt') return undefined;
+    return {
+        platform: 'chatgpt',
+        conversationId: getConversationDocumentIdentityKeyV1(document),
+        title: document.title,
+        lastKnownUrl: normalizeChatGPTReaderPageUrl(pageUrl),
+    };
+}
 
 type CachedConversationReaderProjection = Readonly<{
     items: readonly ReaderItem[];
@@ -97,9 +114,10 @@ function getConversationTurnReadPort(
 function resolveConversationStartTarget(
     materialization: ConversationMaterializationPortV1 | null | undefined,
     messageElement: HTMLElement | null,
+    conversationTarget?: ConversationTargetV1 | null,
     _snapshot?: ConversationSnapshotV1,
 ): { ok: true; target: ConversationTargetV1 | null } | { ok: false } {
-    if (!messageElement) return { ok: true, target: null };
+    if (!messageElement) return { ok: true, target: conversationTarget ?? null };
     const target = materialization?.resolveElement(messageElement) ?? null;
     if (target) return { ok: true, target };
     // DOM identity resolution belongs to the Host/Materialization Adapter.
@@ -134,12 +152,7 @@ function buildConversationReaderContent(
             snapshot.document,
             normalizedUrl,
         )),
-        annotationDocument: {
-            platform: 'chatgpt',
-            conversationId: getConversationDocumentIdentityKeyV1(snapshot.document),
-            title: snapshot.document.title,
-            lastKnownUrl: normalizedUrl,
-        },
+        annotationDocument: createReaderAnnotationDocument(snapshot.document, normalizedUrl)!,
     };
 }
 
@@ -326,6 +339,7 @@ function readCurrentConversationContent(
     const startTargetResolution = resolveConversationStartTarget(
         options.conversationMaterialization,
         startMessageElement,
+        options.conversationTarget,
         snapshot,
     );
     return projectConversationContent(state, snapshot, startTargetResolution, options);

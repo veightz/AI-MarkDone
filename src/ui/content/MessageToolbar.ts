@@ -66,12 +66,17 @@ export class MessageToolbar {
     private activeTaskAbort: AbortController | null = null;
     private lastStatsKey: string | null = null;
 
-    constructor(theme: Theme, actions: MessageToolbarAction[], opts?: { showStats?: boolean; themeOverrides?: UserThemeOverrides }) {
+    constructor(theme: Theme, actions: MessageToolbarAction[], opts?: {
+        showStats?: boolean;
+        themeOverrides?: UserThemeOverrides;
+        variant?: 'default' | 'bare';
+    }) {
         this.appearance = createAppearanceSnapshot(theme, opts?.themeOverrides ?? {});
         this.actions = actions;
         this.showStats = opts?.showStats ?? false;
         this.host = document.createElement('div');
         this.host.className = 'aimd-message-toolbar-host';
+        this.host.dataset.aimdVariant = opts?.variant ?? 'default';
         this.host.setAttribute('data-aimd-theme', this.appearance.theme);
         this.shadow = this.host.attachShadow({ mode: 'open' });
         this.appearanceScope = AppearanceScope.forShadowRoot(this.shadow, { styleId: 'aimd-toolbar-tokens' });
@@ -624,6 +629,13 @@ export class MessageToolbar {
 .bar:hover {
   background: color-mix(in srgb, var(--aimd-toolbar-surface) 88%, var(--aimd-toolbar-hover));
   border-color: color-mix(in srgb, var(--aimd-border-strong) 72%, var(--aimd-interactive-primary) 20%);
+}
+:host([data-aimd-variant="bare"]) .bar,
+:host([data-aimd-variant="bare"]) .bar:hover {
+  padding: 0;
+  background: transparent;
+  border-color: transparent;
+  box-shadow: none;
 }
 
 .group { display: inline-flex; align-items: center; gap: calc(var(--aimd-space-1) / 2); }

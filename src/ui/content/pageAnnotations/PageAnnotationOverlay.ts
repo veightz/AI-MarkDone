@@ -39,10 +39,6 @@ function getOverlayCss(): string {
   position: absolute;
   inset: 0;
   pointer-events: none;
-  --_reader-comment-floating-bg: var(--aimd-button-floating-bg);
-  --_reader-comment-floating-border: var(--aimd-button-floating-border);
-  --_reader-comment-floating-hover-bg: var(--aimd-button-floating-hover);
-  --_reader-comment-floating-active-bg: var(--aimd-button-floating-active);
 }
 
 .page-annotation-markers {
@@ -88,6 +84,39 @@ function getOverlayCss(): string {
   height: var(--aimd-size-control-glyph-panel);
 }
 
+.reader-comment-action {
+  position: absolute;
+  pointer-events: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--aimd-space-1);
+  white-space: nowrap;
+}
+
+.reader-comment-action .aimd-icon {
+  color: var(--aimd-interactive-primary);
+}
+
+.reader-comment-action__button {
+  color: var(--aimd-text-secondary);
+  background: var(--aimd-button-floating-bg);
+  border-color: var(--aimd-button-floating-border);
+}
+
+.reader-comment-action__button:hover,
+.reader-comment-action__button:focus-visible {
+  color: var(--aimd-interactive-primary);
+  background: var(--aimd-button-floating-hover);
+  border-color: var(--aimd-button-floating-border);
+}
+
+.reader-comment-action__button:active,
+.reader-comment-action__button:focus {
+  color: var(--aimd-interactive-primary);
+  background: var(--aimd-button-floating-active);
+  border-color: var(--aimd-button-floating-border);
+}
+
 .secondary-btn {
   all: unset;
   box-sizing: border-box;
@@ -126,39 +155,6 @@ function getOverlayCss(): string {
 .secondary-btn--primary:hover,
 .secondary-btn--primary:active {
   background: var(--aimd-interactive-primary-hover);
-}
-
-.reader-comment-action {
-  position: absolute;
-  pointer-events: auto;
-  display: inline-flex;
-  align-items: center;
-  gap: var(--aimd-space-2);
-  white-space: nowrap;
-}
-
-.reader-comment-action .aimd-icon {
-  color: var(--aimd-interactive-primary);
-}
-
-.reader-comment-action__button {
-  color: var(--aimd-text-secondary);
-  background: var(--_reader-comment-floating-bg);
-  border-color: var(--_reader-comment-floating-border);
-}
-
-.reader-comment-action__button:hover,
-.reader-comment-action__button:focus-visible {
-  color: var(--aimd-interactive-primary);
-  background: var(--_reader-comment-floating-hover-bg);
-  border-color: var(--_reader-comment-floating-border);
-}
-
-.reader-comment-action__button:active,
-.reader-comment-action__button:focus {
-  color: var(--aimd-interactive-primary);
-  background: var(--_reader-comment-floating-active-bg);
-  border-color: var(--_reader-comment-floating-border);
 }
 
 `;
@@ -225,10 +221,7 @@ export class PageAnnotationOverlay {
     }
 
     renderToolbar(toolbar: PageAnnotationToolbarRender | null): void {
-        if (this.toolbarEl) {
-            this.toolbarEl.remove();
-            this.toolbarEl = null;
-        }
+        this.clearToolbar();
         if (!toolbar) return;
         const group = document.createElement('div');
         group.className = 'reader-comment-action';
@@ -281,8 +274,13 @@ export class PageAnnotationOverlay {
     }
 
     unmount(): void {
+        this.clearToolbar();
         this.appearanceScope.dispose();
         this.host.remove();
+    }
+
+    private clearToolbar(): void {
+        this.toolbarEl?.remove();
         this.toolbarEl = null;
     }
 }

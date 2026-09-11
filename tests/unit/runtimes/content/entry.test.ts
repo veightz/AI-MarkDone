@@ -129,6 +129,8 @@ const directorySetEnabled = vi.fn();
 const directorySetDisplayMode = vi.fn();
 const directorySetPromptLabelMode = vi.fn();
 const directorySetRightInsetPx = vi.fn();
+const directorySetPreviewMaxChars = vi.fn();
+const directorySetPreviewActionsFactory = vi.fn();
 const directorySetAppearance = vi.fn();
 const directoryDispose = vi.fn();
 const directoryCtor = vi.fn(function () {
@@ -138,6 +140,8 @@ const directoryCtor = vi.fn(function () {
         setDisplayMode: directorySetDisplayMode,
         setPromptLabelMode: directorySetPromptLabelMode,
         setRightInsetPx: directorySetRightInsetPx,
+        setPreviewMaxChars: directorySetPreviewMaxChars,
+        setPreviewActionsFactory: directorySetPreviewActionsFactory,
         setAppearance: directorySetAppearance,
         dispose: directoryDispose,
     };
@@ -255,6 +259,7 @@ const pageAnnotationDispose = vi.fn();
 const pageAnnotationSetAppearance = vi.fn();
 const pageAnnotationSetReaderSettings = vi.fn();
 const pageAnnotationSetEnabled = vi.fn();
+const pageAnnotationSetSelectionToolbarEnabled = vi.fn();
 const pageAnnotationCtor = vi.fn(function () {
     return {
         init: pageAnnotationInit,
@@ -262,6 +267,7 @@ const pageAnnotationCtor = vi.fn(function () {
         setAppearance: pageAnnotationSetAppearance,
         setReaderSettings: pageAnnotationSetReaderSettings,
         setEnabled: pageAnnotationSetEnabled,
+        setSelectionToolbarEnabled: pageAnnotationSetSelectionToolbarEnabled,
     };
 });
 const contentRuntimeInit = vi.fn();
@@ -744,6 +750,32 @@ describe('content runtime entry', () => {
         expect(atomicSelectionSetMarkdownCopyShortcut).toHaveBeenLastCalledWith('none');
     });
 
+    it('keeps page annotations active while switching the page selection toolbar live', async () => {
+        const { DEFAULT_SETTINGS } = await import('@/core/settings/types');
+        const settings = structuredClone(DEFAULT_SETTINGS) as any;
+        settings.chatgptBehavior.showPageSelectionToolbar = true;
+        settingsGetCached.mockReturnValue(settings);
+
+        vi.resetModules();
+        await import('@/runtimes/content/entry');
+
+        expect(pageAnnotationSetSelectionToolbarEnabled).toHaveBeenLastCalledWith(true);
+        expect(pageAnnotationSetEnabled).toHaveBeenLastCalledWith(true);
+
+        settingsSubscriber!({
+            settings: {
+                ...settings,
+                chatgptBehavior: {
+                    ...settings.chatgptBehavior,
+                    showPageSelectionToolbar: false,
+                },
+            },
+        });
+
+        expect(pageAnnotationSetSelectionToolbarEnabled).toHaveBeenLastCalledWith(false);
+        expect(pageAnnotationSetEnabled).toHaveBeenLastCalledWith(true);
+    });
+
     it('forwards the saved locale into the independently bundled lazy feature graph', async () => {
         const { DEFAULT_SETTINGS } = await import('@/core/settings/types');
         const settings = structuredClone(DEFAULT_SETTINGS);
@@ -1105,6 +1137,7 @@ describe('content runtime entry', () => {
         expect(directorySetEnabled).toHaveBeenCalledWith(false);
         expect(directorySetDisplayMode).toHaveBeenCalledWith('expanded');
         expect(directorySetPromptLabelMode).toHaveBeenCalledWith('headTail');
+        expect(directorySetPreviewMaxChars).toHaveBeenCalledWith(600);
         expect(officialNavigationCtor).toHaveBeenCalledTimes(1);
         expect(officialNavigationSetEnabled).toHaveBeenCalledWith(false);
         expect(messageToolbarCtor.mock.calls[0]?.[1]?.conversationContentSource).toBeTruthy();
@@ -1381,6 +1414,7 @@ describe('content runtime entry', () => {
         expect(directorySetEnabled).toHaveBeenLastCalledWith(true);
         expect(directorySetDisplayMode).toHaveBeenLastCalledWith('preview');
         expect(directorySetPromptLabelMode).toHaveBeenLastCalledWith('head');
+        expect(directorySetPreviewMaxChars).toHaveBeenLastCalledWith(600);
         expect(officialNavigationSetEnabled).toHaveBeenLastCalledWith(true);
         expect(mathClickObserveContainers).toHaveBeenCalledTimes(1);
         expect(reader?.setReaderSettings).toHaveBeenLastCalledWith(expect.objectContaining({
@@ -1597,6 +1631,7 @@ describe('content runtime entry', () => {
         expect(directorySetDisplayMode).toHaveBeenLastCalledWith('expanded');
         expect(directorySetPromptLabelMode).toHaveBeenLastCalledWith('headTail');
         expect(directorySetRightInsetPx).toHaveBeenLastCalledWith(40);
+        expect(directorySetPreviewMaxChars).toHaveBeenLastCalledWith(600);
         expect(officialNavigationSetEnabled).toHaveBeenLastCalledWith(false);
     });
 

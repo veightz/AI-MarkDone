@@ -177,6 +177,7 @@ describe('settingsService', () => {
             promptLabelMode: 'headTail',
             hideOfficialNavigation: false,
             rightInsetPx: 0,
+            previewMaxChars: 600,
         });
         expect(next).not.toHaveProperty('chatgpt');
 
@@ -187,6 +188,7 @@ describe('settingsService', () => {
             promptLabelMode: 'head',
             hideOfficialNavigation: false,
             rightInsetPx: 40,
+            previewMaxChars: 600,
         });
     });
 
@@ -225,6 +227,7 @@ describe('settingsService', () => {
             enableArrowKeyMessageNavigation: false,
             pageWidthScale: 145,
             pageAnnotationsEnabled: true,
+            showPageSelectionToolbar: true,
             navigationSeekStepPx: 3_000,
         });
         expect(next).not.toHaveProperty('chatgpt');
@@ -260,6 +263,7 @@ describe('settingsService', () => {
             enableArrowKeyMessageNavigation: true,
             pageWidthScale: 100,
             pageAnnotationsEnabled: true,
+            showPageSelectionToolbar: true,
             navigationSeekStepPx: 3_000,
         });
         expect(clamped.chatgptBehavior.pageWidthScale).toBe(200);

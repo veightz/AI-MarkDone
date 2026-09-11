@@ -15,6 +15,7 @@ vi.mock('@/drivers/content/chatgpt/chatgptRoute', () => ({
 }));
 import { ChatGPTAdapter } from '@/drivers/content/adapters/sites/chatgpt';
 import { ChatGPTConversationSurface } from '@/drivers/content/chatgpt/ChatGPTConversationSurface';
+import { MessageToolbar } from '@/ui/content/MessageToolbar';
 import { MessageToolbarOrchestrator } from '@/ui/content/controllers/MessageToolbarOrchestrator';
 import { ReaderPanel } from '@/ui/content/reader/ReaderPanel';
 import { SiteAdapter, type ThemeDetector } from '@/drivers/content/adapters/base';
@@ -1208,6 +1209,300 @@ describe('MessageToolbarOrchestrator ChatGPT reader path', () => {
         expect(toolbar.setActionActive).toHaveBeenCalledWith('bookmark_toggle', true);
     });
 
+    it('uses the same published Reader item when the narrow turn-read port is temporarily unavailable', async () => {
+        document.body.innerHTML = `
+          <div id="thread">
+            <article data-turn="user">
+              <div data-message-author-role="user">
+                <div class="whitespace-pre-wrap">Question</div>
+              </div>
+            </article>
+            <article data-turn="assistant">
+              <div data-message-author-role="assistant" data-message-id="a1">
+                <div class="markdown prose">Visible answer</div>
+              </div>
+              <div class="z-0 flex">
+                <div><button data-testid="copy-turn-action-button">copy</button></div>
+              </div>
+            </article>
+          </div>
+        `;
+
+        vi.mocked(bookmarkSaveDialog.open).mockReset();
+        vi.mocked(bookmarkSaveDialog.open).mockResolvedValue({
+            ok: true,
+            folderPath: '/Research',
+            title: 'Question',
+        } as any);
+
+        const adapter = new ChatGPTAdapter();
+        const baseSource = createConversationSource({
+            conversationId: 'conv-1',
+            revision: 1,
+            rounds: [{
+                id: 'round-1',
+                userPrompt: 'Question',
+                assistantContent: 'Canonical answer',
+                messageId: 'a1',
+                assistantMessageId: 'a1',
+                userMessageId: 'u1',
+            }],
+        });
+        const source = {
+            ...baseSource,
+            readTurn: vi.fn((target: any) => ({
+                kind: 'unavailable' as const,
+                target,
+                reason: 'source-unavailable' as const,
+            })),
+        };
+        const bookmarksController = {
+            isPositionBookmarked: vi.fn(() => false),
+            readPositionBookmarkStatus: vi.fn(async () => ({ ok: true, data: { saved: false } })),
+            getDefaultFolderPath: vi.fn(() => '/Inbox'),
+            setPositionBookmarkSaved: vi.fn(async () => ({ ok: true, data: { saved: true } })),
+            selectFolder: vi.fn(),
+        } as any;
+        const readerPanel = { show: vi.fn(async () => undefined) } as any;
+        const orchestrator = createOrchestrator(adapter, {
+            readerPanel,
+            bookmarksController,
+            conversationContentSource: source,
+            bookmarkSaveDialog,
+        }) as any;
+        let toolbar: MessageToolbar | null = null;
+
+        try {
+            const assistant = document.querySelector('[data-message-author-role="assistant"][data-message-id]') as HTMLElement;
+            const actions = orchestrator.getActionsForMessage(assistant, () => toolbar);
+            toolbar = new MessageToolbar('light', actions, { showStats: false });
+            document.body.appendChild(toolbar.getElement());
+            const bookmarkButton = toolbar.getElement().shadowRoot?.querySelector<HTMLButtonElement>('[data-action="bookmark_toggle"]');
+            expect(bookmarkButton).toBeTruthy();
+
+            bookmarkButton!.click();
+            await vi.waitFor(() => expect(bookmarksController.setPositionBookmarkSaved).toHaveBeenCalled());
+
+            expect(bookmarksController.setPositionBookmarkSaved).toHaveBeenCalledWith(expect.objectContaining({
+                position: 1,
+                messageId: 'a1',
+                userMessage: 'Question',
+                aiResponse: 'Canonical answer',
+            }), true);
+            expect(source.readTurn).not.toHaveBeenCalled();
+        } finally {
+            toolbar?.dispose();
+            toolbar?.getElement().remove();
+            orchestrator.dispose();
+            adapter.dispose();
+        }
+    });
+
+    it('keeps the Toolbar bookmark disabled until the current message has canonical content', async () => {
+        renderVirtualizedChatGptBookmarkDom();
+
+        const syncingState = {
+            kind: 'syncing' as const,
+            document: {
+                key: 'chatgpt:conversation:conv-1',
+                platformId: 'chatgpt',
+                conversationId: 'conv-1',
+                canonicalUrl: 'https://chatgpt.com/c/conv-1',
+            },
+            snapshot: null,
+        };
+        const source = createConversationSource({
+            conversationId: 'conv-1',
+            revision: 1,
+            rounds: [],
+        });
+        source.publish(syncingState);
+        const adapter = new ChatGPTAdapter();
+        const bookmarksController = {
+            isPositionBookmarked: vi.fn(() => false),
+            refreshPositionsForUrl: vi.fn(async () => undefined),
+        } as any;
+        const orchestrator = createOrchestrator(adapter, {
+            readerPanel: { show: vi.fn() } as any,
+            bookmarksController,
+            conversationContentSource: source,
+            bookmarkSaveDialog,
+        }) as any;
+
+        try {
+            orchestrator.init();
+            await vi.waitFor(() => {
+                const button = document.querySelector<HTMLElement>('[data-aimd-role="message-toolbar"]')
+                    ?.shadowRoot
+                    ?.querySelector<HTMLButtonElement>('[data-action="bookmark_toggle"]');
+                expect(button).toBeTruthy();
+                expect(button?.disabled).toBe(true);
+            });
+
+            source.publish({
+                conversationId: 'conv-1',
+                revision: 1,
+                rounds: [{
+                    id: 'round-50',
+                    userPrompt: 'Question 50',
+                    assistantContent: 'Answer 50',
+                    messageId: 'payload-a50',
+                    assistantMessageId: 'payload-a50',
+                    userMessageId: 'u50',
+                }],
+            });
+
+            await vi.waitFor(() => {
+                const button = document.querySelector<HTMLElement>('[data-aimd-role="message-toolbar"]')
+                    ?.shadowRoot
+                    ?.querySelector<HTMLButtonElement>('[data-action="bookmark_toggle"]');
+                expect(button?.disabled).toBe(false);
+            });
+        } finally {
+            orchestrator.dispose();
+            adapter.dispose();
+        }
+    });
+
+    it('rejects a Reader bookmark when its opened snapshot revision is stale', async () => {
+        document.body.innerHTML = `
+          <div id="thread">
+            <article data-turn="user">
+              <div data-message-author-role="user">
+                <div class="whitespace-pre-wrap">Question</div>
+              </div>
+            </article>
+            <article data-turn="assistant">
+              <div data-message-author-role="assistant" data-message-id="a1">
+                <div class="markdown prose">Answer</div>
+              </div>
+              <div class="z-0 flex">
+                <div><button data-testid="copy-turn-action-button">copy</button></div>
+              </div>
+            </article>
+          </div>
+        `;
+
+        vi.mocked(bookmarkSaveDialog.open).mockReset();
+        const adapter = new ChatGPTAdapter();
+        const source = createConversationSource({
+            conversationId: 'conv-1',
+            revision: 1,
+            rounds: [{
+                id: 'round-1',
+                userPrompt: 'Question',
+                assistantContent: 'Answer',
+                messageId: 'a1',
+                assistantMessageId: 'a1',
+                userMessageId: 'u1',
+            }],
+        });
+        const bookmarksController = {
+            isPositionBookmarked: vi.fn(() => false),
+            readPositionBookmarkStatus: vi.fn(async () => ({ ok: true, data: { saved: false } })),
+            getDefaultFolderPath: vi.fn(() => '/Inbox'),
+            setPositionBookmarkSaved: vi.fn(),
+        } as any;
+        const readerPanel = { show: vi.fn(async () => undefined) } as any;
+        const orchestrator = createOrchestrator(adapter, {
+            readerPanel,
+            bookmarksController,
+            conversationContentSource: source,
+            bookmarkSaveDialog,
+        }) as any;
+
+        try {
+            const assistant = document.querySelector('[data-message-author-role="assistant"][data-message-id]') as HTMLElement;
+            const readerAction = orchestrator.getActionsForMessage(assistant, () => null)
+                .find((action: any) => action.id === 'reader');
+
+            await readerAction.onClick();
+            const [items, , , options] = readerPanel.show.mock.calls[0];
+            source.publish({
+                conversationId: 'conv-1',
+                revision: 2,
+                rounds: [{
+                    id: 'round-1',
+                    userPrompt: 'Question',
+                    assistantContent: 'Updated answer',
+                    messageId: 'a1',
+                    assistantMessageId: 'a1',
+                    userMessageId: 'u1',
+                }],
+            });
+
+            const bookmarkAction = options.actions.find((action: any) => action.id === 'bookmark_toggle');
+            const notify = vi.fn();
+            await bookmarkAction.onClick({
+                item: items[0],
+                index: 0,
+                items,
+                notify,
+                rerender: vi.fn(),
+            });
+
+            expect(bookmarkSaveDialog.open).not.toHaveBeenCalled();
+            expect(bookmarksController.setPositionBookmarkSaved).not.toHaveBeenCalled();
+            expect(notify).toHaveBeenCalledWith('bookmarkUnavailable');
+        } finally {
+            orchestrator.dispose();
+            adapter.dispose();
+        }
+    });
+
+    it('does not persist a DOM-only Reader fallback as a ChatGPT bookmark', async () => {
+        document.body.innerHTML = `
+          <div id="thread">
+            <article data-turn="user">
+              <div data-message-author-role="user">
+                <div class="whitespace-pre-wrap">Question</div>
+              </div>
+            </article>
+            <article data-turn="assistant">
+              <div data-message-author-role="assistant" data-message-id="a1">
+                <div class="markdown prose">Visible answer</div>
+              </div>
+              <div class="z-0 flex">
+                <div><button data-testid="copy-turn-action-button">copy</button></div>
+              </div>
+            </article>
+          </div>
+        `;
+
+        vi.mocked(bookmarkSaveDialog.open).mockReset();
+        const adapter = new ChatGPTAdapter();
+        const source = createConversationSource(null);
+        source.publish({ kind: 'syncing', document: { key: 'chatgpt:conversation:conv-1', platformId: 'chatgpt', conversationId: 'conv-1', canonicalUrl: 'https://chatgpt.com/c/conv-1' }, snapshot: null });
+        const readerPanel = { show: vi.fn(async () => undefined) } as any;
+        const bookmarksController = {
+            isPositionBookmarked: vi.fn(() => false),
+            setPositionBookmarkSaved: vi.fn(),
+        } as any;
+        const orchestrator = createOrchestrator(adapter, {
+            readerPanel,
+            bookmarksController,
+            conversationContentSource: source,
+            bookmarkSaveDialog,
+        }) as any;
+
+        try {
+            const assistant = document.querySelector('[data-message-author-role="assistant"][data-message-id]') as HTMLElement;
+            const action = orchestrator.getActionsForMessage(assistant, () => null)
+                .find((candidate: any) => candidate.id === 'bookmark_toggle');
+
+            await orchestrator.getActionsForMessage(assistant, () => null).find((candidate: any) => candidate.id === 'reader').onClick();
+            expect(readerPanel.show).toHaveBeenCalledWith(expect.any(Array), 0, expect.any(String), expect.objectContaining({ annotationDocument: expect.objectContaining({ conversationId: 'conv-1' }) }));
+            const result = await action.onClick();
+
+            expect(result).toEqual({ ok: false, message: 'bookmarkUnavailable' });
+            expect(bookmarkSaveDialog.open).not.toHaveBeenCalled();
+            expect(bookmarksController.setPositionBookmarkSaved).not.toHaveBeenCalled();
+        } finally {
+            orchestrator.dispose();
+            adapter.dispose();
+        }
+    });
+
     it('does not fill a canonical ChatGPT bookmark prompt from DOM text', async () => {
         renderVirtualizedChatGptBookmarkDom();
         const snapshot = buildVirtualizedChatGptSnapshot();
@@ -1234,7 +1529,7 @@ describe('MessageToolbarOrchestrator ChatGPT reader path', () => {
             .find((candidate: any) => candidate.id === 'bookmark_toggle');
         const result = await action.onClick();
 
-        expect(result).toEqual(expect.objectContaining({ ok: false }));
+        expect(result).toEqual({ ok: false, message: 'bookmarkUnavailable' });
         expect(bookmarksController.setPositionBookmarkSaved).not.toHaveBeenCalled();
     });
 
@@ -1264,7 +1559,7 @@ describe('MessageToolbarOrchestrator ChatGPT reader path', () => {
 
         const result = await action.onClick();
 
-        expect(result).toEqual(expect.objectContaining({ ok: false }));
+        expect(result).toEqual({ ok: false, message: 'bookmarkUnavailable' });
         expect(bookmarkSaveDialog.open).not.toHaveBeenCalled();
         expect(bookmarksController.setPositionBookmarkSaved).not.toHaveBeenCalled();
     });
@@ -1294,7 +1589,7 @@ describe('MessageToolbarOrchestrator ChatGPT reader path', () => {
 
         const result = await actions.find((action: any) => action.id === 'bookmark_toggle').onClick();
 
-        expect(result).toEqual(expect.objectContaining({ ok: false }));
+        expect(result).toEqual({ ok: false, message: 'bookmarkUnavailable' });
         expect(bookmarksController.setPositionBookmarkSaved).not.toHaveBeenCalled();
         expect(conversationContentSource.refresh).not.toHaveBeenCalled();
     });
@@ -1469,7 +1764,7 @@ describe('MessageToolbarOrchestrator ChatGPT reader path', () => {
         }
     });
 
-    it('rejects a bookmark write when the source revision changes while the save dialog is open', async () => {
+    it.each([false, true])('revalidates the selected message after a source update during save (changed=%s)', async (changed) => {
         renderVirtualizedChatGptBookmarkDom();
         const adapter = new ChatGPTAdapter();
         const initialSnapshot = buildVirtualizedChatGptSnapshot();
@@ -1485,7 +1780,8 @@ describe('MessageToolbarOrchestrator ChatGPT reader path', () => {
             isPositionBookmarked: vi.fn(() => false),
             readPositionBookmarkStatus: vi.fn(async () => ({ ok: true, data: { saved: false } })),
             getDefaultFolderPath: vi.fn(() => '/Inbox'),
-            setPositionBookmarkSaved: vi.fn(),
+            selectFolder: vi.fn(),
+            setPositionBookmarkSaved: vi.fn(async () => ({ ok: true, data: { saved: true } })),
         } as any;
         const orchestrator = createOrchestrator(adapter, {
             readerPanel: { show: vi.fn() } as any,
@@ -1503,12 +1799,18 @@ describe('MessageToolbarOrchestrator ChatGPT reader path', () => {
             ...initialSnapshot,
             revision: initialSnapshot.revision + 1,
             capturedAt: initialSnapshot.capturedAt + 1,
+            rounds: initialSnapshot.rounds.map((round) => changed ? { ...round, assistantContent: 'Changed answer' } : round),
         });
         resolveDialog({ ok: true, folderPath: '/Research', title: 'Question 50' });
         const result = await resultPromise;
 
-        expect(result).toEqual(expect.objectContaining({ ok: false }));
-        expect(bookmarksController.setPositionBookmarkSaved).not.toHaveBeenCalled();
+        if (changed) {
+            expect(result).toEqual(expect.objectContaining({ ok: false }));
+            expect(bookmarksController.setPositionBookmarkSaved).not.toHaveBeenCalled();
+        } else {
+            expect(result).not.toEqual(expect.objectContaining({ ok: false }));
+            expect(bookmarksController.setPositionBookmarkSaved).toHaveBeenCalledOnce();
+        }
     });
 
     it('does not add a retired ChatGPT fold action', () => {

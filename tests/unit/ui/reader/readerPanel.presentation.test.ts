@@ -135,6 +135,31 @@ describe('ReaderPanel presentation', () => {
         }
     });
 
+    it('disables a custom Reader action when its current item is unavailable', async () => {
+        const panel = new ReaderPanel();
+        const onClick = vi.fn();
+
+        try {
+            await panel.show([{ id: 'a', userPrompt: 'Prompt', content: 'md1' }], 0, 'light', {
+                profile: 'conversation-reader',
+                actions: [{
+                    id: 'bookmark_toggle',
+                    label: 'Bookmark',
+                    icon: '<svg viewBox="0 0 16 16"></svg>',
+                    isEnabled: () => false,
+                    onClick,
+                }],
+            });
+
+            const host = document.querySelector('#aimd-reader-panel-host') as HTMLElement;
+            const button = host.shadowRoot?.querySelector<HTMLButtonElement>('[data-role="header-custom-actions"] button');
+
+            expect(button?.disabled).toBe(true);
+        } finally {
+            panel.hide();
+        }
+    });
+
     it('renders the mock-based reader shell with static header meta and conversation sections', async () => {
         const panel = new ReaderPanel();
         const longPrompt = '1234567890123456789012345678901234567890-extra prompt';

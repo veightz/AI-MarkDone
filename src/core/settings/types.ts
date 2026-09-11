@@ -25,6 +25,10 @@ export const DEFAULT_CHATGPT_DIRECTORY_RIGHT_INSET_PX = 0;
 export const MIN_CHATGPT_DIRECTORY_RIGHT_INSET_PX = 0;
 export const MAX_CHATGPT_DIRECTORY_RIGHT_INSET_PX = 40;
 export const CHATGPT_DIRECTORY_RIGHT_INSET_STEP_PX = 4;
+export const DEFAULT_CHATGPT_DIRECTORY_PREVIEW_MAX_CHARS = 600;
+export const MIN_CHATGPT_DIRECTORY_PREVIEW_MAX_CHARS = 200;
+export const MAX_CHATGPT_DIRECTORY_PREVIEW_MAX_CHARS = 2_000;
+export const CHATGPT_DIRECTORY_PREVIEW_MAX_CHARS_STEP = 200;
 export const DEFAULT_CHATGPT_PAGE_WIDTH_SCALE = 100;
 export const MIN_CHATGPT_PAGE_WIDTH_SCALE = 100;
 export const MAX_CHATGPT_PAGE_WIDTH_SCALE = 200;
@@ -40,6 +44,7 @@ export type ChatGPTDirectorySettings = {
     promptLabelMode: ChatGPTDirectoryPromptLabelMode;
     hideOfficialNavigation: boolean;
     rightInsetPx: number;
+    previewMaxChars: number;
 };
 
 export type ChatGPTInputEnhancementSettings = {
@@ -68,6 +73,7 @@ export type ChatGPTBehaviorSettings = {
     enableArrowKeyMessageNavigation: boolean;
     pageWidthScale: number;
     pageAnnotationsEnabled: boolean;
+    showPageSelectionToolbar: boolean;
     navigationSeekStepPx: number;
 };
 
@@ -190,6 +196,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
         promptLabelMode: 'head',
         hideOfficialNavigation: true,
         rightInsetPx: DEFAULT_CHATGPT_DIRECTORY_RIGHT_INSET_PX,
+        previewMaxChars: DEFAULT_CHATGPT_DIRECTORY_PREVIEW_MAX_CHARS,
     },
     chatgptBehavior: {
         restorePositionAfterSend: true,
@@ -206,6 +213,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
         enableArrowKeyMessageNavigation: true,
         pageWidthScale: DEFAULT_CHATGPT_PAGE_WIDTH_SCALE,
         pageAnnotationsEnabled: true,
+        showPageSelectionToolbar: true,
         navigationSeekStepPx: DEFAULT_CHATGPT_NAVIGATION_SEEK_STEP_PX,
     },
     appearance: { fontSizePx: DEFAULT_GLOBAL_FONT_SIZE_PX, accentColor: null },

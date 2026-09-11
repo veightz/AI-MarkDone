@@ -2,7 +2,11 @@ import type { Theme } from '../../../core/types/theme';
 import type { SiteAdapter } from '../../../drivers/content/adapters/base';
 import type { ChatGPTConversationRound } from '../../../drivers/content/chatgpt/types';
 import type { ChatGPTDirectoryMode, ChatGPTDirectoryPromptLabelMode } from '../../../core/settings/types';
-import { ChatGPTDirectoryRail } from '../chatgptDirectory/ChatGPTDirectoryRail';
+import { DEFAULT_CHATGPT_DIRECTORY_PREVIEW_MAX_CHARS } from '../../../core/settings/types';
+import {
+    ChatGPTDirectoryRail,
+    type ChatGPTDirectoryPreviewActionsFactory,
+} from '../chatgptDirectory/ChatGPTDirectoryRail';
 import {
     type ChatGPTRoundPosition,
 } from '../chatgptDirectory/navigation';
@@ -54,6 +58,8 @@ export class ChatGPTDirectoryController {
     private enabled = true;
     private displayMode: ChatGPTDirectoryMode = 'preview';
     private promptLabelMode: ChatGPTDirectoryPromptLabelMode = 'head';
+    private previewMaxChars = DEFAULT_CHATGPT_DIRECTORY_PREVIEW_MAX_CHARS;
+    private previewActionsFactory: ChatGPTDirectoryPreviewActionsFactory | null = null;
     private roundPositions: ChatGPTRoundPosition[] = [];
     private activePosition = 0;
     private rebuildTimer: number | null = null;
@@ -169,6 +175,16 @@ export class ChatGPTDirectoryController {
         this.rail?.setRightInsetPx(value);
     }
 
+    setPreviewMaxChars(value: number): void {
+        this.previewMaxChars = value;
+        this.rail?.setPreviewMaxChars(value);
+    }
+
+    setPreviewActionsFactory(factory: ChatGPTDirectoryPreviewActionsFactory | null): void {
+        this.previewActionsFactory = factory;
+        this.rail?.setPreviewActionsFactory(factory);
+    }
+
     private ensureRail(): void {
         if (this.rail) {
             const element = this.rail.getElement();
@@ -192,6 +208,8 @@ export class ChatGPTDirectoryController {
         }, this.appearance.overrides);
         this.rail.setDisplayMode(this.displayMode);
         this.rail.setPromptLabelMode(this.promptLabelMode);
+        this.rail.setPreviewMaxChars(this.previewMaxChars);
+        this.rail.setPreviewActionsFactory(this.previewActionsFactory);
         this.rail.ensureAttached();
         writeDebugState({ DirectoryHost: 'created' });
     }

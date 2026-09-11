@@ -41,6 +41,7 @@ export class PageAnnotationStore {
     private durable = new Map<string, ReaderCommentRecord[]>();
     private runtime = new Map<string, ReaderCommentRecord[]>();
     private loadedDocumentKey: string | null = null;
+    private loadGeneration = 0;
     private unsubscribeChanges: (() => void) | null = null;
     private readonly listeners = new Set<() => void>();
     private readonly client: PageAnnotationClient;
@@ -67,15 +68,16 @@ export class PageAnnotationStore {
         if (document && nextKey === this.loadedDocumentKey) return;
         this.document = document;
         this.loadedDocumentKey = nextKey;
+        this.loadGeneration += 1;
         this.runtime.clear();
         this.durable.clear();
         this.unsubscribeChanges?.();
         this.unsubscribeChanges = null;
         if (document) {
-            await this.loadDurable(document);
             this.unsubscribeChanges = this.subscribeChanges(document, () => {
                 void this.loadDurable(document).then(() => this.emit());
             });
+            await this.loadDurable(document);
         }
         this.emit();
     }
@@ -128,20 +130,27 @@ export class PageAnnotationStore {
     }
 
     async remove(record: ReaderCommentRecord): Promise<void> {
-        if (!this.document || record.revision === undefined) {
+        const document = this.document;
+        if (!document || record.revision === undefined) {
             this.removeRuntime(record);
             this.emit();
             return;
         }
-        const result = await this.client.remove(this.document, record.id, record.revision);
+        const result = await this.client.remove(document, record.id, record.revision);
         if (!result.ok) throw new Error(result.message);
+        if (this.document !== document) return;
         this.removeDurable(record);
         this.emit();
     }
 
     async removeMany(records: ReaderCommentRecord[]): Promise<ReaderCommentRecord[]> {
         const failed: ReaderCommentRecord[] = [];
+        const document = this.document;
         for (const record of records) {
+            if (this.document !== document) {
+                failed.push(record);
+                continue;
+            }
             try {
                 await this.remove(record);
             } catch {
@@ -164,12 +173,15 @@ export class PageAnnotationStore {
         this.runtime.clear();
         this.document = null;
         this.loadedDocumentKey = null;
+        this.loadGeneration += 1;
     }
 
     private async loadDurable(document: ReaderAnnotationDocument): Promise<void> {
+        const generation = ++this.loadGeneration;
         const result = await this.client.list(document);
-        this.durable.clear();
+        if (generation !== this.loadGeneration || this.loadedDocumentKey !== readerAnnotationDocumentKey(document)) return;
         if (!result.ok) return;
+        this.durable.clear();
         for (const entry of result.data?.entries ?? []) {
             if (readerAnnotationDocumentKey(entry.document) !== readerAnnotationDocumentKey(document)) continue;
             const record = fromReaderAnnotationRecord(entry.annotation, entry.document);

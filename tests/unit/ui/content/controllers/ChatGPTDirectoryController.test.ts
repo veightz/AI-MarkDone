@@ -797,7 +797,7 @@ describe('ChatGPTDirectoryController', () => {
         expect(list?.dataset.expanded).toBe('1');
         expect(list?.dataset.hasHover).toBe('1');
         expect(items[1]?.dataset.hovered).toBe('1');
-        expect(document.getElementById('aimd-chatgpt-directory-preview')?.dataset.open).toBe('0');
+        expect(document.getElementById('aimd-chatgpt-directory-preview')?.dataset.open).toBe('1');
 
         list?.dispatchEvent(new Event('pointerleave', { bubbles: true }));
         expect(list?.dataset.expanded).toBe('0');
@@ -838,6 +838,143 @@ describe('ChatGPTDirectoryController', () => {
         expect(style).toContain('inline-size: 30em');
     });
 
+    it('uses one visible fallback for assistant-only turns in both directory modes', () => {
+        const adapter = new ChatGPTTestAdapter();
+        const engine = { subscribe: vi.fn(() => () => undefined) } as any;
+        const controller = createDirectoryController(adapter, engine);
+        const snapshot = buildSnapshot();
+        snapshot.rounds[0] = {
+            ...snapshot.rounds[0]!,
+            userPrompt: '',
+            preview: '',
+            assistantContent: 'Assistant-only content that identifies this loaded message',
+        };
+
+        (controller as any).ensureRail();
+        controller.setDisplayMode('expanded');
+        setCanonicalSnapshot(adapter, snapshot);
+        (controller as any).render();
+
+        const railRoot = document.getElementById('aimd-chatgpt-directory-rail')?.shadowRoot;
+        const item = railRoot?.querySelector<HTMLButtonElement>('.rail__item');
+        expect(item?.getAttribute('aria-label')).toContain('Assistant-only content that identifies this loaded message');
+        expect(item?.textContent).not.toContain('Message 1');
+
+        item?.dispatchEvent(new Event('pointerover', { bubbles: true }));
+        const preview = document.getElementById('aimd-chatgpt-directory-preview');
+        expect(preview?.dataset.open).toBe('1');
+        expect(preview?.textContent).toContain('Assistant-only content');
+
+        snapshot.rounds[0] = {
+            ...snapshot.rounds[0]!,
+            assistantContent: 'Updated assistant-only content',
+        };
+        snapshot.revision = 2;
+        setCanonicalSnapshot(adapter, snapshot);
+        (controller as any).render();
+        expect(railRoot?.querySelector<HTMLButtonElement>('.rail__item')?.getAttribute('aria-label'))
+            .toContain('Updated assistant-only content');
+    });
+
+    it('shows the same bounded preview in expanded mode and preserves Unicode characters', () => {
+        const rail = new ChatGPTDirectoryRail('light', () => undefined);
+        const longText = `${'中'.repeat(210)}🧭`;
+        rail.setRounds([{
+            id: 'round-1',
+            position: 1,
+            userPrompt: longText,
+            assistantContent: 'Answer',
+            preview: longText,
+            messageId: 'a1',
+            userMessageId: 'u1',
+            assistantMessageId: 'a1',
+        }]);
+        (rail as any).setPreviewMaxChars(200);
+        rail.setDisplayMode('expanded');
+
+        const item = rail.getElement().shadowRoot?.querySelector<HTMLButtonElement>('.rail__item');
+        item?.dispatchEvent(new Event('pointerover', { bubbles: true }));
+        const preview = document.getElementById('aimd-chatgpt-directory-preview');
+        const body = preview?.querySelector<HTMLElement>('.aimd-chatgpt-directory-preview__body');
+        expect(preview?.dataset.open).toBe('1');
+        expect(body?.textContent?.endsWith('…')).toBe(true);
+        expect(body?.textContent).not.toContain('\uD83E');
+        expect(body?.textContent?.length).toBeLessThanOrEqual(201);
+        expect(preview?.style.getPropertyValue('--_directory-preview-width')).toBe('560px');
+
+        rail.setRounds([{
+            id: 'round-1',
+            position: 1,
+            userPrompt: 'Short prompt',
+            assistantContent: 'Answer',
+            preview: 'Short prompt',
+            messageId: 'a1',
+            userMessageId: 'u1',
+            assistantMessageId: 'a1',
+        }]);
+        item?.dispatchEvent(new Event('pointerover', { bubbles: true }));
+        expect(preview?.style.getPropertyValue('--_directory-preview-width')).toBe('360px');
+
+        rail.dispose();
+    });
+
+    it('keeps the preview action toolbar interactive while moving from a directory item', async () => {
+        const onReader = vi.fn(async () => ({ ok: true as const, message: 'opened' }));
+        const rail = new ChatGPTDirectoryRail('light', () => undefined);
+        rail.setPreviewActionsFactory(() => [{
+            id: 'reader',
+            label: 'Reader',
+            tooltip: 'Reader',
+            icon: 'book-open',
+            onClick: onReader,
+        }]);
+        rail.setRounds([{
+            id: 'round-1',
+            position: 1,
+            userPrompt: 'Prompt',
+            assistantContent: 'Answer',
+            preview: 'Prompt',
+            messageId: 'a1',
+            userMessageId: 'u1',
+            assistantMessageId: 'a1',
+        }]);
+
+        const list = rail.getElement().shadowRoot?.querySelector<HTMLElement>('.rail__list');
+        const item = rail.getElement().shadowRoot?.querySelector<HTMLButtonElement>('.rail__item');
+        const preview = document.getElementById('aimd-chatgpt-directory-preview');
+        item?.dispatchEvent(new Event('pointerover', { bubbles: true }));
+        list?.dispatchEvent(new Event('pointerleave', { bubbles: true }));
+        preview?.dispatchEvent(new Event('pointerenter', { bubbles: true }));
+
+        const actionButton = preview?.querySelector<HTMLElement>('.aimd-message-toolbar-host')?.shadowRoot
+            ?.querySelector<HTMLButtonElement>('[data-action="reader"]');
+        actionButton?.click();
+        await Promise.resolve();
+
+        expect(preview?.dataset.open).toBe('1');
+        expect(actionButton).toBeTruthy();
+        expect(onReader).toHaveBeenCalledOnce();
+        rail.dispose();
+    });
+
+    it('refreshes preview actions when a new message replaces the same directory position', async () => {
+        const selected = vi.fn();
+        const rail = new ChatGPTDirectoryRail('light', () => undefined);
+        rail.setPreviewActionsFactory(round => [{ id: 'reader', label: 'Reader', tooltip: 'Reader', icon: '', onClick: () => { selected(round.messageId); } }]);
+        const round = { id: 'r1', position: 1, userPrompt: 'Original prompt', assistantContent: 'Answer', preview: 'Original prompt', messageId: 'a1' };
+        rail.setRounds([round]);
+        rail.getElement().shadowRoot?.querySelector('.rail__item')?.dispatchEvent(new Event('pointerover', { bubbles: true }));
+        rail.setRounds([{ ...round, id: 'r2', messageId: 'a2', userPrompt: 'Replacement prompt', preview: 'Replacement prompt' }]);
+        const preview = document.getElementById('aimd-chatgpt-directory-preview')!;
+        expect(preview.textContent).toContain('Replacement prompt');
+        const action = preview.querySelector('.aimd-message-toolbar-host')?.shadowRoot?.querySelector<HTMLButtonElement>('[data-action="reader"]');
+        action?.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true, composed: true }));
+        action?.click();
+        await Promise.resolve();
+        expect(selected).toHaveBeenCalledWith('a2');
+        rail.dispose();
+    });
+
     it('keeps the directory rail scrollable while hiding its visual scrollbar', () => {
         const rail = new ChatGPTDirectoryRail('light', () => undefined);
 
@@ -875,7 +1012,7 @@ describe('ChatGPTDirectoryController', () => {
         const railCss = getRailCss(rail.getElement().shadowRoot);
         const previewCss = document.getElementById('aimd-chatgpt-directory-preview-style')?.textContent ?? '';
 
-        expect(previewCss).toContain('@media (max-width: 900px)');
+        expect(previewCss).toContain('@media (max-width: 560px)');
         expect(previewCss).toContain('display: none;');
         expect(railCss).toContain('@media (max-width: 720px)');
         expect(railCss).toContain('@media (max-width: 560px)');

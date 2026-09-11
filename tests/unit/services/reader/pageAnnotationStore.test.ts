@@ -54,6 +54,34 @@ describe('PageAnnotationStore', () => {
         client = makeClient();
     });
 
+    it('ignores a late load from the previous conversation', async () => {
+        let finishOld!: (value: any) => void;
+        vi.mocked(client.list).mockImplementationOnce(() => new Promise(resolve => { finishOld = resolve; }));
+        const store = new PageAnnotationStore(client);
+        const oldBind = store.bindDocument(document);
+        await store.bindDocument({ ...document, conversationId: 'conversation-2' });
+        finishOld({ ok: true, data: { entries: [{ document, annotation: { ...makeRecord({ revision: 1 }), target, lastKnownAnchorState: 'anchored' } }] } });
+        await oldBind;
+        expect(store.listForConversation()).toEqual([]);
+        store.dispose();
+    });
+
+    it('subscribes before loading so a concurrent Reader save cannot be missed', async () => {
+        let changed!: () => void;
+        let finishOld!: (value: any) => void;
+        vi.mocked(client.list).mockImplementationOnce(() => new Promise(resolve => { finishOld = resolve; }));
+        const store = new PageAnnotationStore(client, (_document, listener) => { changed = listener; return () => undefined; });
+        const binding = store.bindDocument(document);
+        expect(changed).toBeTypeOf('function');
+        vi.mocked(client.list).mockResolvedValue({ ok: true, data: { entries: [{ document, annotation: { ...makeRecord({ revision: 1 }), target, revision: 1, lastKnownAnchorState: 'anchored' } }] } });
+        changed();
+        await vi.waitFor(() => expect(store.listForConversation()).toHaveLength(1));
+        finishOld({ ok: true, data: { entries: [] } });
+        await binding;
+        expect(store.listForConversation()).toHaveLength(1);
+        store.dispose();
+    });
+
     it('keeps runtime-only records when persistence is disabled', async () => {
         const store = new PageAnnotationStore(client);
         store.setPersistEnabled(false);
@@ -153,6 +181,21 @@ describe('PageAnnotationStore', () => {
 
         expect(client.remove).not.toHaveBeenCalled();
         expect(store.listForConversation()).toHaveLength(0);
+    });
+
+    it('stops a batch deletion if the conversation changes while a request is pending', async () => {
+        const store = new PageAnnotationStore(client);
+        await store.bindDocument(document);
+        vi.mocked(client.remove).mockImplementationOnce(async () => {
+            await store.bindDocument({ ...document, conversationId: 'conversation-2' });
+            return { ok: true, data: { deleted: true } };
+        });
+        const first = makeRecord({ revision: 1, document, target });
+        const second = makeRecord({ id: 'second', revision: 1, document, target });
+        expect(await store.removeMany([first, second])).toEqual([second]);
+        expect(client.remove).toHaveBeenCalledTimes(1);
+        expect(client.remove).toHaveBeenCalledWith(document, first.id, 1);
+        store.dispose();
     });
 
     it('removeMany reports records that fail to delete', async () => {

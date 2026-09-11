@@ -350,6 +350,7 @@ if (adapter) {
         conversationSurface: chatGptConversationContentRuntime?.surface ?? null,
         conversationNavigation,
     });
+    chatGptDirectory?.setPreviewActionsFactory?.((round) => messageToolbars.getDirectoryPreviewActions(round));
     const chatGptConversationReaderBinding = conversationContentSource
         ? new ChatGPTConversationReaderBinding({
             adapter,
@@ -563,6 +564,7 @@ if (adapter) {
         };
         chatGptDirectory.setDisplayMode(next.mode === 'expanded' ? 'expanded' : 'preview');
         chatGptDirectory.setPromptLabelMode(next.promptLabelMode === 'headTail' ? 'headTail' : 'head');
+        chatGptDirectory.setPreviewMaxChars?.(next.previewMaxChars);
         chatGptDirectory.setRightInsetPx(next.rightInsetPx);
         chatGptDirectory.setEnabled(Boolean(next.enabled));
         chatGptOfficialNavigationVisibility?.setEnabled(Boolean(next.enabled && next.hideOfficialNavigation));
@@ -595,6 +597,7 @@ if (adapter) {
         chatGptMessageStepper?.setKeyboardEnabled(Boolean(next.enableArrowKeyMessageNavigation));
         chatGptPageWidth?.setScale(next.pageWidthScale);
         pageAnnotationEnabled = runtimeEnabled && Boolean(next.pageAnnotationsEnabled);
+        chatGptPageAnnotation?.setSelectionToolbarEnabled(Boolean(next.showPageSelectionToolbar));
         chatGptPageAnnotation?.setEnabled(pageAnnotationEnabled);
         syncPageSelectionCoordinator();
     };

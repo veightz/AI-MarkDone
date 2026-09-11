@@ -12,7 +12,7 @@ import {
 } from '../../../core/math/formulaSourceFormat';
 import type { SiteAdapter } from '../../../drivers/content/adapters/base';
 import type { ConversationContentSourceV1 } from '../../../contracts/conversationContent';
-import type { ConversationMaterializationPortV1 } from '../../../contracts/conversationMaterialization';
+import type { ConversationMaterializationPortV1, ConversationTargetV1 } from '../../../contracts/conversationMaterialization';
 import { buildConversationMetadata } from '../../../drivers/content/conversation/metadata';
 import { subscribeLocaleChange, t } from '../components/i18n';
 import type { ExportProgressEvent, TranslateFn, SaveFormat } from '../../../services/export/saveMessagesTypes';
@@ -111,6 +111,7 @@ export class SaveMessagesDialog {
         options?: {
             conversationContentSource?: ConversationContentSourceV1 | null;
             conversationMaterialization?: ConversationMaterializationPortV1 | null;
+            conversationTarget?: ConversationTargetV1 | null;
             startMessageElement?: HTMLElement | null;
             currentReaderItem?: ReaderItem | null;
         }
@@ -125,6 +126,9 @@ export class SaveMessagesDialog {
         }
         if (options?.conversationMaterialization) {
             readerOptions.conversationMaterialization = options.conversationMaterialization;
+        }
+        if (options?.conversationTarget) {
+            readerOptions.conversationTarget = options.conversationTarget;
         }
         const content = await collectFreshReaderContent(
             adapter,

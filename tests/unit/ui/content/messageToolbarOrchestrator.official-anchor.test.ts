@@ -204,6 +204,54 @@ describe('MessageToolbarOrchestrator Surface-driven official toolbar lifecycle',
         expect(document.querySelector('.official-toolbar')).toBeTruthy();
     });
 
+    it('creates Reader and Export actions for an unmounted canonical turn', async () => {
+        renderTurn();
+        const adapter = new FakeOfficialToolbarAdapter();
+        const source = createConversationContentSource(readyConversationState(TWO_TURN_SNAPSHOT));
+        const surface = new ChatGPTConversationSurface({ adapter, content: source });
+        const readerPanel = {
+            setTheme() {},
+            show: vi.fn(async () => undefined),
+        };
+        const saveMessagesDialog = {
+            open: vi.fn(async () => true),
+            isOpen: () => false,
+            close: vi.fn(),
+            setAppearance() {},
+            setExportSettings() {},
+            setMarkdownFormulaFormat() {},
+        } as any;
+        const orchestrator = new MessageToolbarOrchestrator(adapter, {
+            readerPanel: readerPanel as any,
+            saveMessagesDialog,
+            conversationContentSource: source,
+            conversationMaterialization: surface.materialization,
+            conversationSurface: surface,
+        });
+        harnesses.add({ adapter, source, surface, orchestrator });
+
+        const actions = orchestrator.getDirectoryPreviewActions(TWO_TURN_SNAPSHOT.rounds[1]!);
+        expect(actions.map((action) => action.id)).toEqual(['reader', 'export']);
+
+        await actions[0]!.onClick();
+        expect(readerPanel.show).toHaveBeenCalledWith(
+            expect.any(Array),
+            1,
+            expect.any(String),
+            expect.objectContaining({ profile: 'conversation-reader' }),
+        );
+
+        await actions[1]!.onClick();
+        expect(saveMessagesDialog.open).toHaveBeenCalledWith(
+            expect.anything(),
+            expect.any(String),
+            expect.objectContaining({
+                conversationTarget: expect.objectContaining({ assistantMessageId: 'm2' }),
+                currentReaderItem: expect.objectContaining({ meta: expect.objectContaining({ position: 2 }) }),
+            }),
+        );
+    });
+
     it('repairs a removed extension host through the shared PageIndex without duplicating it', async () => {
         renderTurn();
         const { orchestrator } = createHarness();

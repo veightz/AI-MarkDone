@@ -271,6 +271,10 @@
         "message": "Content not found",
         "description": "Message for contentNotFound"
     },
+    "bookmarkUnavailable": {
+        "message": "This message is not ready to bookmark",
+        "description": "Message shown when a conversation message lacks stable bookmark data"
+    },
     "copyFailed": {
         "message": "Copy failed",
         "description": "Message for copyFailed"
@@ -1494,6 +1498,14 @@
     "chatgptDirectoryRightInsetDesc": {
         "message": "Increase this spacing if the browser scrollbar overlaps the right-side directory rail.",
         "description": "Message for chatgptDirectoryRightInsetDesc"
+    },
+    "chatgptDirectoryPreviewMaxCharsLabel": {
+        "message": "Directory preview length",
+        "description": "Message for chatgptDirectoryPreviewMaxCharsLabel"
+    },
+    "chatgptDirectoryPreviewMaxCharsDesc": {
+        "message": "Choose how many characters the hover preview can show.",
+        "description": "Message for chatgptDirectoryPreviewMaxCharsDesc"
     },
     "reader": {
         "message": "Reader",
@@ -3334,6 +3346,30 @@
     "chatgptPageAnnotationsDesc": {
         "message": "Annotate selected replies directly on the page.",
         "description": "Description for the ChatGPT page annotation toggle"
+    },
+    "chatgptShowPageSelectionToolbarLabel": {
+        "message": "Show selection action buttons",
+        "description": "Toggle for the ChatGPT page selection action toolbar"
+    },
+    "chatgptShowPageSelectionToolbarDesc": {
+        "message": "Show the Copy Markdown and Add annotation buttons after selecting reply text. Turn this off if they interfere with another translation or selection tool.",
+        "description": "Description for the ChatGPT page selection action toolbar toggle"
+    },
+    "pageControls": {
+        "message": "Page controls",
+        "description": "Label for pageControls"
+    },
+    "pageAnnotationInsertAndDelete": {
+        "message": "Insert and delete",
+        "description": "Label for pageAnnotationInsertAndDelete"
+    },
+    "pageAnnotationInsertedAndDeleted": {
+        "message": "Annotations inserted and deleted",
+        "description": "Label for pageAnnotationInsertedAndDeleted"
+    },
+    "pageAnnotationInsertedDeleteFailed": {
+        "message": "Inserted. Some annotations could not be deleted and were kept.",
+        "description": "Label for pageAnnotationInsertedDeleteFailed"
     },
     "pageAnnotationInsert": {
         "message": "Insert to input",

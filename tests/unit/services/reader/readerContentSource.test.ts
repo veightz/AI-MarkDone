@@ -137,6 +137,26 @@ describe('readerContentSource', () => {
         expect(materialization.resolveElement).toHaveBeenCalledWith(messageElement);
     });
 
+    it('resolves an unmounted Reader start through canonical conversation identity', () => {
+        const source = buildSource(3);
+        const target = {
+            documentKey: toConversationSnapshotV1({ conversationId: 'conv-1', rounds: [] }).document.key,
+            turnId: 'round-2',
+            assistantMessageId: 'assistant-2',
+            userMessageId: 'user-2',
+        };
+
+        const result = readCurrentReaderContent(chatgptAdapter(), null, {
+            conversationContentSource: source,
+            conversationTarget: target,
+            pageUrl: 'https://chatgpt.com/c/conv-1',
+        });
+
+        expect(result.status).toBe('ready');
+        expect(result.startIndex).toBe(1);
+        expect(result.items[result.startIndex]?.meta?.assistantMessageId).toBe('assistant-2');
+    });
+
     it('reads the published snapshot directly for ordinary Reader actions', async () => {
         const base = buildSource(2);
         const refresh = vi.fn(async () => base.read());

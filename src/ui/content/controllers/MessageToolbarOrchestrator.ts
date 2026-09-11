@@ -5,6 +5,7 @@ import {
     type ExportSettings,
 } from '../../../core/settings/export';
 import type { SiteAdapter } from '../../../drivers/content/adapters/base';
+import type { ChatGPTConversationRound } from '../../../drivers/content/chatgpt/types';
 import { scrollToBookmarkTargetWithRetry } from '../../../drivers/content/bookmarks/navigation';
 import { discoverMessageElements } from '../../../drivers/content/injection/messageDiscovery';
 import { RouteWatcher } from '../../../drivers/content/injection/routeWatcher';
@@ -26,15 +27,16 @@ import { buildReaderItemFromTurn, stripHash as stripReaderUrl } from '../../../s
 import {
     collectFreshCurrentReaderItem,
     collectFreshReaderContent,
+    createReaderAnnotationDocument,
     isReaderContentSourceRevisionCurrent,
     readCurrentReaderContentSourceRevision,
     type FreshReaderItemResult,
     type ReaderContentSourceRevision,
 } from '../../../services/reader/readerContentSource';
 import type { ReaderItem } from '../../../services/reader/types';
+import type { ReaderAnnotationDocument } from '../../../contracts/readerAnnotations';
 import { resolveReaderReplacementIndex } from '../../../services/reader/readerItemIdentity';
 import { copyReaderItemMarkdownToClipboard, resolveReaderItemMarkdown } from '../../../services/reader/readerMarkdownCopy';
-import { prepareChatGPTBookmark } from '../../../services/bookmarks/conversationBookmarkPreparation';
 import type { CanonicalBookmarkTurnRef } from '../../../services/bookmarks/conversationBookmarkResolver';
 import { MessageToolbar, type MessageToolbarAction, type ToolbarActionContext } from '../MessageToolbar';
 import type { BookmarksPanelController } from '../bookmarks/BookmarksPanelController';
@@ -48,11 +50,13 @@ import { bookmarkIcon, copyIcon, downloadIcon, bookOpenIcon, imageIcon } from '.
 import type { BookmarkSaveDialogPort, SaveMessagesDialogPort } from '../ContentDialogPorts';
 import { resolveMessageKey, stripHash } from './messageToolbarKeys';
 import type {
+    ConversationTurnV1,
     ConversationContentSourceV1,
 } from '../../../contracts/conversationContent';
 import type { ConversationTurnReadPortV1 } from '../../../contracts/conversationDiscovery';
 import type {
     ConversationMaterializationPortV1,
+    ConversationTargetV1,
 } from '../../../contracts/conversationMaterialization';
 import type { ConversationNavigationPortV1 } from '../../../contracts/conversationNavigation';
 import { ChatGptToolbarFrameIndex } from './ChatGptToolbarFrameIndex';
@@ -110,6 +114,19 @@ type MessageToolbarBehaviorFlags = {
     showMessageToolbar: boolean;
     showSaveMessages: boolean;
     showWordCount: boolean;
+};
+
+type ConversationMessageActionTarget = {
+    messageElement: HTMLElement | null;
+    conversationTarget: ConversationTargetV1 | null;
+};
+
+type ReaderActionContent = {
+    items: ReaderItem[];
+    startIndex: number;
+    sourceRevision?: ReaderContentSourceRevision;
+    annotationDocument?: ReaderAnnotationDocument;
+    usedLocalItem: boolean;
 };
 
 export class MessageToolbarOrchestrator {
@@ -387,6 +404,35 @@ export class MessageToolbarOrchestrator {
         return (await this.prepareCurrentReaderSelectionForElement(messageElement))?.item ?? null;
     }
 
+    private async resolveReaderActionContent(target: ConversationMessageActionTarget): Promise<ReaderActionContent | null> {
+        const result = await collectFreshReaderContent(this.adapter, target.messageElement, {
+            conversationContentSource: this.conversationContentSource,
+            conversationMaterialization: this.conversationMaterialization,
+            conversationTarget: target.conversationTarget,
+            pageUrl: this.getBookmarkPageUrl(),
+        });
+        if (result.items.length > 0) {
+            return {
+                items: result.items,
+                startIndex: result.startIndex,
+                sourceRevision: result.sourceRevision,
+                annotationDocument: result.annotationDocument,
+                usedLocalItem: false,
+            };
+        }
+        if (!target.messageElement) return null;
+
+        const localItem = await this.prepareCurrentReaderSelectionForElement(target.messageElement);
+        if (!localItem) return null;
+        return {
+            items: [localItem.item],
+            startIndex: 0,
+            sourceRevision: localItem.sourceRevision,
+            annotationDocument: createReaderAnnotationDocument(this.conversationContentSource?.read().document, this.getBookmarkPageUrl()),
+            usedLocalItem: true,
+        };
+    }
+
     private async getReaderTurnForElement(messageElement: HTMLElement): Promise<{ user: string; assistant: string; index: number } | null> {
         const item = await this.prepareCurrentReaderItemForElement(messageElement);
         if (!item || item.meta?.sourceQuality === 'reconstructed') return null;
@@ -420,17 +466,16 @@ export class MessageToolbarOrchestrator {
 
     private async runBookmarkToggle(params: BookmarkToggleParams): Promise<BookmarkToggleResult> {
         if (!this.bookmarksController) return { ok: false, message: t('contentNotFound') };
-        if (!params.position) return { ok: false, message: t('positionNotAvailable') };
-        const sourceRevision = params.sourceRevision ?? this.captureCurrentSourceRevision();
-        if (!this.isSourceRevisionCurrent(sourceRevision)) {
-            return { ok: false, message: t('contentNotFound') };
+        let sourceRevision = params.sourceRevision ?? this.captureCurrentSourceRevision();
+        if (this.adapter.getPlatformId() === 'chatgpt') {
+            const canonical = this.resolveCanonicalBookmarkInput(params, sourceRevision);
+            if (!canonical) return { ok: false, message: t('bookmarkUnavailable') };
+            params = canonical.params;
+            sourceRevision = canonical.sourceRevision;
         }
-        if (
-            this.adapter.getPlatformId() === 'chatgpt'
-            && this.conversationContentSource
-            && !this.conversationContentSource.read().snapshot
-        ) {
-            return { ok: false, message: t('contentNotFound') };
+        if (!params.position) return { ok: false, message: t('positionNotAvailable') };
+        if (!this.isSourceRevisionCurrent(sourceRevision)) {
+            return { ok: false, message: t('bookmarkUnavailable') };
         }
 
         const userPrompt = params.userPrompt.trim();
@@ -450,10 +495,10 @@ export class MessageToolbarOrchestrator {
                 this.adapter.getPlatformId() === 'chatgpt'
                 && (!params.userPrompt.trim() || !params.markdown.trim())
             ) {
-                return { ok: false, message: t('contentNotFound') };
+                return { ok: false, message: t('bookmarkUnavailable') };
             }
             if (this.adapter.getPlatformId() === 'chatgpt' && !params.messageId?.trim()) {
-                return { ok: false, message: t('contentNotFound') };
+                return { ok: false, message: t('bookmarkUnavailable') };
             }
             const currentFolderPath = this.bookmarksController.getDefaultFolderPath();
             const dialogRes = await this.bookmarkSaveDialog!.open({
@@ -464,11 +509,11 @@ export class MessageToolbarOrchestrator {
                 mode: 'create',
             });
             if (!dialogRes.ok) return { ok: false, cancelled: true };
-            if (!this.isSourceRevisionCurrent(sourceRevision)) {
-                return { ok: false, message: t('contentNotFound') };
+            if (!this.isBookmarkInputCurrent(params, sourceRevision)) {
+                return { ok: false, message: t('bookmarkUnavailable') };
             }
             if (this.getBookmarkPageUrl() !== params.url) {
-                return { ok: false, message: t('contentNotFound') };
+                return { ok: false, message: t('bookmarkUnavailable') };
             }
 
             const saveRes = await this.bookmarksController.setPositionBookmarkSaved({
@@ -492,11 +537,11 @@ export class MessageToolbarOrchestrator {
             };
         }
 
-        if (!this.isSourceRevisionCurrent(sourceRevision)) {
-            return { ok: false, message: t('contentNotFound') };
+        if (!this.isBookmarkInputCurrent(params, sourceRevision)) {
+            return { ok: false, message: t('bookmarkUnavailable') };
         }
         if (this.getBookmarkPageUrl() !== params.url) {
-            return { ok: false, message: t('contentNotFound') };
+            return { ok: false, message: t('bookmarkUnavailable') };
         }
         const title = userPrompt.length > 50 ? `${userPrompt.slice(0, 50)}...` : userPrompt;
         const removeRes = await this.bookmarksController.setPositionBookmarkSaved({
@@ -519,16 +564,104 @@ export class MessageToolbarOrchestrator {
         };
     }
 
+    private resolveCanonicalBookmarkInput(
+        params: BookmarkToggleParams,
+        sourceRevision: ReaderContentSourceRevision | undefined,
+    ): { params: BookmarkToggleParams; sourceRevision: ReaderContentSourceRevision } | null {
+        const source = this.conversationContentSource;
+        const state = source?.read();
+        const snapshot = state?.snapshot;
+        if (!source || !state?.document?.conversationId || !snapshot) return null;
+        if (state.document.key !== snapshot.document.key) return null;
+        const currentRevision = this.captureCurrentSourceRevision();
+        if (!sourceRevision || !currentRevision
+            || sourceRevision.conversationId !== currentRevision.conversationId
+            || sourceRevision.routeEpoch !== currentRevision.routeEpoch) return null;
+
+        const position = Number(params.position);
+        const messageId = params.messageId?.trim() || '';
+        if (!Number.isInteger(position) || position <= 0 || !messageId) return null;
+
+        const turn = snapshot.turns.find((candidate) => (
+            candidate.ordinal === position
+            && candidate.identity.assistantMessageId === messageId
+        ));
+        if (!turn) return null;
+
+        const userPrompt = turn.userText.trim();
+        const markdown = turn.assistantMarkdown.trim();
+        if (!userPrompt || !markdown) return null;
+        if (params.userPrompt.trim() !== userPrompt || params.markdown.trim() !== markdown) return null;
+
+        return {
+            params: {
+                ...params,
+                position,
+                messageId,
+                userPrompt,
+                markdown,
+                sourceRevision: currentRevision,
+            },
+            sourceRevision: currentRevision,
+        };
+    }
+
+    private isBookmarkInputCurrent(params: BookmarkToggleParams, revision: ReaderContentSourceRevision | undefined): boolean {
+        // Unrelated turns may advance the pool while the save dialog is open.
+        // Recheck the exact message and body instead of rejecting the whole revision.
+        return this.adapter.getPlatformId() === 'chatgpt'
+            ? this.resolveCanonicalBookmarkInput(params, revision) !== null
+            : this.isSourceRevisionCurrent(revision);
+    }
+
+    private isBookmarkableReaderItem(item: ReaderItem): boolean {
+        const meta = item.meta;
+        const position = Number(meta?.position ?? 0);
+        const messageId = String(meta?.messageId ?? '').trim()
+            || String(meta?.assistantMessageId ?? '').trim();
+        if (!Number.isInteger(position) || position <= 0 || !messageId || !item.userPrompt.trim()) return false;
+        if (this.adapter.getPlatformId() !== 'chatgpt') return meta?.bookmarkable !== false;
+
+        const state = this.conversationContentSource?.read();
+        const snapshot = state?.snapshot;
+        if (!state?.document?.conversationId || !snapshot || meta?.bookmarkable === false) return false;
+        const turn = snapshot.turns.find((candidate) => (
+            candidate.ordinal === position
+            && candidate.identity.assistantMessageId === messageId
+        ));
+        return Boolean(turn?.userText.trim() && turn.assistantMarkdown.trim());
+    }
+
+    private readCanonicalBookmarkTurnForElement(messageElement: HTMLElement): ConversationTurnV1 | null {
+        if (this.adapter.getPlatformId() !== 'chatgpt') return null;
+        const source = this.conversationContentSource;
+        const state = source?.read();
+        const snapshot = state?.snapshot;
+        const document = state?.document;
+        const target = this.conversationMaterialization?.resolveElement(messageElement) ?? null;
+        if (!document?.conversationId || !snapshot || !target || target.documentKey !== snapshot.document.key) return null;
+        return snapshot.turns.find((turn) => (
+            turn.identity.turnId === target.turnId
+            && turn.identity.assistantMessageId === target.assistantMessageId
+            && (target.userMessageId === undefined || turn.identity.userMessageId === target.userMessageId)
+            && turn.ordinal > 0
+            && turn.userText.trim().length > 0
+            && turn.assistantMarkdown.trim().length > 0
+        )) ?? null;
+    }
+
     private decorateReaderItems(items: Array<{ meta?: Record<string, unknown> }>): void {
         if (!this.bookmarksController) return;
         const url = this.getBookmarkPageUrl();
         const resolvedBookmarkPositions = this.resolveCanonicalBookmarkPositions(url);
         for (const item of items) {
             const position = Number(item.meta?.position ?? 0);
+            const bookmarkable = position > 0
+                && (this.adapter.getPlatformId() !== 'chatgpt' || Boolean(this.getAvailableBookmarkUrl()));
             item.meta = {
                 ...(item.meta || {}),
                 url,
-                bookmarkable: position > 0,
+                bookmarkable,
                 bookmarked: position > 0
                     ? this.isBookmarkActive(url, position, resolvedBookmarkPositions)
                     : false,
@@ -569,7 +702,11 @@ export class MessageToolbarOrchestrator {
         return resolveReaderReplacementIndex(currentItem, items, fallbackIndex);
     }
 
-    private async refreshConversationReader(messageElement: HTMLElement, ctx: ReaderPanelActionContext): Promise<void> {
+    private async refreshConversationReader(
+        messageElement: HTMLElement | null,
+        ctx: ReaderPanelActionContext,
+        conversationTarget: ConversationTargetV1 | null = null,
+    ): Promise<void> {
         // This is the explicit Reader Refresh action.  Ordinary Reader and
         // export clicks use the published snapshot through the compatibility
         // collector without entering this path.
@@ -584,6 +721,7 @@ export class MessageToolbarOrchestrator {
         const result = await collectFreshReaderContent(this.adapter, null, {
             conversationContentSource: this.conversationContentSource,
             conversationMaterialization: this.conversationMaterialization,
+            conversationTarget,
             pageUrl: this.getBookmarkPageUrl(),
         });
         const { items } = result;
@@ -601,19 +739,23 @@ export class MessageToolbarOrchestrator {
         await this.readerPanel.show(items, nextIndex, this.appearance.theme, {
             profile: 'conversation-reader',
             annotationDocument: result.annotationDocument,
-            actions: this.getReaderActions(messageElement),
+            actions: this.getReaderActions(messageElement, conversationTarget),
         });
     }
 
-    private getReaderActions(messageElement: HTMLElement): ReaderPanelAction[] {
+    private getReaderActions(
+        messageElement: HTMLElement | null,
+        conversationTarget: ConversationTargetV1 | null = null,
+    ): ReaderPanelAction[] {
         return createConversationReaderActions({
             refresh: {
-                refresh: (ctx) => this.refreshConversationReader(messageElement, ctx),
+                refresh: (ctx) => this.refreshConversationReader(messageElement, ctx, conversationTarget),
             },
             bookmark: this.bookmarksController
                 ? {
                     resolveUrl: () => this.getBookmarkPageUrl(),
                     isBookmarked: (url, position) => this.isBookmarkActive(url, position),
+                    isAvailable: (item) => this.isBookmarkableReaderItem(item),
                     toggle: (input) => this.runBookmarkToggle(input),
                 }
                 : null,
@@ -824,6 +966,23 @@ export class MessageToolbarOrchestrator {
         this.resolvedPngPixelRatio = resolvePngExportPixelRatio(settings);
     }
 
+    getDirectoryPreviewActions(round: ChatGPTConversationRound): MessageToolbarAction[] {
+        if (this.adapter.getPlatformId() !== 'chatgpt' || !this.conversationSurface) return [];
+        const entry = this.conversationSurface.readFrame().obtainedTurns.find((candidate) => (
+            candidate.turn.identity.turnId === round.id
+            && candidate.turn.identity.assistantMessageId === (round.assistantMessageId ?? round.messageId)
+        ));
+        if (!entry) return [];
+        const target: ConversationMessageActionTarget = {
+            messageElement: entry.materialization?.messageElement ?? null,
+            conversationTarget: entry.target,
+        };
+        const actions = [this.createReaderAction(target)];
+        const exportAction = this.createExportAction(target);
+        if (exportAction) actions.push(exportAction);
+        return actions;
+    }
+
     private getPositionForMessage(messageElement: HTMLElement): number {
         const canonical = this.resolveCanonicalPosition(messageElement);
         if (canonical !== null) return canonical;
@@ -863,6 +1022,75 @@ export class MessageToolbarOrchestrator {
         }
     }
 
+    private createReaderAction(target: ConversationMessageActionTarget): MessageToolbarAction {
+        return {
+            id: 'reader',
+            label: t('btnReader'),
+            tooltip: t('btnReader'),
+            icon: bookOpenIcon,
+            kind: 'secondary',
+            disabledWhenPending: true,
+            onClick: async () => {
+                const guard = target.messageElement ? this.guardMessageReady(target.messageElement) : null;
+                if (guard) return guard;
+                const content = await this.resolveReaderActionContent(target);
+                if (!content) return { ok: false, message: t('contentNotFound') };
+                const { items, startIndex, sourceRevision, usedLocalItem } = content;
+                if (!usedLocalItem && !this.isSourceRevisionCurrent(sourceRevision)) {
+                    return { ok: false, message: t('contentNotFound') };
+                }
+                this.decorateReaderItems(items as Array<{ meta?: Record<string, unknown> }>);
+                await this.readerPanel.show(items, startIndex, this.appearance.theme, {
+                    profile: 'conversation-reader',
+                    annotationDocument: content.annotationDocument,
+                    actions: this.getReaderActions(
+                        target.messageElement,
+                        target.messageElement ? null : target.conversationTarget,
+                    ),
+                });
+            },
+        };
+    }
+
+    private createExportAction(target: ConversationMessageActionTarget): MessageToolbarAction | null {
+        if (!this.behavior.showSaveMessages || !this.saveMessagesDialog) return null;
+        return {
+            id: 'export',
+            label: t('btnExport'),
+            tooltip: t('btnExport'),
+            icon: downloadIcon,
+            kind: 'secondary',
+            disabledWhenPending: true,
+            onClick: async () => {
+                const guard = target.messageElement ? this.guardMessageReady(target.messageElement) : null;
+                if (guard) return guard;
+                const currentReaderItem = target.messageElement
+                    ? await this.prepareCurrentReaderItemForElement(target.messageElement)
+                    : await this.resolveReaderItemForTarget(target.conversationTarget);
+                if (!currentReaderItem) return { ok: false, message: t('contentNotFound') };
+                const opened = await this.saveMessagesDialog!.open(this.adapter, this.appearance.theme, {
+                    conversationContentSource: this.conversationContentSource,
+                    conversationMaterialization: this.conversationMaterialization,
+                    conversationTarget: target.conversationTarget,
+                    startMessageElement: target.messageElement,
+                    currentReaderItem,
+                });
+                if (opened === false) return { ok: false, message: t('contentNotFound') };
+            },
+        };
+    }
+
+    private async resolveReaderItemForTarget(target: ConversationTargetV1 | null): Promise<ReaderItem | null> {
+        if (!target) return null;
+        const result = await collectFreshReaderContent(this.adapter, null, {
+            conversationContentSource: this.conversationContentSource,
+            conversationMaterialization: this.conversationMaterialization,
+            conversationTarget: target,
+            pageUrl: this.getBookmarkPageUrl(),
+        });
+        return result.items[result.startIndex] ?? null;
+    }
+
     private getActionsForMessage(messageElement: HTMLElement, getToolbar: () => MessageToolbar | null): MessageToolbarAction[] {
         const actions: MessageToolbarAction[] = [];
 
@@ -879,53 +1107,52 @@ export class MessageToolbarOrchestrator {
                     if (guard) return guard;
                     const toolbar = getToolbar();
                     const url = this.getBookmarkPageUrl();
+                    const target: ConversationMessageActionTarget = {
+                        messageElement,
+                        conversationTarget: this.conversationMaterialization?.resolveElement(messageElement) ?? null,
+                    };
+                    let item: ReaderItem | null = null;
+                    let sourceRevision: ReaderContentSourceRevision | undefined;
                     if (this.adapter.getPlatformId() === 'chatgpt') {
-                        const source = this.conversationContentSource;
-                        const materialization = this.conversationMaterialization;
-                        if (!source || !materialization) return { ok: false, message: t('contentNotFound') };
-                        const prepared = await prepareChatGPTBookmark(source, materialization, messageElement);
-                        if (!prepared) return { ok: false, message: t('contentNotFound') };
-                        const result = await this.runBookmarkToggle({
-                            url,
-                            position: prepared.position,
-                            messageId: prepared.messageId,
-                            userPrompt: prepared.userMessage,
-                            markdown: prepared.assistantMarkdown,
-                            sourceRevision: {
-                                routeEpoch: 0,
-                                revision: 0,
-                                conversationId: source.read().document?.conversationId ?? '',
-                                contentToken: prepared.contentRevision,
-                            },
-                        });
-                        if (!result.ok) {
-                            if (result.cancelled) return;
-                            return { ok: false, message: result.message ?? t('contentNotFound') };
-                        }
-                        toolbar?.setActionActive('bookmark_toggle', result.bookmarked);
-                        if (result.saved && result.folderPath) {
-                            this.bookmarksController!.selectFolder(result.folderPath);
-                            return;
-                        }
-                        return { ok: true, message: result.message };
+                        const content = await this.resolveReaderActionContent(target);
+                        item = content?.items[content.startIndex] ?? null;
+                        sourceRevision = content?.sourceRevision;
+                    } else {
+                        const selection = await this.prepareCurrentReaderSelectionForElement(messageElement);
+                        item = selection?.item ?? null;
+                        sourceRevision = selection?.sourceRevision;
                     }
-                    const selection = await this.prepareCurrentReaderSelectionForElement(messageElement);
-                    if (!selection) return { ok: false, message: t('contentNotFound') };
-                    const { item, sourceRevision } = selection;
-                    if (item.meta?.sourceQuality === 'reconstructed') {
-                        return { ok: false, message: t('contentNotFound') };
+                    if (!item) {
+                        return {
+                            ok: false,
+                            message: this.adapter.getPlatformId() === 'chatgpt'
+                                ? t('bookmarkUnavailable')
+                                : t('contentNotFound'),
+                        };
+                    }
+                    if (!this.isBookmarkableReaderItem(item)) {
+                        return {
+                            ok: false,
+                            message: this.adapter.getPlatformId() === 'chatgpt'
+                                ? t('bookmarkUnavailable')
+                                : t('positionNotAvailable'),
+                        };
                     }
                     const position = this.adapter.getPlatformId() === 'chatgpt'
                         ? Number(item.meta?.position ?? 0)
                         : this.getPositionForMessage(messageElement);
                     if (!Number.isInteger(position) || position <= 0) {
-                        return { ok: false, message: t('positionNotAvailable') };
+                        return {
+                            ok: false,
+                            message: this.adapter.getPlatformId() === 'chatgpt'
+                                ? t('bookmarkUnavailable')
+                                : t('positionNotAvailable'),
+                        };
                     }
-                    const messageId = String(
-                        this.adapter.getPlatformId() === 'chatgpt'
-                            ? item.meta?.assistantMessageId ?? item.meta?.messageId ?? ''
-                            : this.adapter.getMessageId(messageElement) ?? '',
-                    ).trim() || null;
+                    const messageId = String(item.meta?.messageId ?? '').trim()
+                        || String(item.meta?.assistantMessageId ?? '').trim()
+                        || String(this.adapter.getMessageId(messageElement) ?? '').trim()
+                        || null;
                     const markdown = await resolveReaderItemMarkdown(item);
                     const result = await this.runBookmarkToggle({
                         url,
@@ -937,7 +1164,14 @@ export class MessageToolbarOrchestrator {
                     });
                     if (!result.ok) {
                         if (result.cancelled) return;
-                        return { ok: false, message: result.message ?? t('contentNotFound') };
+                        return {
+                            ok: false,
+                            message: result.message ?? (
+                                this.adapter.getPlatformId() === 'chatgpt'
+                                    ? t('bookmarkUnavailable')
+                                    : t('contentNotFound')
+                            ),
+                        };
                     }
 
                     toolbar?.setActionActive('bookmark_toggle', result.bookmarked);
@@ -1054,69 +1288,13 @@ export class MessageToolbarOrchestrator {
         }
         actions.push(copyMarkdownAction);
 
-        actions.push({
-            id: 'reader',
-            label: t('btnReader'),
-            tooltip: t('btnReader'),
-            icon: bookOpenIcon,
-            kind: 'secondary',
-            disabledWhenPending: true,
-            onClick: async () => {
-                const guard = this.guardMessageReady(messageElement);
-                if (guard) return guard;
-                const itemsResult = await collectFreshReaderContent(this.adapter, messageElement, {
-                    conversationContentSource: this.conversationContentSource,
-                    conversationMaterialization: this.conversationMaterialization,
-                    pageUrl: this.getBookmarkPageUrl(),
-                });
-                let { items, startIndex } = itemsResult;
-                let usedLocalItem = false;
-                if (items.length === 0) {
-                    const localItem = await this.prepareCurrentReaderItemForElement(messageElement);
-                    if (!localItem) return { ok: false, message: t('contentNotFound') };
-                    items = [localItem];
-                    startIndex = 0;
-                    usedLocalItem = true;
-                }
-                const shouldValidateSourceRevision = itemsResult.status === undefined
-                    || (itemsResult.status === 'ready' && !usedLocalItem);
-                if (shouldValidateSourceRevision && !this.isSourceRevisionCurrent(itemsResult.sourceRevision)) {
-                    return { ok: false, message: t('contentNotFound') };
-                }
-                this.decorateReaderItems(items as Array<{ meta?: Record<string, unknown> }>);
-                await this.readerPanel.show(items, startIndex, this.appearance.theme, {
-                    profile: 'conversation-reader',
-                    annotationDocument: itemsResult.annotationDocument,
-                    actions: this.getReaderActions(messageElement) as any,
-                });
-            },
-        });
-
-        if (this.behavior.showSaveMessages && this.saveMessagesDialog) {
-            actions.push({
-                id: 'export',
-                label: t('btnExport'),
-                tooltip: t('btnExport'),
-                icon: downloadIcon,
-                kind: 'secondary',
-                disabledWhenPending: true,
-                onClick: async () => {
-                    const guard = this.guardMessageReady(messageElement);
-                    if (guard) return guard;
-                    const currentReaderItem = await this.prepareCurrentReaderItemForElement(messageElement);
-                    if (!currentReaderItem) return { ok: false, message: t('contentNotFound') };
-                    const opened = await this.saveMessagesDialog!.open(this.adapter, this.appearance.theme, {
-                        conversationContentSource: this.conversationContentSource,
-                        conversationMaterialization: this.conversationMaterialization,
-                        startMessageElement: messageElement,
-                        currentReaderItem,
-                    });
-                    if (opened === false) {
-                        return { ok: false, message: t('contentNotFound') };
-                    }
-                },
-            });
-        }
+        const target: ConversationMessageActionTarget = {
+            messageElement,
+            conversationTarget: this.conversationMaterialization?.resolveElement(messageElement) ?? null,
+        };
+        actions.push(this.createReaderAction(target));
+        const exportAction = this.createExportAction(target);
+        if (exportAction) actions.push(exportAction);
 
         return actions;
     }
@@ -1423,8 +1601,14 @@ export class MessageToolbarOrchestrator {
             return;
         }
 
-        const indexedPosition = this.chatGptFrameIndex.read(messageElement)?.position
-            ?? this.resolveCanonicalPosition(messageElement);
+        const canonicalTurn = this.readCanonicalBookmarkTurnForElement(messageElement);
+        if (!canonicalTurn) {
+            toolbar.setActionActive('bookmark_toggle', false);
+            toolbar.setActionDisabled('bookmark_toggle', true);
+            return;
+        }
+        toolbar.setActionDisabled('bookmark_toggle', false);
+        const indexedPosition = canonicalTurn.ordinal;
         const resolvedBookmarkPositions = this.frameBookmarkUrl === url
             ? this.frameBookmarkPositions
             : this.resolveCanonicalBookmarkPositions(url);

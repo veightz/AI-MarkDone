@@ -23,6 +23,7 @@ type OpenParams = {
     onSelect: (record: ReaderCommentRecord) => void;
     onDelete: (record: ReaderCommentRecord) => Promise<boolean>;
     onInsertAll: (records: ReaderCommentRecord[]) => void | Promise<void>;
+    onInsertAndDelete?: (records: ReaderCommentRecord[]) => void | Promise<void>;
 };
 
 const ANCHOR_GAP_PX = 8;
@@ -103,9 +104,11 @@ export class PageAnnotationManagerPopover {
     private allRecords: ReaderCommentRecord[] = [];
     private loadedAll = false;
     private loadingAll = false;
+    private allLoadGeneration = 0;
     private allLoadFailed = false;
     private pendingSelection: ReaderCommentRecord | null = null;
     private pendingInsertRecords: ReaderCommentRecord[] | null = null;
+    private pendingInsertDeletes = false;
     private lastVisibleRecordsKey: string | null = null;
     private lastVisibleRecords: ReaderCommentRecord[] = [];
     private lastListRenderKey: string | null = null;
@@ -118,6 +121,15 @@ export class PageAnnotationManagerPopover {
         this.closeModal?.();
     }
 
+    refresh(): void {
+        if (!this.isOpen()) return;
+        this.loadedAll = false;
+        this.loadingAll = false;
+        this.allLoadGeneration += 1;
+        if (this.view === 'all') void this.setView('all');
+        else this.render();
+    }
+
     open(params: OpenParams): void {
         this.close();
         this.params = params;
@@ -126,9 +138,11 @@ export class PageAnnotationManagerPopover {
         this.allRecords = [];
         this.loadedAll = false;
         this.loadingAll = false;
+        this.allLoadGeneration += 1;
         this.allLoadFailed = false;
         this.pendingSelection = null;
         this.pendingInsertRecords = null;
+        this.pendingInsertDeletes = false;
         this.lastVisibleRecordsKey = null;
         this.lastVisibleRecords = [];
         this.lastListRenderKey = null;
@@ -190,15 +204,18 @@ export class PageAnnotationManagerPopover {
                 footer.appendChild(closeButton);
             },
             onClosed: () => {
+                this.allLoadGeneration += 1;
                 const selected = this.pendingSelection;
                 const insertRecords = this.pendingInsertRecords;
+                const insert = this.pendingInsertDeletes ? params.onInsertAndDelete : params.onInsertAll;
                 this.pendingSelection = null;
                 this.pendingInsertRecords = null;
+                this.pendingInsertDeletes = false;
                 this.rootEl = null;
                 this.closeModal = null;
                 this.params = null;
                 if (selected) params.onSelect(selected);
-                if (insertRecords && insertRecords.length > 0) void params.onInsertAll(insertRecords);
+                if (insertRecords && insertRecords.length > 0) void insert?.(insertRecords);
             },
         });
         // The modal shell appends the dialog synchronously; anchor it next to
@@ -219,19 +236,23 @@ export class PageAnnotationManagerPopover {
         this.view = view;
         this.lastListRenderKey = null;
         if (view === 'all' && !this.loadedAll && !this.loadingAll) {
+            const generation = ++this.allLoadGeneration;
             this.loadingAll = true;
             const items = this.rootEl?.querySelector<HTMLElement>('[data-role="items"]');
             if (items) items.innerHTML = `<div class="page-annotation-manager__loading">${this.getLabel('pageAnnotationManagerLoading', 'Loading annotations…')}</div>`;
             try {
-                this.allRecords = await this.params?.loadAll() ?? [];
+                const records = await this.params?.loadAll() ?? [];
+                if (generation !== this.allLoadGeneration) return;
+                this.allRecords = records;
                 this.loadedAll = true;
                 this.allLoadFailed = false;
             } catch {
+                if (generation !== this.allLoadGeneration) return;
                 this.allRecords = [];
                 this.loadedAll = true;
                 this.allLoadFailed = true;
             } finally {
-                this.loadingAll = false;
+                if (generation === this.allLoadGeneration) this.loadingAll = false;
             }
         }
         this.render();
@@ -365,6 +386,20 @@ export class PageAnnotationManagerPopover {
             this.closeModal?.();
         });
         actions.appendChild(insertAll);
+        if (this.params.onInsertAndDelete) {
+            const insertAndDelete = document.createElement('button');
+            insertAndDelete.type = 'button';
+            insertAndDelete.className = 'mock-modal__button mock-modal__button--secondary';
+            insertAndDelete.dataset.action = 'page-annotation-insert-and-delete';
+            insertAndDelete.textContent = this.getLabel('pageAnnotationInsertAndDelete', 'Insert and delete');
+            insertAndDelete.disabled = total < 1;
+            insertAndDelete.addEventListener('click', () => {
+                this.pendingInsertRecords = this.getViewRecords();
+                this.pendingInsertDeletes = true;
+                this.closeModal?.();
+            });
+            actions.appendChild(insertAndDelete);
+        }
     }
 
     private createRow(record: ReaderCommentRecord): HTMLElement {

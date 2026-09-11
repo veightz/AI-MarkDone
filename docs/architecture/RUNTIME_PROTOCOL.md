@@ -241,7 +241,7 @@ Repository 在当前标签页内维护 `Map<conversationKey, ConversationPool>`�
 
 - settings 读取、分类更新、重置
 - settings UI 只把成功读取的规范化结果视为 canonical state；断连时保留 last-good、锁定编辑并显示恢复动作，不能用默认值伪装成功，也不能在写入失败时保留 optimistic state
-- `chatgptBehavior` 是 ChatGPT page-behavior / input-behavior 类开关的 settings SSOT；background 只通过 `settings:setCategory` 持久化该 category，content runtime 与 Reader runtime 读取规范化后的 settings 并把 `chatgptBehavior.promptAutocomplete` 同步给 `ChatGPTPromptAutocompleteController`
+- `chatgptBehavior` 是 ChatGPT page-behavior / input-behavior 类开关的 settings SSOT；background 只通过 `settings:setCategory` 持久化该 category，content runtime 与 Reader runtime 读取规范化后的 settings，并把 `chatgptBehavior.promptAutocomplete` 与 `chatgptBehavior.showPageSelectionToolbar` 分别同步给对应的页面消费者
 - `chatgptBehavior.promptAutocomplete` 默认开启，只控制 ChatGPT composer 与 Reader SendPopover 输入 `\` 时是否自动显示候选；关闭后不读取或写入 Prompt Library，不改变 Prompt 启用状态、triggerText、排序或手动 Prompt manager 入口
 
 ### Bookmarks

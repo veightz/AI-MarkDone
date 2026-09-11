@@ -116,6 +116,21 @@ describe('PageAnnotationManagerPopover', () => {
         expect(dialog.querySelector('[data-action="page-annotation-insert-all"]')?.textContent).toBe('Insert to input');
     });
 
+    it('ignores a stale all-view read when annotations refresh during loading', async () => {
+        let resolveOld!: (records: ReaderCommentRecord[]) => void;
+        const loadAll = vi.fn().mockImplementationOnce(() => new Promise(resolve => { resolveOld = resolve; }))
+            .mockResolvedValueOnce([record('new')]);
+        const { manager, shadow } = await openManager({ getCurrentRecords: () => [], loadAll });
+        const all = shadow.querySelector<HTMLButtonElement>('[data-view="all"]')!;
+        all.click();
+        manager.refresh();
+        await vi.waitFor(() => expect(shadow.querySelector('.page-annotation-manager__comment')?.textContent).toBe('Comment new'));
+        resolveOld([record('old')]);
+        await Promise.resolve();
+        expect(shadow.querySelector('.page-annotation-manager__comment')?.textContent).toBe('Comment new');
+        manager.close();
+    });
+
     it('shows a retryable error instead of an empty all-annotations state when loading fails', async () => {
         let attempts = 0;
         const { shadow } = await openManager({
