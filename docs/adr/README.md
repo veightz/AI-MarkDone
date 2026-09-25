@@ -41,3 +41,5 @@
 - Status
 
 模板见 `docs/adr/ADR_TEMPLATE.md`。
+
+云备份从书签扩展到完整资料库的版本、兼容、合并与恢复边界见 [ADR-0031-complete-library-cloud-backup.md](ADR-0031-complete-library-cloud-backup.md)。该决策先于实现提交；`CURRENT_STATE.md` 在代码落地前仍描述现有的书签备份。
