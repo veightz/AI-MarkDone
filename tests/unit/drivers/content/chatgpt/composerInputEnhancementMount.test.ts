@@ -38,6 +38,17 @@ describe('findChatGPTComposerInputEnhancementMount', () => {
         });
     });
 
+    it('mounts beside the current ChatGPT add-context button without relying on its localized label', () => {
+        document.body.innerHTML = '<form data-chatgpt-composer><div class="actions"><div><span><button data-composer-navigation-target="add-context" aria-label="添加文件等内容"></button></span></div></div><div data-composer-markdown contenteditable="true"></div></form>';
+        const composer = document.querySelector<HTMLElement>('[data-composer-markdown]')!;
+        const plus = document.querySelector<HTMLButtonElement>('[data-composer-navigation-target="add-context"]')!;
+        expect(findChatGPTComposerInputEnhancementMount(composer)).toMatchObject({
+            container: plus.parentElement!.parentElement,
+            anchor: plus.parentElement,
+            plusButton: plus,
+        });
+    });
+
     it('does not mount from a localized label alone', () => {
         const form = document.createElement('form');
         const plus = document.createElement('button');

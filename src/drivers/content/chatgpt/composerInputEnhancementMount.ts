@@ -41,7 +41,7 @@ export function findChatGPTComposerInputEnhancementMount(
     const form = composer.closest('form');
     if (!form) return null;
     const plusButton = form.querySelector<HTMLButtonElement>(
-        'button[data-testid="composer-plus-btn"], button#composer-plus-btn',
+        'button[data-composer-navigation-target="add-context"], button[data-testid="composer-plus-btn"], button#composer-plus-btn',
     );
     if (!plusButton?.parentElement) return null;
     const officialContainer = plusButton.parentElement;

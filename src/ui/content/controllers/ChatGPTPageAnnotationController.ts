@@ -54,6 +54,8 @@ import { ReaderCommentPopover } from '../reader/ReaderCommentPopover';
 import { OverlaySession } from '../overlay/OverlaySession';
 import { showToast } from '../../../utils/toast';
 import { t } from '../components/i18n';
+import { getRuntimeFailurePresentation } from '../components/runtimeFailurePresentation';
+import { RuntimeClientRequestError } from '../../../drivers/shared/clients/clientResult';
 import { isHighlightableTextSelection } from '../../../services/reader/highlightSelection';
 
 const ID_PREFIX = 'comment-';
@@ -99,15 +101,15 @@ import type { HighlightColor } from '../../../contracts/highlights';
 export class ChatGPTPageAnnotationController {
     private initialized = false;
     private featureEnabled = false;
-    private chipVisible = false;
     private appearance: AppearanceSnapshot;
     private persistEnabled = false;
     private selectionToolbarEnabled = true;
     private annotationsEnabled = true;
     private highlightSaving = false;
-    private readonly highlights = new HighlightSession(() => this.syncAnnotationSurface(), () => {
-        showToast({text: t('highlightLoadFailed'), tone: 'error'});
-    });
+    private readonly highlights = new HighlightSession(
+        () => this.syncAnnotationSurface(),
+        error => this.showHighlightError(error, 'highlightLoadFailed', 'Could not load highlights'),
+    );
     private commentExportSettings: ReaderCommentExportSettings = createDefaultReaderCommentExportSettings();
 
     private readonly contentSource: ConversationContentSourceV1 | null;
@@ -132,6 +134,7 @@ export class ChatGPTPageAnnotationController {
     private lastKey = '';
     private toolbarKey: string | null = null;
     private activeAnnotationId: string | null = null;
+    private activeHighlightId: string | null = null;
     private pointerAnchor: PointerAnchor | null = null;
     private pointerSelectionActive = false;
     private toolbarActionActive = false;
@@ -221,6 +224,7 @@ export class ChatGPTPageAnnotationController {
         document.addEventListener('pointercancel', this.handlePointerCancel, true);
         document.addEventListener('keydown', this.handleKeyDown, true);
         document.addEventListener('focusin', this.handleFocusIn, true);
+        document.addEventListener('scroll', this.handleMarkerScroll, true);
         window.addEventListener('resize', this.handleResize);
         if (this.contentSource) this.unsubscribes.push(this.contentSource.subscribe(this.handleSourceChanged));
         if (this.materialization) this.unsubscribes.push(this.materialization.subscribe(this.handleSourceChanged));
@@ -237,6 +241,7 @@ export class ChatGPTPageAnnotationController {
         document.removeEventListener('pointercancel', this.handlePointerCancel, true);
         document.removeEventListener('keydown', this.handleKeyDown, true);
         document.removeEventListener('focusin', this.handleFocusIn, true);
+        document.removeEventListener('scroll', this.handleMarkerScroll, true);
         window.removeEventListener('resize', this.handleResize);
         this.unsubscribes.forEach((unsubscribe) => unsubscribe());
         this.unsubscribes.length = 0;
@@ -263,10 +268,10 @@ export class ChatGPTPageAnnotationController {
         this.toolbarActionActive = false;
         this.actionSnapshot = null;
         this.activeAnnotationId = null;
+        this.activeHighlightId = null;
         this.anchorCache.clear();
         this.annotationRootCache = new WeakMap<HTMLElement, HTMLElement>();
         this.lastAnnotationsSyncKey = null;
-        this.chipVisible = false;
     }
 
     setAppearance(snapshot: AppearanceSnapshot): void {
@@ -349,6 +354,7 @@ export class ChatGPTPageAnnotationController {
         this.pointerSelectionActive = false;
         if (this.mode === 'editing') return;
         if (event.composedPath().includes(this.ensureOverlay().getHost())) return;
+        if (event.composedPath().some(node => node instanceof HTMLElement && node.dataset.aimdRole === 'chatgpt-page-annotation-markers')) return;
         this.settleToolbarFromPointer(event);
     };
 
@@ -472,7 +478,7 @@ export class ChatGPTPageAnnotationController {
             const record = createPageCommentRecord({ id: `highlight-${crypto.randomUUID()}`, itemId: this.itemIdForEvidence(snapshot.evidence), comment: '', range: snapshot.range, root: snapshot.root, sourceMarkdown: snapshot.canonicalMarkdown });
             await this.highlights.create(createHighlightRecord(record, target, color));
             this.closeToolbar();
-        } catch { showToast({text: t('highlightSaveFailed'), tone: 'error'}); }
+        } catch (error) { this.showHighlightError(error, 'highlightSaveFailed', 'Could not save highlight'); }
         finally { this.highlightSaving = false; }
     }
 
@@ -567,6 +573,7 @@ export class ChatGPTPageAnnotationController {
     }
 
     private openEditComment(record: ReaderCommentRecord, anchorRect: DOMRect): void {
+        this.closeHighlightActions();
         this.activeAnnotationId = record.id;
         this.closeToolbar();
         this.mode = 'editing';
@@ -679,6 +686,7 @@ export class ChatGPTPageAnnotationController {
             this.lastMaterializationToken ?? '',
             String(this.markerLayoutEpoch),
             this.activeAnnotationId ?? '',
+            this.activeHighlightId ?? '',
             records.map((record) => `${record.id}:${record.revision ?? ''}:${record.updatedAt}`).join(','),
         ].join('|');
         if (syncKey === this.lastAnnotationsSyncKey) return;
@@ -694,7 +702,7 @@ export class ChatGPTPageAnnotationController {
             }
         }
         const byRoot = new Map<HTMLElement, {
-            highlights: Array<{ left: number; top: number; width: number; height: number; color?: HighlightColor }>;
+            highlights: Array<{ left: number; top: number; width: number; height: number; color?: HighlightColor; active?: boolean }>;
             anchors: MarkersAnchorRender[];
             occupiedTops: number[];
             signature: string[];
@@ -745,7 +753,7 @@ export class ChatGPTPageAnnotationController {
                 byRoot.set(root, bucket);
             }
             for (const rect of layout.rects) {
-                bucket.highlights.push({ left: rect.left, top: rect.top, width: rect.width, height: rect.height, color: colors.get(record.id) });
+                bucket.highlights.push({ left: rect.left, top: rect.top, width: rect.width, height: rect.height, color: colors.get(record.id), active: record.id === `highlight:${this.activeHighlightId}` });
             }
             // The anchor lives in the whitespace right of the text column
             // (Reader-style gutter) so it never covers the body text. When the
@@ -764,9 +772,11 @@ export class ChatGPTPageAnnotationController {
                         id: record.id,
                         kind: 'highlight',
                         color,
+                        active: record.id === `highlight:${this.activeHighlightId}`,
                         left: bucket.rootRect.width + bucket.gap + (bucket.gutterWidth >= bucket.gap + bucket.buttonSize ? (bucket.buttonSize - bucket.indicatorWidth) / 2 : 0),
                         top: slotTop + (bucket.buttonSize - bucket.indicatorHeight) / 2,
                         label: this.getLabel(color === 'blue' ? 'highlightColorBlue' : color === 'yellow' ? 'highlightColorYellow' : 'highlightColorRed', 'Highlight'),
+                        onOpen: button => this.openHighlightActions(record.id.slice('highlight:'.length), button),
                     };
                 } else {
                     placedAnchor = {
@@ -798,6 +808,7 @@ export class ChatGPTPageAnnotationController {
                 union.width,
                 union.height,
                 record.id === this.activeAnnotationId ? 'active' : 'idle',
+                record.id === `highlight:${this.activeHighlightId}` ? 'active' : 'idle',
                 bucket.rootRect.width,
                 placedAnchor?.left ?? '',
                 placedAnchor?.top ?? '',
@@ -888,11 +899,87 @@ export class ChatGPTPageAnnotationController {
         record.lastKnownAnchorState = state;
     }
 
+    private openHighlightActions(id: string, button: HTMLButtonElement): void {
+        const record = this.highlights.list().find(item => item.id === id);
+        if (!record) return;
+        const documentKey = this.lastDocumentKey;
+        const reveal = this.revealHighlightSource(`highlight:${id}`);
+        const show = (): void => {
+            if (!this.initialized || documentKey !== this.lastDocumentKey) return;
+            const currentButton = button.isConnected ? button : this.markers.findHighlight(`highlight:${id}`);
+            const currentRecord = this.highlights.list().find(item => item.id === id);
+            if (!currentButton || !currentRecord) return;
+            const anchorRect = currentButton.getBoundingClientRect();
+            this.commentPopover.close(this.ensureOverlay().getShadow(), false);
+            this.closeToolbar();
+            this.activeHighlightId = id;
+            this.syncAnnotations();
+            this.markers.findHighlight(`highlight:${id}`)?.focus({ preventScroll: true });
+            this.ensureOverlay().renderHighlightActions({
+                anchorRect,
+                color: currentRecord.color,
+                deleteLabel: this.getLabel('btnDelete', 'Delete'),
+                onColor: color => this.changeHighlight(id, color, documentKey),
+                onDelete: () => this.deleteHighlight(id, documentKey),
+            });
+        };
+        if (reveal) window.requestAnimationFrame(show);
+        else show();
+    }
+
+    private revealHighlightSource(key: string): boolean {
+        const cached = this.anchorCache.get(key);
+        const range = cached?.range;
+        const union = cached?.layout?.unionRect;
+        if (!cached?.root.isConnected || !range || !union) return false;
+        const top = cached.root.getBoundingClientRect().top + union.top;
+        if (top >= 0 && top + union.height <= window.innerHeight) return false;
+        const source = range.startContainer instanceof Element
+            ? range.startContainer
+            : range.startContainer.parentElement;
+        if (!source) return false;
+        source.scrollIntoView({ block: 'center', inline: 'nearest' });
+        return true;
+    }
+
+    private closeHighlightActions(): void {
+        if (!this.activeHighlightId) return;
+        this.activeHighlightId = null;
+        this.overlay?.renderHighlightActions(null);
+        this.syncAnnotations();
+    }
+
+    private async changeHighlight(id: string, color: HighlightColor, documentKey: string | null): Promise<void> {
+        if (!documentKey || documentKey !== this.lastDocumentKey) return;
+        const record = this.highlights.list().find(item => item.id === id);
+        if (!record) return;
+        try {
+            if (record.color !== color) await this.highlights.updateColor(record, color);
+            this.closeHighlightActions();
+        } catch (error) { this.showHighlightError(error, 'highlightSaveFailed', 'Could not save highlight'); }
+    }
+
+    private async deleteHighlight(id: string, documentKey: string | null): Promise<void> {
+        if (!documentKey || documentKey !== this.lastDocumentKey) return;
+        const record = this.highlights.list().find(item => item.id === id);
+        if (!record) return;
+        try {
+            await this.highlights.remove(record);
+            this.closeHighlightActions();
+        } catch (error) { this.showHighlightError(error, 'highlightDeleteFailed', 'Could not delete highlight'); }
+    }
+
+    private showHighlightError(error: unknown, key: string, fallback: string): void {
+        const text = error instanceof RuntimeClientRequestError && error.failure.kind === 'transport'
+            ? getRuntimeFailurePresentation(error.failure, (label, defaultValue) => this.getLabel(label, defaultValue)).message
+            : this.getLabel(key, fallback);
+        showToast({ text, tone: 'error' });
+    }
+
     // ---------- chip ----------
 
     private syncChip(records = this.store.listForConversation('position')): void {
-        const mount = this.composerMount();
-        this.chipVisible = records.length > 0 && mount !== null;
+        const mount = this.annotationsEnabled && records.length > 0 ? this.composerMount() : null;
         this.composerChip.render(mount, records.length, {
             onOpenManager: () => this.openManager(),
             label: this.getLabel('pageAnnotationChipAction', 'Open current-conversation annotations'),
@@ -908,7 +995,7 @@ export class ChatGPTPageAnnotationController {
     private readonly handleFocusIn = (): void => {
         // The composer can be replaced by ChatGPT hydration; re-seat the chip
         // when it should be visible but its host was removed with the old DOM.
-        if (this.chipVisible && !this.composerChip.isConnected()) this.syncChip();
+        if (this.annotationsEnabled && !this.composerChip.isConnected()) this.syncChip();
     };
 
     // ---------- manager ----------
@@ -1014,6 +1101,7 @@ export class ChatGPTPageAnnotationController {
                 void this.syncDocument();
             } else if (materializationToken !== this.lastMaterializationToken) {
                 this.lastMaterializationToken = materializationToken;
+                this.closeHighlightActions();
                 this.annotationRootCache = new WeakMap<HTMLElement, HTMLElement>();
                 this.markerLayoutEpoch += 1;
                 this.syncAnnotationSurface();
@@ -1038,6 +1126,8 @@ export class ChatGPTPageAnnotationController {
             this.manager.close();
             this.closeToolbar();
             this.activeAnnotationId = null;
+            this.activeHighlightId = null;
+            this.overlay?.renderHighlightActions(null);
             this.anchorCache.clear();
             this.annotationRootCache = new WeakMap<HTMLElement, HTMLElement>();
         }
@@ -1068,10 +1158,15 @@ export class ChatGPTPageAnnotationController {
         this.resizeRafId = window.requestAnimationFrame(() => {
             this.resizeRafId = null;
             this.ensureOverlay().ensureMounted();
+            this.closeHighlightActions();
             this.markerLayoutEpoch += 1;
             if (this.mode === 'actions' && this.lastFrame && !this.renderToolbar(this.lastFrame)) this.closeToolbar();
             this.syncAnnotationSurface();
         });
+    };
+
+    private readonly handleMarkerScroll = (): void => {
+        this.closeHighlightActions();
     };
 
     private readonly handlePointerDown = (event: PointerEvent): void => {
@@ -1079,6 +1174,8 @@ export class ChatGPTPageAnnotationController {
         const overlayHost = this.overlay?.getHost();
         if (overlayHost && path.includes(overlayHost)) return;
         if (event.button !== 0) return;
+        if (path.some(node => node instanceof HTMLElement && node.dataset.aimdRole === 'chatgpt-page-annotation-markers')) return;
+        this.closeHighlightActions();
         this.pointerSelectionActive = true;
         if (this.mode === 'actions') this.closeToolbar();
     };
@@ -1115,6 +1212,7 @@ export class ChatGPTPageAnnotationController {
 
     private readonly handleKeyDown = (event: KeyboardEvent): void => {
         if (event.key !== 'Escape') return;
+        this.closeHighlightActions();
         if (this.mode === 'actions') this.closeToolbar();
     };
 

@@ -12,6 +12,7 @@ AI-MarkDone 6.0.0 refreshes most of the extension interface and adapts to ChatGP
 - Reworked the Library, Settings, message toolbar, and lower-right page controls; moved Input Enhancement options into searchable Settings categories.
 - Added blue, yellow, and coral highlights for selected ChatGPT and Reader text, plus an annotation “Insert and delete” action.
 - Improved long-conversation Directory navigation and expanded previews; added message timestamps beside character counts.
+- Kept the Directory preview available while moving the pointer to its actions.
 - Updated the AI-MarkDone logo across the extension.
 
 ## v5.4.1 (2026-08-26)

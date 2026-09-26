@@ -46,5 +46,23 @@ export class HighlightSession {
         this.records = [...this.records.filter(h => h.id !== entry.highlight.id), entry.highlight].sort((a, b) => a.updatedAt - b.updatedAt || a.id.localeCompare(b.id));
         this.changed();
     }
+    async updateColor(record: HighlightRecord, color: HighlightColor): Promise<void> {
+        const document = this.document;
+        if (!document) throw new Error('Highlight source unavailable');
+        const entry = await highlightsClient.update(document, { ...record, color }, record.revision);
+        if (!this.document || readerAnnotationDocumentKey(document) !== readerAnnotationDocumentKey(this.document)) return;
+        this.generation++;
+        this.records = this.records.map(current => current.id === entry.highlight.id ? entry.highlight : current);
+        this.changed();
+    }
+    async remove(record: HighlightRecord): Promise<void> {
+        const document = this.document;
+        if (!document) throw new Error('Highlight source unavailable');
+        await highlightsClient.remove(document, record.id, record.revision);
+        if (!this.document || readerAnnotationDocumentKey(document) !== readerAnnotationDocumentKey(this.document)) return;
+        this.generation++;
+        this.records = this.records.filter(current => current.id !== record.id);
+        this.changed();
+    }
     dispose(): void { this.unsubscribe?.(); this.unsubscribe = null; this.generation++; this.document = null; this.records = []; }
 }

@@ -25,12 +25,14 @@ export type MarkersAnchorRender = {
     color: HighlightColor;
     left: number;
     top: number;
+    active: boolean;
     label?: string;
+    onOpen: (button: HTMLButtonElement) => void;
 };
 
 export type MarkersItemRender = {
     root: HTMLElement;
-    highlights: Array<{ left: number; top: number; width: number; height: number; color?: HighlightColor }>;
+    highlights: Array<{ left: number; top: number; width: number; height: number; color?: HighlightColor; active?: boolean }>;
     anchors: MarkersAnchorRender[];
     /** Stable layout signature supplied by the controller/planner. */
     signature?: string;
@@ -91,6 +93,7 @@ function getMarkersCss(): string {
 .reader-comment-highlight[data-color="blue"] { background: var(--aimd-highlight-blue); }
 .reader-comment-highlight[data-color="yellow"] { background: var(--aimd-highlight-yellow); }
 .reader-comment-highlight[data-color="red"] { background: var(--aimd-highlight-red); }
+.reader-comment-highlight--selected { outline: 2px solid var(--aimd-interactive-primary); outline-offset: 1px; }
 
 .reader-comment-anchor {
   position: absolute;
@@ -116,14 +119,23 @@ function getMarkersCss(): string {
 }
 
 .reader-highlight-anchor {
+  all: unset;
+  box-sizing: border-box;
   position: absolute;
   display: block;
+  pointer-events: auto;
+  cursor: pointer;
   width: var(--aimd-space-2);
   height: var(--aimd-size-control-compact);
   border: 1px solid var(--aimd-border-subtle);
   border-radius: var(--aimd-radius-full);
   box-shadow: var(--aimd-workspace-raised);
 }
+.reader-highlight-anchor:hover, .reader-highlight-anchor:focus-visible, .reader-highlight-anchor[aria-pressed="true"] {
+  outline: 2px solid var(--aimd-focus-ring);
+  outline-offset: 2px;
+}
+.reader-highlight-anchor::before { content: ''; position: absolute; inset: calc(var(--aimd-space-1) * -1) calc(var(--aimd-space-2) * -1); }
 .reader-highlight-anchor[data-color="blue"] { background: var(--aimd-highlight-blue); }
 .reader-highlight-anchor[data-color="yellow"] { background: var(--aimd-highlight-yellow); }
 .reader-highlight-anchor[data-color="red"] { background: var(--aimd-highlight-red); }
@@ -193,7 +205,7 @@ export class PageAnnotationMarkers {
             layer.replaceChildren();
             for (const rect of item.highlights) {
                 const highlight = document.createElement('div');
-                highlight.className = 'reader-comment-highlight';
+                highlight.className = `reader-comment-highlight${rect.active ? ' reader-comment-highlight--selected' : ''}`;
                 if (rect.color) highlight.dataset.color = rect.color;
                 highlight.style.left = `${Math.round(rect.left + dx)}px`;
                 highlight.style.top = `${Math.round(rect.top + dy)}px`;
@@ -203,13 +215,17 @@ export class PageAnnotationMarkers {
             }
             for (const anchor of item.anchors) {
                 if (anchor.kind === 'highlight') {
-                    const chip = document.createElement('span');
+                    const chip = document.createElement('button');
+                    chip.type = 'button';
                     chip.className = 'reader-highlight-anchor';
+                    chip.dataset.highlightId = anchor.id;
                     chip.dataset.color = anchor.color;
-                    chip.setAttribute('role', 'img');
+                    chip.setAttribute('aria-pressed', String(anchor.active));
                     chip.setAttribute('aria-label', anchor.label?.trim() || 'Highlight');
+                    chip.title = anchor.label?.trim() || 'Highlight';
                     chip.style.left = `${Math.round(anchor.left + dx)}px`;
                     chip.style.top = `${Math.round(anchor.top + dy)}px`;
+                    chip.addEventListener('click', () => anchor.onOpen(chip));
                     layer.appendChild(chip);
                     continue;
                 }
@@ -232,6 +248,15 @@ export class PageAnnotationMarkers {
 
     hasHosts(): boolean {
         return this.hosts.size > 0;
+    }
+
+    findHighlight(id: string): HTMLButtonElement | null {
+        for (const entry of this.hosts.values()) {
+            const button = [...entry.layer.querySelectorAll<HTMLButtonElement>('.reader-highlight-anchor')]
+                .find(candidate => candidate.dataset.highlightId === id);
+            if (button) return button;
+        }
+        return null;
     }
 
     dispose(): void {

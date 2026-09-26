@@ -24,6 +24,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Improved Directory and Previous/Next navigation through long conversations, including messages that are not currently mounted.
 - Fixed incomplete content in Expanded Directory mode and made selected-text actions more reliable.
 - Improved highlight persistence and placement for selections across lines and paragraphs, while keeping unsupported block content excluded.
+- Restored the composer annotation button beside ChatGPT's updated add button when the conversation has annotations, added color and delete actions to saved highlights' page markers, and clarified when a page refresh is needed after an extension update.
+- Kept the Directory preview open while moving the pointer from a rail item to its preview actions.
 - This is a broad update, and some interface details will continue to be refined. Feedback on Settings categories and everyday use is welcome.
 
 ## [5.4.1] - 2026-08-26

@@ -71,15 +71,16 @@ describe('PageAnnotationMarkers', () => {
         markers.dispose();
     });
 
-    it('renders a small noninteractive color marker beside the annotation control', () => {
+    it('renders a clickable color marker beside the annotation control', () => {
         const root = mountRoot();
         const markers = new PageAnnotationMarkers(createAppearanceSnapshot('light'));
+        const onOpenHighlight = vi.fn();
         markers.render([{
             root,
             highlights: [{ left: 4, top: 6, width: 80, height: 18, color: 'yellow' }],
             anchors: [
                 { id: 'comment', left: 92, top: 7, active: false, onOpen: () => undefined },
-                { id: 'highlight', kind: 'highlight', color: 'yellow', left: 100, top: 42 },
+                { id: 'highlight', kind: 'highlight', color: 'yellow', left: 100, top: 42, active: true, onOpen: onOpenHighlight },
             ],
         }]);
         const shadow = root.querySelector('[data-aimd-role="chatgpt-page-annotation-markers"]')!.shadowRoot!;
@@ -88,7 +89,10 @@ describe('PageAnnotationMarkers', () => {
         expect(chip?.dataset.color).toBe('yellow');
         expect(chip?.getAttribute('aria-label')).toBeTruthy();
         expect(chip?.style.top).toBe('42px');
-        expect(chip?.matches('button')).toBe(false);
+        expect(chip?.matches('button')).toBe(true);
+        expect(chip?.getAttribute('aria-pressed')).toBe('true');
+        chip?.click();
+        expect(onOpenHighlight).toHaveBeenCalledTimes(1);
         markers.dispose();
     });
 

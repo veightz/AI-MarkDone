@@ -3731,6 +3731,10 @@
         "message": "Could not save the highlight. Try again.",
         "description": "Library and highlight interface"
     },
+    "highlightDeleteFailed": {
+        "message": "Could not delete the highlight. Try again.",
+        "description": "Page highlight actions"
+    },
     "libraryAnnotations": {
         "message": "Annotations",
         "description": "Library and highlight interface"

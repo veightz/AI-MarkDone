@@ -1,4 +1,4 @@
-import { copyIcon, messageSquareTextIcon } from '../../../assets/workspaceIcons';
+import { copyIcon, messageSquareTextIcon, trashIcon } from '../../../assets/workspaceIcons';
 import { createHighlightSwatches, getHighlightSwatchesCss, type HighlightColor } from '../components/HighlightSwatches';
 import type { AppearanceSnapshot } from '../../../style/appearance';
 import { areAppearanceSnapshotsEqual } from '../../../style/appearance';
@@ -23,6 +23,14 @@ export type PageAnnotationToolbarRender = {
     onComment: () => void;
     commentEnabled?: boolean;
     onHighlight?: (color: HighlightColor) => Promise<void>;
+};
+
+export type PageHighlightActionsRender = {
+    anchorRect: DOMRect;
+    color: HighlightColor;
+    deleteLabel: string;
+    onColor: (color: HighlightColor) => Promise<void>;
+    onDelete: () => Promise<void>;
 };
 
 function getOverlayCss(): string {
@@ -76,6 +84,35 @@ function getOverlayCss(): string {
   box-shadow: var(--aimd-workspace-raised);
 }
 
+.reader-highlight-actions {
+  position: absolute;
+  pointer-events: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--aimd-space-2);
+  padding: var(--aimd-space-2);
+  border: 1px solid var(--aimd-workspace-border);
+  border-radius: var(--aimd-radius-full);
+  background: var(--aimd-workspace-card);
+  box-shadow: var(--aimd-workspace-raised);
+}
+
+.reader-highlight-actions__delete {
+  all: unset;
+  box-sizing: border-box;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--aimd-size-control-compact);
+  height: var(--aimd-size-control-compact);
+  border-radius: var(--aimd-radius-full);
+  color: var(--aimd-button-icon-text);
+}
+.reader-highlight-actions__delete:hover { color: var(--aimd-color-danger); background: var(--aimd-interactive-hover); }
+.reader-highlight-actions__delete:focus-visible { outline: 2px solid var(--aimd-focus-ring); outline-offset: 2px; }
+.reader-highlight-actions__delete .aimd-icon, .reader-highlight-actions__delete svg { width: var(--aimd-size-control-glyph-panel); height: var(--aimd-size-control-glyph-panel); }
+
 .secondary-btn {
   all: unset;
   box-sizing: border-box;
@@ -128,6 +165,7 @@ export class PageAnnotationOverlay {
     private readonly appearanceScope: AppearanceScope;
     private appearance: AppearanceSnapshot;
     private toolbarEl: HTMLElement | null = null;
+    private highlightActionsEl: HTMLElement | null = null;
 
     constructor(appearance: AppearanceSnapshot) {
         this.appearance = appearance;
@@ -246,8 +284,43 @@ export class PageAnnotationOverlay {
         this.toolbarEl = group;
     }
 
+    renderHighlightActions(actions: PageHighlightActionsRender | null): void {
+        this.highlightActionsEl?.remove();
+        this.highlightActionsEl = null;
+        if (!actions) return;
+        const group = document.createElement('div');
+        group.className = 'reader-highlight-actions';
+        group.dataset.role = 'page-highlight-actions';
+        const swatches = createHighlightSwatches({ selected: actions.color, onSelect: color => void run(color) });
+        const remove = document.createElement('button');
+        remove.type = 'button';
+        remove.className = 'reader-highlight-actions__delete';
+        remove.dataset.action = 'page-highlight-delete';
+        remove.setAttribute('aria-label', actions.deleteLabel);
+        remove.title = actions.deleteLabel;
+        remove.appendChild(createIcon(trashIcon));
+        remove.addEventListener('click', () => void run());
+        const run = async (color?: HighlightColor): Promise<void> => {
+            group.querySelectorAll<HTMLButtonElement>('button').forEach(button => { button.disabled = true; });
+            try {
+                if (color) await actions.onColor(color);
+                else await actions.onDelete();
+            } finally {
+                group.querySelectorAll<HTMLButtonElement>('button').forEach(button => { button.disabled = false; });
+            }
+        };
+        group.append(swatches, remove);
+        this.popoverLayer.appendChild(group);
+        const gap = Number.parseFloat(getComputedStyle(group).getPropertyValue('--aimd-space-2')) || 0;
+        const { width, height } = group.getBoundingClientRect();
+        group.style.left = `${Math.round(Math.max(gap, Math.min(actions.anchorRect.left - width - gap, window.innerWidth - width - gap)))}px`;
+        group.style.top = `${Math.round(Math.max(gap, Math.min(actions.anchorRect.top + actions.anchorRect.height / 2 - height / 2, window.innerHeight - height - gap)))}px`;
+        this.highlightActionsEl = group;
+    }
+
     unmount(): void {
         this.clearToolbar();
+        this.renderHighlightActions(null);
         this.appearanceScope.dispose();
         this.host.remove();
     }

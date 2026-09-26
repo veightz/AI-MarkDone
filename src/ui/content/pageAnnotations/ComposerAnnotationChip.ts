@@ -56,7 +56,7 @@ export class ComposerAnnotationChip {
         return Boolean(this.host?.isConnected);
     }
 
-    /** Render the chip into the composer mount; pass zero count to hide it. */
+    /** Render the chip only while the current conversation has annotations. */
     render(mount: { container: HTMLElement; anchor: HTMLElement; officialContainer?: HTMLElement } | null, count: number, handlers: ComposerAnnotationChipHandlers): void {
         this.handlers = handlers;
         if (this.button) {

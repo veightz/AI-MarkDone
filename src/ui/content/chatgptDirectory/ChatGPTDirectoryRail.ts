@@ -30,6 +30,7 @@ const HOVER_RADIUS = 3;
 const EXPANDED_LABEL_HEAD_LENGTH = 15;
 const EXPANDED_LABEL_HEAD_TAIL_MAX_LENGTH = 30;
 const USER_INTERACTION_IDLE_MS = 800;
+const PREVIEW_CLOSE_DELAY_MS = 400;
 const PREVIEW_MIN_WIDTH_PX = 360;
 const PREVIEW_MAX_WIDTH_PX = 800;
 const PREVIEW_WIDTH_BASE_CHARS = 40;
@@ -502,7 +503,6 @@ export class ChatGPTDirectoryRail {
             this.hoverPosition = null;
             this.renderHoverState();
         }
-        this.previewEl.dataset.open = '0';
         this.schedulePreviewClose();
     }
 
@@ -704,7 +704,7 @@ export class ChatGPTDirectoryRail {
             this.previewEl.dataset.open = '0';
             this.removePreviewGlobalHandlers();
             this.disposePreviewToolbar();
-        }, 160);
+        }, PREVIEW_CLOSE_DELAY_MS);
     }
 
     private positionPreview(): void {

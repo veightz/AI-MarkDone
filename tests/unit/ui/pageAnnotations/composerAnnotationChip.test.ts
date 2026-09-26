@@ -29,7 +29,7 @@ describe('ComposerAnnotationChip', () => {
         document.body.innerHTML = '';
     });
 
-    it('renders beside the official composer action container with the annotation count and hides at zero', () => {
+    it('renders beside the official composer action container and hides at zero', () => {
         const { container, anchor } = mountComposer();
 
         const chip = new ComposerAnnotationChip(createAppearanceSnapshot('light'));

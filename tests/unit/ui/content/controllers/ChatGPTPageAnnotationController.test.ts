@@ -7,6 +7,7 @@ import { ChatGPTPageAnnotationController } from '@/ui/content/controllers/ChatGP
 import { toReaderAnnotationRecord } from '@/services/reader/commentSession';
 import { createPageCommentRecord, resolveReaderCommentAnchor } from '@/services/reader/commentAnchoring';
 import { createHighlightRecord } from '@/ui/content/highlights/HighlightSession';
+import { RuntimeClientRequestError } from '@/drivers/shared/clients/clientResult';
 
 const annotationClientMock = vi.hoisted(() => ({
     list: vi.fn(async () => ({ ok: true, data: { entries: [] } })),
@@ -15,9 +16,9 @@ const annotationClientMock = vi.hoisted(() => ({
     remove: vi.fn(),
     listeners: new Set<() => void>(),
 }));
-const highlightClientMock = vi.hoisted(() => ({list: vi.fn(), create: vi.fn(), listeners: new Set<() => void>()}));
+const highlightClientMock = vi.hoisted(() => ({list: vi.fn(), create: vi.fn(), update: vi.fn(), remove: vi.fn(), listeners: new Set<() => void>()}));
 vi.mock('@/drivers/shared/clients/highlightsClient', () => ({highlightsClient: {
-    list: highlightClientMock.list, create: highlightClientMock.create,
+    list: highlightClientMock.list, create: highlightClientMock.create, update: highlightClientMock.update, remove: highlightClientMock.remove,
     subscribe: (listener: () => void) => {highlightClientMock.listeners.add(listener); return () => highlightClientMock.listeners.delete(listener);},
 }}));
 
@@ -216,6 +217,8 @@ describe('ChatGPTPageAnnotationController', () => {
     beforeEach(() => {
         highlightClientMock.listeners.clear(); highlightClientMock.list.mockResolvedValue([]);
         highlightClientMock.create.mockImplementation(async (document, highlight) => ({document, highlight}));
+        highlightClientMock.update.mockImplementation(async (document, highlight) => ({document, highlight: {...highlight, revision: highlight.revision + 1, updatedAt: highlight.updatedAt + 1}}));
+        highlightClientMock.remove.mockResolvedValue(undefined);
         document.body.innerHTML = '';
         annotationClientMock.listeners.clear();
         annotationClientMock.list.mockResolvedValue({ ok: true, data: { entries: [] } });
@@ -402,6 +405,26 @@ describe('ChatGPTPageAnnotationController', () => {
             for (const listener of annotationClientMock.listeners) listener();
             await vi.waitFor(() => expect(shadow.querySelectorAll('.page-annotation-manager__item')).toHaveLength(0));
             expect(document.querySelector('[data-aimd-role="page-annotation-composer-chip"]')).toBeNull();
+        } finally { controller.dispose(); }
+    });
+
+    it('places the annotation entry beside the current add-context button and opens the existing insert flow', async () => {
+        const message = mountMessage('<p>Quoted answer</p>');
+        const root = message.querySelector('.markdown.prose') as HTMLElement;
+        document.body.insertAdjacentHTML('beforeend', '<form data-chatgpt-composer><div class="actions"><span><button type="button" data-composer-navigation-target="add-context" aria-label="添加文件等内容">+</button></span></div><div data-composer-markdown contenteditable="true"></div></form>');
+        const controller = new ChatGPTPageAnnotationController(new ChatGPTAdapter(), { contentSource: createContentSource(), materialization: createMaterialization(message) });
+        controller.init();
+        try {
+            await vi.waitFor(() => expect(controller['store'].getDocument()).not.toBeNull());
+            expect(document.querySelector('[data-aimd-role="page-annotation-composer-chip"]')).toBeNull();
+            const range = document.createRange(); range.selectNodeContents(root);
+            await controller['store'].create(createPageCommentRecord({ id: 'current-note', itemId: 'chatgpt-assistant-1', comment: 'Keep this note', range, root, sourceMarkdown: 'Quoted answer' }), { assistantMessageId: 'assistant-1' });
+            const plus = document.querySelector('[data-composer-navigation-target="add-context"]')!;
+            const chip = document.querySelector<HTMLElement>('[data-aimd-role="page-annotation-composer-chip"]')!;
+            expect(chip.previousElementSibling).toBe(plus.parentElement);
+            chip.shadowRoot!.querySelector<HTMLButtonElement>('button')!.click();
+            const shadow = document.querySelector('#aimd-chatgpt-page-annotation-manager-host')!.shadowRoot!;
+            expect(shadow.querySelector<HTMLButtonElement>('[data-action="page-annotation-insert-all"]')?.disabled).toBe(false);
         } finally { controller.dispose(); }
     });
 
@@ -1036,6 +1059,80 @@ describe('ChatGPTPageAnnotationController', () => {
             expect(Number.parseInt(shadow.querySelector<HTMLElement>('.reader-highlight-anchor')!.style.top, 10)).toBeGreaterThan(chipTop);
         } finally {
             controller.dispose(); vi.unstubAllGlobals();
+            if (original) Object.defineProperty(Range.prototype, 'getClientRects', original);
+            else delete (Range.prototype as any).getClientRects;
+        }
+    });
+
+    it('opens four actions from the page highlight marker, then recolors and deletes the same saved record', async () => {
+        const message = mountMessage('<p>before <strong>target text</strong> after</p>');
+        const root = message.querySelector('.markdown.prose') as HTMLElement;
+        const targetText = message.querySelector('strong')!;
+        const range = document.createRange(); range.selectNodeContents(targetText); mockGeometry(root, targetText, range);
+        const original = Object.getOwnPropertyDescriptor(Range.prototype, 'getClientRects');
+        Object.defineProperty(Range.prototype, 'getClientRects', {configurable:true, value:() => [{left:40,top:50,width:90,height:18,right:130,bottom:68,x:40,y:50,toJSON:()=>({})}]});
+        const controller = new ChatGPTPageAnnotationController(new ChatGPTAdapter(), {contentSource:createContentSource('before **target text** after'),materialization:createMaterialization(message),surfaceAdapter:createEvidenceSurfaceAdapter(message)});
+        controller.init();
+        try {
+            await vi.waitFor(() => expect(controller['store'].getDocument()).not.toBeNull());
+            const target = {assistantMessageId:'assistant-1',roundId:'turn-1',userMessageId:'user-1',position:1};
+            const highlight = createPageCommentRecord({id:'highlight-action',itemId:'chatgpt-assistant-1',comment:'',range,root,sourceMarkdown:'target text'});
+            await controller['highlights'].create(createHighlightRecord(highlight, target, 'blue'));
+            const markerShadow = root.querySelector('[data-aimd-role="chatgpt-page-annotation-markers"]')!.shadowRoot!;
+            let marker = markerShadow.querySelector<HTMLButtonElement>('.reader-highlight-anchor')!;
+            marker.dispatchEvent(new MouseEvent('pointerdown', {bubbles:true,composed:true,button:0}));
+            marker.dispatchEvent(new MouseEvent('pointerup', {bubbles:true,composed:true,button:0}));
+            marker.click();
+            const actionShadow = document.querySelector('#aimd-chatgpt-page-annotation-overlay')!.shadowRoot!;
+            expect(actionShadow.querySelectorAll('[data-role="page-highlight-actions"] button')).toHaveLength(4);
+            expect(markerShadow.querySelector('.reader-comment-highlight--selected')).toBeTruthy();
+            actionShadow.querySelector<HTMLButtonElement>('[data-role="page-highlight-actions"] [data-color="red"]')!.click();
+            await vi.waitFor(() => expect(highlightClientMock.update).toHaveBeenCalledOnce());
+            expect(highlightClientMock.update.mock.calls[0]![1]).toMatchObject({id:'highlight-action',color:'red',revision:1});
+            await vi.waitFor(() => expect(markerShadow.querySelector<HTMLButtonElement>('.reader-highlight-anchor')?.dataset.color).toBe('red'));
+            expect(actionShadow.querySelector('[data-role="page-highlight-actions"]')).toBeNull();
+            const scrollIntoView = vi.fn();
+            Object.assign(targetText, { scrollIntoView });
+            Object.assign(root, { getBoundingClientRect: () => ({ left: 0, top: -1000, width: 800, height: 600, right: 800, bottom: -400 }) });
+            marker = markerShadow.querySelector<HTMLButtonElement>('.reader-highlight-anchor')!;
+            marker.dispatchEvent(new MouseEvent('pointerdown', {bubbles:true,composed:true,button:0}));
+            marker.dispatchEvent(new MouseEvent('pointerup', {bubbles:true,composed:true,button:0}));
+            marker.click();
+            expect(scrollIntoView).toHaveBeenCalledWith({ block: 'center', inline: 'nearest' });
+            await flushSelectionFrame();
+            actionShadow.querySelector<HTMLButtonElement>('[data-action="page-highlight-delete"]')!.click();
+            await vi.waitFor(() => expect(highlightClientMock.remove).toHaveBeenCalledOnce());
+            expect(highlightClientMock.remove.mock.calls[0]![1]).toBe('highlight-action');
+            await vi.waitFor(() => expect(root.querySelector('[data-aimd-role="chatgpt-page-annotation-markers"]')).toBeNull());
+        } finally {
+            controller.dispose();
+            if (original) Object.defineProperty(Range.prototype, 'getClientRects', original);
+            else delete (Range.prototype as any).getClientRects;
+        }
+    });
+
+    it('tells the user to refresh when the old page loses its extension context during recoloring', async () => {
+        const message = mountMessage('<p>before <strong>target text</strong> after</p>');
+        const root = message.querySelector('.markdown.prose') as HTMLElement;
+        const targetText = message.querySelector('strong')!;
+        const range = document.createRange(); range.selectNodeContents(targetText); mockGeometry(root, targetText, range);
+        const original = Object.getOwnPropertyDescriptor(Range.prototype, 'getClientRects');
+        Object.defineProperty(Range.prototype, 'getClientRects', {configurable:true, value:() => [{left:40,top:50,width:90,height:18,right:130,bottom:68,x:40,y:50,toJSON:()=>({})}]});
+        const controller = new ChatGPTPageAnnotationController(new ChatGPTAdapter(), {contentSource:createContentSource('before **target text** after'),materialization:createMaterialization(message),surfaceAdapter:createEvidenceSurfaceAdapter(message)});
+        controller.init();
+        try {
+            await vi.waitFor(() => expect(controller['store'].getDocument()).not.toBeNull());
+            const record = createPageCommentRecord({id:'stale-context-highlight',itemId:'chatgpt-assistant-1',comment:'',range,root,sourceMarkdown:'target text'});
+            await controller['highlights'].create(createHighlightRecord(record, {assistantMessageId:'assistant-1'}, 'yellow'));
+            highlightClientMock.update.mockRejectedValueOnce(new RuntimeClientRequestError({kind:'transport',code:'CONTEXT_INVALIDATED',message:'Extension context invalidated',delivery:'not-sent'}));
+            const marker = root.querySelector('[data-aimd-role="chatgpt-page-annotation-markers"]')!.shadowRoot!.querySelector<HTMLButtonElement>('.reader-highlight-anchor')!;
+            marker.dispatchEvent(new MouseEvent('pointerdown', {bubbles:true,composed:true,button:0}));
+            marker.click();
+            document.querySelector('#aimd-chatgpt-page-annotation-overlay')!.shadowRoot!.querySelector<HTMLButtonElement>('[data-role="page-highlight-actions"] [data-color="blue"]')!.click();
+            await vi.waitFor(() => expect(document.querySelector('.aimd-toast')?.textContent).toContain('Refresh this page'));
+            expect(root.querySelector('[data-aimd-role="chatgpt-page-annotation-markers"]')!.shadowRoot!.querySelector<HTMLButtonElement>('.reader-highlight-anchor')?.dataset.color).toBe('yellow');
+        } finally {
+            controller.dispose();
             if (original) Object.defineProperty(Range.prototype, 'getClientRects', original);
             else delete (Range.prototype as any).getClientRects;
         }
