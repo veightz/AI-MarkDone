@@ -48,6 +48,17 @@ describe('reader annotation background handler', () => {
         vi.unstubAllGlobals();
     });
 
+    it('fills a missing stored conversation title on save and preserves it on later untitled saves', async () => {
+        const store: Record<string, unknown> = {};
+        vi.stubGlobal('browser', { runtime: { getManifest: () => ({ manifest_version: 3 }) }, storage: { local: createArea(store) } });
+        const { handleReaderAnnotationRequest: handle } = await import('@/runtimes/background/handlers/annotations');
+        await handle(req('annotations:create', { document, annotation }));
+        await handle(req('annotations:create', { document: { ...document, title: '研究笔记' }, annotation: { ...annotation, id: 'second' } }));
+        expect(store[readerAnnotationStorageKey(document)]).toMatchObject({ document: { title: '研究笔记' } });
+        await handle(req('annotations:update', { document: { ...document, title: null }, annotation, expectedRevision: 1 }));
+        expect((await handle(req('annotations:list')))?.response).toMatchObject({ ok: true, data: { entries: expect.arrayContaining([expect.objectContaining({ document: expect.objectContaining({ title: '研究笔记' }) })]) } });
+    });
+
     it('isolates bundles, supports CRUD, and detects revision conflicts', async () => {
         const store: Record<string, unknown> = {};
         const local = createArea(store);
@@ -133,5 +144,19 @@ describe('reader annotation background handler', () => {
         expect(navigatedAgain?.response.ok).toBe(true);
         await expect(consumeReaderAnnotationNavigationIntent(77, 'https://chatgpt.com/c/conv-1?branch=1#reader')).resolves.toMatchObject({ annotationId: annotation.id });
         await expect(consumeReaderAnnotationNavigationIntent(77, 'https://chatgpt.com/c/conv-1')).resolves.toBeNull();
+    });
+
+    it('keeps the opened conversation successful when optional focus persistence fails', async () => {
+        const session = createArea({});
+        session.set.mockRejectedValueOnce(new Error('Session unavailable'));
+        const tabs = { create: vi.fn((_details: { url: string }, callback?: (tab: { id: number }) => void) => callback?.({ id: 88 })) };
+        vi.stubGlobal('browser', {
+            runtime: { getManifest: () => ({ manifest_version: 3 }) },
+            storage: { local: createArea({}), session }, tabs,
+        });
+        const { handleReaderAnnotationRequest } = await import('@/runtimes/background/handlers/annotations');
+        const result = await handleReaderAnnotationRequest(req('annotations:navigate', { document, annotationId: annotation.id }));
+        expect(result?.response).toMatchObject({ ok: true, data: { tabId: 88 } });
+        expect(tabs.create).toHaveBeenCalledTimes(1);
     });
 });

@@ -121,7 +121,7 @@ TypeScript, JavaScript, Python, Bash, SQL, JSON, YAML, HTML, CSS
 - [ ] Markdown copy content is complete and ordered
 
 ### 5.6 UI Surface And Responsive Matrix
-- [ ] Input Enhancement button remains unique after ChatGPT hydration replacement; popover and syntax guide open from the real composer button, close with Escape/outside click, and restore focus
+- [ ] Input Enhancement settings remain available under Settings → Input & Prompts after ChatGPT hydration replacement; Enter newline, list editing, and formula assistance still work in the replacement composer without remounting a configuration button
 - [ ] Formula composer suggestions/preview and Prompt autocomplete/manager stay anchored, remain inside the visual viewport, and do not steal host Enter/IME behavior outside their active context
 - [ ] Toolbar hover action, task progress, tooltip, and toast preserve the official action-row layout and clean up after dismissal
 - [ ] Directory preview closes before compact/hide fallback; lower-right page controls remain one unwrapped icon-only cluster at narrow widths and do not cover the composer

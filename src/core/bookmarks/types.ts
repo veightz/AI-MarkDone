@@ -56,13 +56,16 @@ export type ExportPayloadV2 = {
     bookmarks: ExportBookmark[];
 };
 
+export type ExportPayloadV3 = Omit<ExportPayloadV2, 'version'> & { version: '3.0' };
+export type ExportPayload = ExportPayloadV2 | ExportPayloadV3;
+
 export type ImportPayloadV2 = {
     version?: string;
     exportDate?: string;
     bookmarks: unknown[];
 };
 
-export type ImportSourceFormat = 'array' | 'v2';
+export type ImportSourceFormat = 'array' | 'v2' | 'v3';
 
 export type ImportParseResult = {
     sourceFormat: ImportSourceFormat;

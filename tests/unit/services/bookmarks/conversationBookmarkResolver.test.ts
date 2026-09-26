@@ -36,28 +36,23 @@ describe('conversationBookmarkResolver', () => {
         });
     });
 
-    it('does not highlight another turn when identity and position disagree', () => {
+    it('follows the same message when its position changes', () => {
         expect(resolveConversationBookmark(bookmark({ position: 1 }), turns)).toEqual({
-            kind: 'identity-conflict',
-            bookmarkPosition: 1,
-            canonicalPosition: 2,
-            messageId: 'assistant-2',
+            kind: 'matched',
+            position: 2,
+            resolvedBy: 'identity',
         });
     });
 
-    it('keeps position-only legacy bookmarks readable', () => {
+    it('does not mark an unrelated message for an ID-less legacy bookmark', () => {
         expect(resolveConversationBookmark(bookmark({ messageId: null, position: 3 }), turns)).toEqual({
-            kind: 'matched',
-            position: 3,
-            resolvedBy: 'position',
+            kind: 'unavailable',
         });
     });
 
-    it('uses position only when a legacy identity is absent from the current source', () => {
+    it('does not mark the old position when identity is absent from the current branch', () => {
         expect(resolveConversationBookmark(bookmark({ messageId: 'old-branch-assistant', position: 1 }), turns)).toEqual({
-            kind: 'matched',
-            position: 1,
-            resolvedBy: 'position',
+            kind: 'unavailable',
         });
     });
 
@@ -78,5 +73,14 @@ describe('conversationBookmarkResolver', () => {
         expect(legacy.url).toBe('https://chat.openai.com/c/conversation-1');
         expect(legacy.position).toBe(2);
         expect(legacy.messageId).toBe('assistant-2');
+    });
+
+    it('marks the message across project and ordinary conversation paths', () => {
+        const id = '12345678-1234-1234-1234-123456789abc';
+        const saved = bookmark({ url: `https://chatgpt.com/c/${id}`, messageId: 'assistant-2', position: 9 });
+        const positions = resolveConversationBookmarkPositions(
+            [saved], `https://chatgpt.com/g/project/c/${id}`, turns, () => false,
+        );
+        expect(positions).toEqual(new Set([2]));
     });
 });

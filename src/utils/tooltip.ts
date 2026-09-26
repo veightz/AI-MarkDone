@@ -79,12 +79,12 @@ function getTooltipCss(): string {
 `;
 }
 
-function getStyleHost(root: ShadowRoot | Document): ShadowRoot | HTMLHeadElement | HTMLElement | null {
+function getStyleHost(root: ShadowRoot | Document | HTMLElement): ShadowRoot | HTMLHeadElement | HTMLElement | null {
     if (root instanceof ShadowRoot) return root;
     return document.head || document.documentElement;
 }
 
-function ensureTooltipStyle(root: ShadowRoot | Document): void {
+function ensureTooltipStyle(root: ShadowRoot | Document | HTMLElement): void {
     if (root instanceof ShadowRoot) {
         if (root.querySelector(`style[${SHADOW_STYLE_MARK}]`)) return;
         const style = document.createElement('style');
@@ -101,7 +101,7 @@ function ensureTooltipStyle(root: ShadowRoot | Document): void {
     getStyleHost(root)?.appendChild(style);
 }
 
-function getTooltipLayer(root: ShadowRoot | Document, variant: TooltipVariant): ParentNode {
+function getTooltipLayer(root: ShadowRoot | Document | HTMLElement, variant: TooltipVariant): ParentNode {
     if (variant === 'preview' && root instanceof ShadowRoot) return root;
     ensureTooltipStyle(document);
     return document.body;
@@ -152,7 +152,7 @@ function truncatePreview(text: string, maxLen: number = 96): string {
     return value.length > maxLen ? `${value.slice(0, maxLen - 1)}…` : value;
 }
 
-function buildTooltipEl(root: ShadowRoot | Document, target: TooltipTarget): HTMLElement | null {
+function buildTooltipEl(root: ShadowRoot | Document | HTMLElement, target: TooltipTarget): HTMLElement | null {
     const bodyText = (target.dataset.tooltip || '').trim();
     if (!bodyText) return null;
 
@@ -187,12 +187,12 @@ function isOwnedTooltipNode(node: HTMLElement): boolean {
     return Array.from(node.classList).some((cls) => cls.startsWith('aimd-'));
 }
 
-function findTooltipTarget(node: EventTarget | null, boundary: ShadowRoot | Document): TooltipTarget | null {
+function findTooltipTarget(node: EventTarget | null, boundary: ShadowRoot | Document | HTMLElement): TooltipTarget | null {
     const el = node instanceof Element ? node : null;
     if (!el) return null;
     const target = el.closest<HTMLElement>('[data-tooltip], [data-tooltip-title]');
     if (!target) return null;
-    if (boundary instanceof ShadowRoot && !boundary.contains(target)) return null;
+    if (boundary !== document && !boundary.contains(target)) return null;
     return target as TooltipTarget;
 }
 
@@ -213,7 +213,7 @@ export function upgradeTitleTooltips(root: ParentNode): void {
 }
 
 export class TooltipDelegate {
-    private root: ShadowRoot | Document;
+    private root: ShadowRoot | Document | HTMLElement;
     private delayMs: number;
     private upgradeTitles: boolean;
     private timer: number | null = null;
@@ -226,7 +226,7 @@ export class TooltipDelegate {
     private onFocusOut: (e: Event) => void;
     private onPointerDown: () => void;
 
-    constructor(root: ShadowRoot | Document, opts?: { delayMs?: number; upgradeTitles?: boolean }) {
+    constructor(root: ShadowRoot | Document | HTMLElement, opts?: { delayMs?: number; upgradeTitles?: boolean }) {
         this.root = root;
         this.delayMs = opts?.delayMs ?? 150;
         this.upgradeTitles = opts?.upgradeTitles ?? true;
@@ -252,7 +252,7 @@ export class TooltipDelegate {
                     });
                 }
             });
-            const observedRoot = root instanceof ShadowRoot ? root : document.body;
+            const observedRoot = root instanceof Document ? document.body : root;
             if (observedRoot) {
                 this.observer.observe(observedRoot, { childList: true, subtree: true });
             }
@@ -261,7 +261,7 @@ export class TooltipDelegate {
 
     refresh(scope?: ParentNode): void {
         if (!this.upgradeTitles) return;
-        upgradeTitleTooltips(scope ?? (this.root instanceof ShadowRoot ? this.root : document.body));
+        upgradeTitleTooltips(scope ?? (this.root instanceof Document ? document.body : this.root));
     }
 
     disconnect(): void {

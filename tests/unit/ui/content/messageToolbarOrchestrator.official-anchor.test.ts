@@ -1,8 +1,10 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { ConversationContentStateV1 } from '@/contracts/conversationContent';
+import type { MessageMetadataSource } from '@/contracts/messageMetadata';
 import { SiteAdapter, type ThemeDetector } from '@/drivers/content/adapters/base';
 import { ChatGPTConversationSurface } from '@/drivers/content/chatgpt/ChatGPTConversationSurface';
 import { MessageToolbarOrchestrator } from '@/ui/content/controllers/MessageToolbarOrchestrator';
+import { ChatGPTDirectoryRail } from '@/ui/content/chatgptDirectory/ChatGPTDirectoryRail';
 import {
     createConversationContentSource,
     readyConversationState,
@@ -126,7 +128,7 @@ function renderTwoTurns(): void {
     `;
 }
 
-function createHarness(initial?: ConversationContentStateV1): Harness {
+function createHarness(initial?: ConversationContentStateV1, messageMetadata?: MessageMetadataSource): Harness {
     const adapter = new FakeOfficialToolbarAdapter();
     const source = createConversationContentSource(initial ?? SNAPSHOT);
     const surface = new ChatGPTConversationSurface({ adapter, content: source });
@@ -135,6 +137,7 @@ function createHarness(initial?: ConversationContentStateV1): Harness {
         conversationContentSource: source,
         conversationMaterialization: surface.materialization,
         conversationSurface: surface,
+        messageMetadata,
     });
     const harness = { adapter, source, surface, orchestrator };
     harnesses.add(harness);
@@ -155,6 +158,67 @@ describe('MessageToolbarOrchestrator Surface-driven official toolbar lifecycle',
         harnesses.clear();
         document.body.innerHTML = '';
         vi.useRealTimers();
+    });
+
+    it('shows the website message time below character statistics without a year', async () => {
+        renderTurn();
+        let notifyMetadataChanged = () => undefined;
+        const messageMetadata: MessageMetadataSource = {
+            read: vi.fn((conversationId, messageId) => conversationId === 'conv-1' && messageId === 'm1'
+                ? { createdAt: new Date('2023-11-14T06:13:00Z').getTime() }
+                : null),
+            subscribe: (listener) => {
+                notifyMetadataChanged = listener;
+                return () => undefined;
+            },
+        };
+        const { adapter, orchestrator } = createHarness(undefined, messageMetadata);
+        orchestrator.init();
+
+        await vi.waitFor(() => expect(toolbarHosts()).toHaveLength(1));
+        const shadow = toolbarHosts()[0]!.shadowRoot!;
+        const stats = shadow.querySelector<HTMLElement>('[data-role="stats"]');
+        const time = shadow.querySelector<HTMLTimeElement>('[data-role="message-time"]');
+        expect(stats?.textContent).toBeTruthy();
+        expect(time?.hidden).toBe(false);
+        expect(time?.dateTime).toBe('2023-11-14T06:13:00.000Z');
+        expect(time?.textContent).not.toContain('2023');
+        expect(stats?.parentElement).toBe(time?.parentElement);
+        expect(messageMetadata.read).toHaveBeenCalledWith('conv-1', 'm1');
+
+        vi.mocked(messageMetadata.read).mockClear();
+        vi.spyOn(adapter, 'getMessageId').mockReturnValue('local-fallback');
+        notifyMetadataChanged();
+        expect(messageMetadata.read).toHaveBeenCalledWith('conv-1', 'm1');
+        expect(messageMetadata.read).not.toHaveBeenCalledWith('conv-1', 'local-fallback');
+    });
+
+    it('keeps every official message toolbar when optional time reading fails', async () => {
+        renderTwoTurns();
+        const messageMetadata: MessageMetadataSource = {
+            read: () => { throw new Error('Time unavailable'); },
+            subscribe: () => () => undefined,
+        };
+        const { orchestrator } = createHarness(TWO_TURN_SNAPSHOT, messageMetadata);
+        orchestrator.init();
+
+        await vi.waitFor(() => expect(toolbarHosts()).toHaveLength(2));
+        for (const host of toolbarHosts()) {
+            expect(host.shadowRoot?.querySelector('[data-action="toggle-capsule"]')).not.toBeNull();
+            expect(host.shadowRoot?.querySelector<HTMLTimeElement>('time')?.hidden).toBe(true);
+        }
+        expect(document.querySelectorAll('[data-testid="copy-turn-action-button"]')).toHaveLength(2);
+    });
+
+    it('keeps the toolbar lifecycle running when optional time subscription fails', async () => {
+        renderTurn();
+        const { orchestrator } = createHarness(undefined, {
+            read: () => null,
+            subscribe: () => { throw new Error('Time subscription unavailable'); },
+        });
+        orchestrator.init();
+        await vi.waitFor(() => expect(toolbarHosts()).toHaveLength(1));
+        expect(toolbarHosts()[0]?.shadowRoot?.querySelector('[data-action="toggle-capsule"]')).not.toBeNull();
     });
 
     it('waits for the official action row and injects once when PageIndex observes it', async () => {
@@ -204,7 +268,7 @@ describe('MessageToolbarOrchestrator Surface-driven official toolbar lifecycle',
         expect(document.querySelector('.official-toolbar')).toBeTruthy();
     });
 
-    it('creates Reader and Export actions for an unmounted canonical turn', async () => {
+    it('shows only Export in the directory preview for an unmounted canonical turn', async () => {
         renderTurn();
         const adapter = new FakeOfficialToolbarAdapter();
         const source = createConversationContentSource(readyConversationState(TWO_TURN_SNAPSHOT));
@@ -231,25 +295,28 @@ describe('MessageToolbarOrchestrator Surface-driven official toolbar lifecycle',
         harnesses.add({ adapter, source, surface, orchestrator });
 
         const actions = orchestrator.getDirectoryPreviewActions(TWO_TURN_SNAPSHOT.rounds[1]!);
-        expect(actions.map((action) => action.id)).toEqual(['reader', 'export']);
-
-        await actions[0]!.onClick();
-        expect(readerPanel.show).toHaveBeenCalledWith(
-            expect.any(Array),
-            1,
-            expect.any(String),
-            expect.objectContaining({ profile: 'conversation-reader' }),
-        );
-
-        await actions[1]!.onClick();
-        expect(saveMessagesDialog.open).toHaveBeenCalledWith(
+        expect(actions.map((action) => action.id)).toEqual(['export']);
+        const rail = new ChatGPTDirectoryRail('light', () => undefined);
+        rail.setPreviewActionsFactory((round) => orchestrator.getDirectoryPreviewActions(round));
+        rail.setRounds(TWO_TURN_SNAPSHOT.rounds);
+        rail.getElement().shadowRoot?.querySelector<HTMLElement>('.rail__item[data-position="2"]')
+            ?.dispatchEvent(new Event('pointerover', { bubbles: true }));
+        const preview = document.getElementById('aimd-chatgpt-directory-preview');
+        const previewToolbar = preview?.querySelector<HTMLElement>('.aimd-message-toolbar-host')?.shadowRoot;
+        expect(previewToolbar?.querySelector('[data-action="reader"]')).toBeNull();
+        const exportButton = previewToolbar?.querySelector<HTMLButtonElement>('[data-action="export"]');
+        expect(exportButton).toBeTruthy();
+        exportButton?.click();
+        await vi.waitFor(() => expect(saveMessagesDialog.open).toHaveBeenCalledWith(
             expect.anything(),
             expect.any(String),
             expect.objectContaining({
                 conversationTarget: expect.objectContaining({ assistantMessageId: 'm2' }),
                 currentReaderItem: expect.objectContaining({ meta: expect.objectContaining({ position: 2 }) }),
             }),
-        );
+        ));
+        expect(readerPanel.show).not.toHaveBeenCalled();
+        rail.dispose();
     });
 
     it('repairs a removed extension host through the shared PageIndex without duplicating it', async () => {

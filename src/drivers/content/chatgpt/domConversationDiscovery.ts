@@ -151,7 +151,13 @@ export function collectChatGPTDomTurnSlots(adapter: SiteAdapter): HTMLElement[] 
         if (group) group.push(container);
         else groups.set(parent, [container]);
     }
-    return Array.from(groups.values()).sort((left, right) => right.length - left.length)[0] ?? [];
+    const legacySlots = Array.from(groups.values()).sort((left, right) => right.length - left.length)[0] ?? [];
+    const currentSlots = Array.from(root.querySelectorAll<HTMLElement>('[data-turn-key]')).filter((slot) => (
+        !slot.parentElement?.closest('[data-turn-key], [data-turn-id-container]')
+    ));
+    return [...legacySlots, ...currentSlots].sort((left, right) => (
+        left.compareDocumentPosition(right) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1
+    ));
 }
 
 /** Read the host's outer display-slot topology without retaining DOM state. */
@@ -159,7 +165,8 @@ export function collectChatGPTDomHostSlots(adapter: SiteAdapter): readonly ChatG
     const seen = new Set<string>();
     const slots: ChatGPTDomHostSlotRef[] = [];
     for (const element of collectChatGPTDomTurnSlots(adapter)) {
-        const id = readElementId(element, 'data-turn-id-container');
+        const id = readElementId(element, 'data-turn-id-container')
+            || readElementId(element, 'data-turn-key');
         if (!id || id === 'client-created-root' || seen.has(id)) continue;
         seen.add(id);
         slots.push(Object.freeze({ id, element }));
@@ -579,6 +586,44 @@ function collectRoleRoundRefs(adapter: SiteAdapter, root: ParentNode): ChatGPTDo
     return rounds;
 }
 
+function collectSearchUnitRoundRefs(adapter: SiteAdapter, root: ParentNode): ChatGPTDomRoundRef[] {
+    const rounds: ChatGPTDomRoundRef[] = [];
+    for (const turn of root.querySelectorAll<HTMLElement>('[data-content-search-turn-key]')) {
+        const roundId = turn.getAttribute('data-content-search-turn-key')?.trim();
+        if (!roundId) continue;
+        const units = Array.from(turn.querySelectorAll<HTMLElement>('[data-chatgpt-search-unit-key]'));
+        const inRound = (unit: HTMLElement, role: 'user' | 'assistant') => {
+            const key = unit.getAttribute('data-chatgpt-search-unit-key') ?? '';
+            return key.startsWith(`${roundId}:`) && key.endsWith(`:${role}`);
+        };
+        const users = units.filter((unit) => inRound(unit, 'user'));
+        const assistants = units.filter((unit) => inRound(unit, 'assistant'));
+        if (users.length !== 1 || assistants.length !== 1) continue;
+        const user = users[0]!;
+        const assistant = assistants[0]!;
+        if (assistant.closest('[data-message-author-role]')) continue;
+        const userMessageId = user.getAttribute('data-chatgpt-search-message-ids')?.trim();
+        const assistantMessageId = adapter.getMessageId(assistant);
+        if (!userMessageId || !assistantMessageId || /\s/.test(userMessageId)) continue;
+        rounds.push({
+            id: assistantMessageId,
+            identity: { roundId, userMessageId, assistantMessageId, assistantTurnId: null },
+            userRootEl: user,
+            userMessageEl: user,
+            anchorEl: user,
+            jumpAnchorEl: user,
+            assistantRootEl: assistant,
+            assistantMessageEl: assistant,
+            assistantContentRootEl: findAssistantContentRoot(adapter, assistant),
+            groupEls: [user, assistant],
+            assistantIndex: rounds.length,
+            isStreaming: adapter.isStreamingMessage(assistant),
+            source: 'role-scan',
+        });
+    }
+    return rounds;
+}
+
 function roundCandidateScore(round: ChatGPTDomRoundRef): number {
     const sourceScore = round.source === 'turn-wrapper'
         ? 30
@@ -661,6 +706,7 @@ function discoverChatGPTDomRoundRefs(adapter: SiteAdapter): ChatGPTDomRoundRef[]
         ...turnWrapperRounds,
         ...collectLegacyContainerRoundRefs(adapter, root),
         ...collectRoleRoundRefs(adapter, root),
+        ...collectSearchUnitRoundRefs(adapter, root),
     ]);
 }
 

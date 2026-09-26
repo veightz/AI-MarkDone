@@ -248,13 +248,13 @@ v1 的正式领域契约、排除项和失败语义见 `docs/adr/ADR-0006-reader
 3. Driver 执行写入与监听（优先 Background 作为 write authority）
 4. UI 仅消费“状态快照/事件”刷新（避免 UI 直写 storage）
 
-### 2.3.4 Google Drive Backup 闭环（v1）
+### 2.3.4 资料库导入导出与 Google Drive Backup 闭环
 
 1. UI 只呈现 Settings → Data Management → Google Drive Backup，并通过 `cloudBackup:*` runtime protocol 提交连接、备份、列表、恢复预览、安全合并恢复等用户意图
-2. Service 只编排用例：构建书签 snapshot、校验下载结果、生成恢复计划；不得持有 browser API、OAuth、provider token 或直接读写 extension storage
+2. 本地完整导出与新云快照共用 4.0 资料库载荷、验证和安全合并计划；云端只额外提供版本化不可变封装与哈希。旧数组、2.0、3.0 本地文件以及旧云快照保持书签专用语义。纯计划层不得持有 browser API、OAuth、provider token 或直接读写 extension storage
 3. Background driver/provider 作为云端副作用边界：Google Chrome 以 manifest `oauth2` 作为 `chrome.identity.getAuthToken` 的 SSOT；支持 WebAuth 的浏览器环境使用 Web application OAuth client、`identity.getRedirectURL()` 和 `identity.launchWebAuthFlow`；Google Drive API、上传后回读校验、provider 错误映射都收敛在 background 侧
-4. 本地书签写入继续复用 bookmarks 的 storage/index 与现有导入导出能力；Google Drive Backup v1 是用户主动触发的不可变 snapshot 备份/恢复，不会实时双向更新
-5. 恢复必须先做安全合并预览；用户确认后才允许进入 background storage queue，并写入 pre-restore emergency snapshot
+4. Background 在同一 storage queue 中捕获/恢复书签、空书签文件夹、已持久化的高亮/注释 bundle 和共享组织目录；不包含临时注释或 Prompt Library。Google Drive Backup 是用户主动触发的不可变 snapshot 备份/恢复，不会实时双向更新
+5. 云恢复必须先做安全合并预览；用户确认后才允许进入 background storage queue。完整资料库导入/恢复只新增远端独有记录，本地冲突保留；显式替换先写入覆盖所有本地资料的 pre-restore emergency snapshot
 6. Build config 由 `config/extension/cloudBackup.ts` 与 `config/extension/chromeWebStore.ts` 驱动：Chrome/Chromium build 同时包含 Chrome Extension OAuth client ID、manifest `oauth2`、Web OAuth client ID、`identity` 与 Google host permissions；Google Chrome 使用 Chrome Extension client，WebAuth-compatible browser 使用 Web OAuth client；Chrome 默认注入 Chrome Web Store public key 固定 extension ID；Firefox 使用 Web OAuth client ID、`launchWebAuthFlow` 和 `identity.getRedirectURL()` 的实际返回值
 7. OAuth client ID 是公开的应用身份，不是共享 Google 账号。Provider 不请求 `identity.email`，不把 refresh token/cookie/account id 写入 extension storage；账号展示只来自 Drive `about.get` 的邮箱、显示名与头像 URL 摘要。浏览器 identity cache 管理长期授权体验；provider 只把短期 access token 缓存在 extension local storage，过期前用于抗 service worker 重启。
 
@@ -402,7 +402,7 @@ Surface profile / motion ownership 规则补充：
 当前主要落点：
 
 - Bookmarks use cases：`src/services/bookmarks/*`
-- Cloud Backup use cases：`src/services/cloudBackup/*`
+- Library transfer plans：`src/core/cloudBackup/*`；background storage orchestration：`src/runtimes/background/handlers/libraryTransfer.ts`
 - Copy / Reader / Export / Sending：`src/services/copy/*`, `src/services/reader/*`, `src/services/export/*`, `src/services/sending/*`
 - Markdown parser / renderer：`src/services/markdown-parser/*`, `src/services/renderer/*`
 - Settings use cases：`src/services/settings/*`
@@ -410,7 +410,7 @@ Surface profile / motion ownership 规则补充：
 补充说明：
 
 - `src/services/settings/*`、`src/services/bookmarks/*` 更接近 `pure/domain service`
-- `src/services/cloudBackup/*` 属于 `pure/domain service` 的用例编排层：可复用 core/bookmarks 纯逻辑，但不得依赖 Chrome identity、Google Drive provider、browser storage implementation 或 UI
+- `src/core/cloudBackup/*` 只持有资料库载荷校验、哈希与纯合并计划；`libraryTransfer.ts` 在 background 中复用这些计划完成本地和云端的存储读写，不把 browser storage、Google Drive provider 或 OAuth 依赖引入 core
 - `src/services/copy/*`、`src/services/reader/*`、`src/services/export/*`、`src/services/sending/*` 当前更接近 `content-facing feature service`
 - `src/services/export/*` 持有 `ExportDocumentV1`、profile、预算/文件名 planner、host client 与交付编排；入口只提交语义数据，不得重新持有页面截图算法或 capability CSS
 - `saveMessagesPdf.ts` 属于明确允许的导出例外：service 生成最终文档并消费样式 token
@@ -496,7 +496,7 @@ Bookmarks 按 shell、tab workflow、data workflow 与 family styles 分责，�
 - `BookmarksCloudBackupWorkflow` 持有 Cloud Backup modal/RPC workflow
 - `bookmarksWorkspaceResponsiveCss` 持有 workspace family responsive contract
 - `BookmarksTabView`、`SettingsTabView`、`SponsorTabView` 是 tab 内容唯一 owner
-- 树的 inline / virtualized 渲染必须通过 `BookmarksTreeViewport` 收口，避免 shell 与 tab view 双重拥有树
+- 树的 inline / virtualized 渲染必须通过 `LibraryBookmarkPresentation` 收口，避免 shell 与 tab view 双重拥有树
 - Bookmarks family 的 overlay / modal / input-boundary 交互栈通过 `OverlaySession` 与 shared transient contract 收口；不存在 Bookmarks 私有 overlay session
 - family-scoped select / stepper primitive 通过 transient-ui contract 与 shell 协作，不成为全局 UI 系统
 
@@ -532,3 +532,7 @@ ReaderPanel 是 orchestration owner，职责拆分为：
 - 每次变更保持可回归；当前可执行门禁由 `docs/testing/CURRENT_TEST_GATES.md` 定义
 
 全 UI 收敛的交付历史与 Phase 7 closeout 见：`docs/refactor/UI_SYSTEM_REFACTOR_PLAN.md`。
+
+### 2026-09-14 标记资料组织边界
+
+资料库仍以原始书签、注释、高亮作为内容来源，仅新增独立组织目录保存高亮/注释共用的 folder ID、对话别名和归属。展示与搜索索引可重建；用户组织信息不能当作可丢弃缓存。书签路径模型不迁移，新标记文件夹不以路径为身份。目录写入、条目写入与锚点解析分别保留各自职责。

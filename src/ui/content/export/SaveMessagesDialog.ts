@@ -286,6 +286,9 @@ export class SaveMessagesDialog {
             case 'deselect-all-turns':
                 this.deselectAll();
                 return;
+            case 'invert-turns':
+                this.invertSelection();
+                return;
             case 'set-format': {
                 const next = (actionEl.dataset.format as SaveFormat) || 'markdown';
                 if (next !== this.state.format) {
@@ -327,6 +330,11 @@ export class SaveMessagesDialog {
 
     private deselectAll(): void {
         this.state.selected.clear();
+        this.render();
+    }
+
+    private invertSelection(): void {
+        this.state.selected = new Set(this.turns.flatMap((_, index) => this.state.selected.has(index) ? [] : [index]));
         this.render();
     }
 
@@ -399,6 +407,7 @@ export class SaveMessagesDialog {
         const pngLabel = this.getLabel('formatPng', 'PNG');
         const selectAllLabel = this.getLabel('selectAll', 'Select all');
         const deselectAllLabel = this.getLabel('deselectAll', 'Deselect all');
+        const invertSelectionLabel = this.getLabel('invertSelection', 'Invert selection');
         const saveLabel = this.state.saving ? this.getLabel('saving', 'Saving') : this.getLabel('btnSave', 'Save');
         const cancelLabel = this.getLabel('btnCancel', 'Cancel');
         const countLabel = this.getSelectedCountLabel();
@@ -453,6 +462,7 @@ export class SaveMessagesDialog {
   <div class="panel-footer panel-footer--between">
     <div class="button-row">
       <button class="secondary-btn secondary-btn--compact" data-action="select-all-turns">${escapeHtml(selectAllLabel)}</button>
+      <button class="secondary-btn secondary-btn--compact" data-action="invert-turns">${escapeHtml(invertSelectionLabel)}</button>
       <button class="secondary-btn secondary-btn--compact secondary-btn--ghost" data-action="deselect-all-turns">${escapeHtml(deselectAllLabel)}</button>
     </div>
     <div class="footer-cluster workflow-dialog__actions">

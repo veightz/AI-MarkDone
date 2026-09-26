@@ -1,6 +1,21 @@
 export function getPublicTokenCss(): string {
     return `
 :host {
+  --aimd-highlight-blue: var(--aimd-sys-color-highlight-blue);
+  --aimd-highlight-yellow: var(--aimd-sys-color-highlight-yellow);
+  --aimd-highlight-red: var(--aimd-sys-color-highlight-red);
+  --aimd-highlight-blend-mode: var(--aimd-sys-highlight-blend-mode);
+  --aimd-shadow-workspace: var(--aimd-sys-shadow-workspace);
+  --aimd-workspace-surface: var(--aimd-sys-workspace-surface);
+  --aimd-workspace-sidebar: var(--aimd-sys-workspace-sidebar);
+  --aimd-workspace-card: var(--aimd-sys-workspace-card);
+  --aimd-workspace-border: var(--aimd-sys-workspace-border);
+  --aimd-workspace-edge: var(--aimd-sys-workspace-edge);
+  --aimd-workspace-edge-shadow: var(--aimd-sys-workspace-edge-shadow);
+  --aimd-workspace-scrim: var(--aimd-sys-workspace-scrim);
+  --aimd-workspace-raised: var(--aimd-sys-workspace-raised);
+  --aimd-workspace-inset: var(--aimd-sys-workspace-inset);
+  --aimd-opacity-disabled: var(--aimd-sys-opacity-disabled);
   --aimd-bg-primary: var(--aimd-sys-color-surface);
   --aimd-bg-secondary: var(--aimd-sys-color-surface-subtle);
   --aimd-bg-surface: var(--aimd-sys-color-surface-elevated);
@@ -16,7 +31,6 @@ export function getPublicTokenCss(): string {
   --aimd-interactive-primary: var(--aimd-sys-color-accent);
   --aimd-interactive-primary-hover: var(--aimd-sys-color-accent-hover);
   --aimd-text-on-primary: var(--aimd-sys-color-on-accent);
-  --aimd-interactive-highlight: var(--aimd-sys-color-accent-soft);
   --aimd-interactive-flash: var(--aimd-sys-color-accent-flash);
   --aimd-interactive-hover: var(--aimd-sys-color-interactive-hover-layer);
   --aimd-interactive-selected: var(--aimd-sys-color-accent-soft);
@@ -34,6 +48,7 @@ export function getPublicTokenCss(): string {
   --aimd-shadow-xl: var(--aimd-sys-shadow-xl);
   --aimd-shadow-focus: var(--aimd-sys-shadow-focus);
   --aimd-shadow-field-inset: var(--aimd-sys-shadow-field-inset);
+  --aimd-shadow-picker-selection: var(--aimd-sys-shadow-picker-selection);
   --aimd-shadow-panel: var(--aimd-sys-shadow-panel);
   --aimd-shadow-interactive-halo: var(--aimd-sys-shadow-interactive-halo);
   --aimd-shadow-bookmark-marker: var(--aimd-sys-shadow-bookmark-marker);
@@ -67,7 +82,6 @@ export function getPublicTokenCss(): string {
   --aimd-space-6: var(--aimd-sys-space-6);
   --aimd-size-control-icon-toolbar: var(--aimd-sys-size-control-icon-toolbar);
   --aimd-size-control-compact: var(--aimd-sys-size-control-compact);
-  --aimd-size-control-compact-relaxed: var(--aimd-sys-size-control-compact-relaxed);
   --aimd-size-control-icon-panel: var(--aimd-sys-size-control-icon-panel);
   --aimd-size-control-icon-panel-nav: var(--aimd-sys-size-control-icon-panel-nav);
   --aimd-size-control-glyph-panel: var(--aimd-sys-size-control-glyph-panel);

@@ -1,4 +1,4 @@
-import { messageSquareTextIcon, xIcon } from '../../../assets/icons';
+import { messageSquareTextIcon, xIcon } from '../../../assets/workspaceIcons';
 import { createIcon } from '../components/Icon';
 import { installInputEventBoundary } from '../components/inputEventBoundary';
 import { markTransientRoot } from '../components/transientUi';
@@ -9,6 +9,7 @@ import {
     SurfaceSession,
 } from '../components/SurfaceRuntime';
 import { getAnchoredMotionCss } from '../components/styles/anchoredMotionCss';
+import { getAnnotationActionButtonCss } from '../pageAnnotations/annotationActionButtonCss';
 
 type OpenParams = {
     shadow: ShadowRoot;
@@ -38,7 +39,7 @@ type OpenParams = {
     };
     onSave: (value: string) => void | Promise<void>;
     onCancel?: () => void;
-    onDelete?: () => void;
+    onDelete?: () => void | Promise<void>;
 };
 
 type ActiveCommentSurface = {
@@ -59,8 +60,6 @@ ${getAnchoredMotionCss()}
 
 .reader-comment-popover {
   --_reader-comment-arrow-size: var(--aimd-space-3);
-  --_reader-comment-input-inset-effect: inset 0 1px 0 color-mix(in srgb, var(--aimd-bg-primary) 72%, transparent);
-  --_reader-comment-input-focus-effect: inset 0 0 0 1px color-mix(in srgb, var(--aimd-interactive-primary) 32%, transparent);
   pointer-events: auto;
   position: absolute;
   width: min(380px, calc(100% - (var(--aimd-space-5) * 2)));
@@ -70,9 +69,9 @@ ${getAnchoredMotionCss()}
   gap: var(--aimd-space-3);
   padding: var(--aimd-space-3);
   border-radius: var(--aimd-radius-2xl);
-  border: 1px solid color-mix(in srgb, var(--aimd-border-default) 80%, transparent);
-  background: color-mix(in srgb, var(--aimd-bg-surface) 98%, var(--aimd-bg-primary));
-  box-shadow: var(--aimd-shadow-lg);
+  border: 1px solid var(--aimd-workspace-border);
+  background: var(--aimd-workspace-card);
+  box-shadow: var(--aimd-shadow-workspace), var(--aimd-workspace-edge-shadow);
   color: var(--aimd-text-primary);
   z-index: var(--aimd-z-tooltip);
   overflow: hidden;
@@ -90,14 +89,14 @@ ${getAnchoredMotionCss()}
 
 .reader-comment-popover[data-side="top"]::after {
   bottom: calc(var(--_reader-comment-arrow-size) * -0.5);
-  border-right: 1px solid color-mix(in srgb, var(--aimd-border-default) 80%, transparent);
-  border-bottom: 1px solid color-mix(in srgb, var(--aimd-border-default) 80%, transparent);
+  border-right: 1px solid var(--aimd-workspace-border);
+  border-bottom: 1px solid var(--aimd-workspace-border);
 }
 
 .reader-comment-popover[data-side="bottom"]::after {
   top: calc(var(--_reader-comment-arrow-size) * -0.5);
-  border-left: 1px solid color-mix(in srgb, var(--aimd-border-default) 80%, transparent);
-  border-top: 1px solid color-mix(in srgb, var(--aimd-border-default) 80%, transparent);
+  border-left: 1px solid var(--aimd-workspace-border);
+  border-top: 1px solid var(--aimd-workspace-border);
 }
 
 .reader-comment-popover__head,
@@ -121,10 +120,6 @@ ${getAnchoredMotionCss()}
 
 .reader-comment-popover__title .aimd-icon {
   color: var(--aimd-interactive-primary);
-}
-
-.reader-comment-popover__close {
-  color: var(--aimd-text-secondary);
 }
 
 .reader-comment-popover__selection {
@@ -153,8 +148,9 @@ ${getAnchoredMotionCss()}
   margin: 0;
   padding: var(--aimd-space-3);
   border-radius: var(--aimd-radius-xl);
-  border: 1px solid color-mix(in srgb, var(--aimd-border-default) 82%, transparent);
-  background: color-mix(in srgb, var(--aimd-bg-primary) 94%, transparent);
+  border: 1px solid var(--aimd-workspace-border);
+  background: var(--aimd-workspace-surface);
+  box-shadow: var(--aimd-workspace-inset);
   color: var(--aimd-text-primary);
   font-size: var(--aimd-text-sm);
   line-height: 1.55;
@@ -171,19 +167,19 @@ ${getAnchoredMotionCss()}
   resize: vertical;
   padding: var(--aimd-space-3);
   border-radius: var(--aimd-radius-xl);
-  border: 1px solid color-mix(in srgb, var(--aimd-border-default) 82%, transparent);
-  background: color-mix(in srgb, var(--aimd-bg-primary) 94%, transparent);
+  border: 1px solid var(--aimd-workspace-border);
+  background: var(--aimd-workspace-surface);
+  box-shadow: var(--aimd-workspace-inset);
   color: var(--aimd-text-primary);
   font: inherit;
   font-size: var(--aimd-text-sm);
   line-height: 1.55;
-  box-shadow: var(--_reader-comment-input-inset-effect);
 }
 
 .reader-comment-popover__input:focus-visible {
   outline: none;
-  border-color: color-mix(in srgb, var(--aimd-interactive-primary) 58%, transparent);
-  box-shadow: var(--_reader-comment-input-focus-effect);
+  border-color: var(--aimd-interactive-primary);
+  box-shadow: var(--aimd-shadow-focus);
 }
 
 .reader-comment-popover__actions {
@@ -237,6 +233,7 @@ ${getAnchoredMotionCss()}
     min-height: calc(var(--aimd-size-control-action-panel) * 2);
   }
 }
+${getAnnotationActionButtonCss()}
 `;
 }
 
@@ -283,7 +280,7 @@ export class ReaderCommentPopover {
         popover.innerHTML = `
           <div class="reader-comment-popover__head">
             <h3 class="reader-comment-popover__title">${createIcon(messageSquareTextIcon).outerHTML}<span>${params.mode === 'edit' ? labels.editTitle : labels.addTitle}</span></h3>
-            <button class="icon-btn reader-comment-popover__close" type="button" data-action="close" aria-label="${labels.close}">${createIcon(xIcon).outerHTML}</button>
+            <button class="icon-btn reader-comment-popover__close annotation-action-button" type="button" data-action="close" aria-label="${labels.close}">${createIcon(xIcon).outerHTML}</button>
           </div>
           <div class="reader-comment-popover__body">
             <div class="reader-comment-popover__selection">
@@ -365,18 +362,19 @@ export class ReaderCommentPopover {
         session.open({ surface: popover });
         session.scheduleInitialFocus({ surface: popover, selectors: ['[data-role="input"]'] });
 
+        let saving = false;
         const saveCurrentValue = async () => {
             const value = textarea?.value.trim() ?? '';
-            if (!value) return;
+            if (!value || saving) return;
+            saving = true;
             const save = popover.querySelector<HTMLButtonElement>('[data-action="save"]');
             if (save) save.disabled = true;
             try {
-                const result = params.onSave(value);
-                if (result && typeof (result as Promise<void>).then === 'function') await result;
-                this.close(params.shadow, false);
-            } catch (error) {
+                await params.onSave(value);
+                if (this.active?.popover === popover) this.close(params.shadow, false);
+            } catch {
+                saving = false;
                 if (save) save.disabled = false;
-                throw error;
             }
         };
 
@@ -392,17 +390,26 @@ export class ReaderCommentPopover {
             cancelAndClose();
         });
 
-        popover.querySelector<HTMLButtonElement>('[data-action="cancel"]')?.addEventListener('click', () => {
-            if (params.mode === 'edit') params.onDelete?.();
-            else {
+        popover.querySelector<HTMLButtonElement>('[data-action="cancel"]')?.addEventListener('click', (event) => {
+            if (params.mode !== 'edit') {
                 cancelAndClose();
                 return;
             }
-            this.close(params.shadow, false);
+            if (!params.onDelete) return;
+            const button = event.currentTarget as HTMLButtonElement;
+            button.disabled = true;
+            void (async () => {
+                try {
+                    await params.onDelete?.();
+                    if (this.active?.popover === popover) this.close(params.shadow, false);
+                } catch {
+                    button.disabled = false;
+                }
+            })();
         });
 
         popover.querySelector<HTMLButtonElement>('[data-action="save"]')?.addEventListener('click', () => {
-            void saveCurrentValue().catch(() => undefined);
+            void saveCurrentValue();
         });
 
         textarea?.addEventListener('keydown', (event) => {
@@ -423,7 +430,7 @@ export class ReaderCommentPopover {
             ) {
                 event.preventDefault();
                 event.stopPropagation();
-                void saveCurrentValue().catch(() => undefined);
+                void saveCurrentValue();
             }
         });
     }

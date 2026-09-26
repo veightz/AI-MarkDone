@@ -98,6 +98,8 @@ export class ToolbarHoverActionPortal {
         return this.host.dataset.open === '1';
     }
 
+    containsEvent(event: Event): boolean { return event.composedPath().includes(this.host); }
+
     setAppearance(snapshot: AppearanceSnapshot): void {
         if (areAppearanceSnapshotsEqual(this.appearance, snapshot)) return;
         this.appearance = snapshot;

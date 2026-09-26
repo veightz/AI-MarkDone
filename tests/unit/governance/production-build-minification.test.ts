@@ -66,12 +66,12 @@ describe('production build minification', () => {
         }
     });
 
-    it('enforces bundle budgets at the end of each browser build command', () => {
+    it('keeps historical bundle measurement separate from the browser build', () => {
         const pkg = JSON.parse(readFileSync(resolve(process.cwd(), 'package.json'), 'utf8')) as {
             scripts: Record<string, string>;
         };
 
-        expect(pkg.scripts.build).toContain('npm run verify:bundle-size');
+        expect(pkg.scripts.build).not.toContain('npm run verify:bundle-size');
         expect(pkg.scripts['verify:bundle-size']).toBe('tsx scripts/verify-extension-bundle-size.ts chrome firefox');
     });
 

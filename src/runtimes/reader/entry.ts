@@ -22,9 +22,13 @@ import { bookmarkSaveDialog } from '../../ui/content/bookmarks/save/bookmarkSave
 import { SettingsClient } from '../../drivers/content/settings/settingsClient';
 import { hasFields, isRecord, readArrayField } from '../../drivers/shared/clients/payloadValidation';
 import { bookmarksClient } from '../../drivers/shared/clients/bookmarksClient';
+import { resolveConversationBookmarkPositions } from '../../services/bookmarks/conversationBookmarkResolver';
+import { isSamePageUrl } from '../../drivers/content/bookmarks/navigation';
+import { getChatGPTConversationId } from '../../contracts/chatgptConversationId';
 import {
     areAppearanceSnapshotsEqual,
     createAppearanceSnapshot,
+    resolveAppearanceTheme,
     type AppearanceSnapshot,
 } from '../../style/appearance';
 
@@ -176,10 +180,19 @@ async function closeSession(sessionId: string): Promise<void> {
     if (!response.ok) throw new RuntimeClientRequestError(response.failure);
 }
 
-async function readBookmarkedPositions(url: string): Promise<Set<number>> {
-    const response = await bookmarksClient.positions({ url });
+async function readBookmarkedPositions(url: string, items: ReaderItem[]): Promise<Set<number>> {
+    if (!getChatGPTConversationId(url)) {
+        const legacy = await bookmarksClient.positions({ url });
+        if (!legacy.ok) throw new RuntimeClientRequestError(legacy.failure);
+        return new Set(legacy.data.positions);
+    }
+    const response = await bookmarksClient.list();
     if (!response.ok) throw new RuntimeClientRequestError(response.failure);
-    return new Set(response.data.positions);
+    const turns = items.map((item) => ({
+        position: Number(item.meta?.position ?? 0),
+        assistantMessageId: String(item.meta?.assistantMessageId ?? item.meta?.messageId ?? '').trim(),
+    })).filter((turn) => turn.position > 0 && turn.assistantMessageId);
+    return new Set(resolveConversationBookmarkPositions(response.data.bookmarks, url, turns, isSamePageUrl));
 }
 
 async function run(): Promise<void> {
@@ -244,7 +257,7 @@ async function run(): Promise<void> {
                 }
                 settings = nextSettings;
                 panel.setReaderSettings(settings.reader);
-                applyAppearance(createAppearanceSnapshot(session?.snapshot.theme ?? 'light', getThemeOverrides(settings)));
+                applyAppearance(createAppearanceSnapshot(resolveAppearanceTheme(session?.snapshot.theme ?? 'light', settings?.appearance?.themeMode), getThemeOverrides(settings)));
             });
             readerSettingsWriteQueue = write.catch(() => undefined);
             return write;
@@ -268,7 +281,7 @@ async function run(): Promise<void> {
             activeLocale = nextLocale;
             void setLocale(nextLocale);
         }
-        applyAppearance(createAppearanceSnapshot(session?.snapshot.theme ?? 'light', getThemeOverrides(settings)));
+        applyAppearance(createAppearanceSnapshot(resolveAppearanceTheme(session?.snapshot.theme ?? 'light', settings?.appearance?.themeMode), getThemeOverrides(settings)));
     });
     let settingsDisposed = false;
     const disposeSettingsBackflow = (): void => {
@@ -282,7 +295,7 @@ async function run(): Promise<void> {
 
     const showSession = async (): Promise<void> => {
         if (!session) return;
-        const bookmarkedPositions = await readBookmarkedPositions(session.snapshot.sourceUrl);
+        const bookmarkedPositions = await readBookmarkedPositions(session.snapshot.sourceUrl, toReaderItems(session.snapshot));
         const detachedSendPort = createDetachedReaderSendPort(sessionId);
         const items = applyBookmarkMetadata(toReaderItems(session.snapshot), bookmarkedPositions);
         const actions = createConversationReaderActions({
@@ -305,11 +318,11 @@ async function run(): Promise<void> {
                     );
                     if (!refreshedSession) throw invalidPayloadError('Invalid readerSession:refresh response payload');
                     session = refreshedSession;
-                    const refreshedBookmarkedPositions = await readBookmarkedPositions(refreshedSession.snapshot.sourceUrl);
+                    const refreshedBookmarkedPositions = await readBookmarkedPositions(refreshedSession.snapshot.sourceUrl, toReaderItems(refreshedSession.snapshot));
                     bookmarkedPositions.clear();
                     refreshedBookmarkedPositions.forEach((position) => bookmarkedPositions.add(position));
                     const refreshedItems = applyBookmarkMetadata(toReaderItems(refreshedSession.snapshot), bookmarkedPositions);
-                    applyAppearance(createAppearanceSnapshot(refreshedSession.snapshot.theme, getThemeOverrides(settings)));
+                    applyAppearance(createAppearanceSnapshot(resolveAppearanceTheme(refreshedSession.snapshot.theme, settings?.appearance?.themeMode), getThemeOverrides(settings)));
                     await panel.replaceItems(refreshedItems, { preserveCurrentIdentity: true });
                     ctx.notify(t('detachedReaderRefreshed'));
                 },
@@ -326,12 +339,22 @@ async function run(): Promise<void> {
                     if (!position) return { ok: false, message: t('positionNotAvailable') };
                     const userPrompt = input.userPrompt.trim();
                     if (!userPrompt) return { ok: false, message: t('failedToExtractUserMessage') };
-                    const canonical = await bookmarksClient.positions({ url: input.url });
-                    if (!canonical.ok) return { ok: false, message: canonical.message };
-                    const alreadyBookmarked = canonical.data.positions.includes(position);
+                    if (!input.messageId && getChatGPTConversationId(input.url)) return { ok: false, message: t('bookmarkUnavailable') };
+                    let canonical: Set<number>;
+                    try {
+                        canonical = await readBookmarkedPositions(input.url, toReaderItems(session!.snapshot));
+                    } catch (error) {
+                        return { ok: false, message: error instanceof Error ? error.message : t('contentNotFound') };
+                    }
+                    const alreadyBookmarked = canonical.has(position);
                     if (alreadyBookmarked) {
-                        const response = await bookmarksClient.remove({ url: input.url, position });
-                        if (!response.ok) return { ok: false, message: response.message };
+                        const response = await bookmarksClient.remove({ url: input.url, position, messageId: input.messageId });
+                        if (!response.ok) return {
+                            ok: false,
+                            message: response.errorCode === 'CONFLICT'
+                                ? t('bookmarkDuplicateManagedInLibrary')
+                                : response.message,
+                        };
                         bookmarkedPositions.delete(position);
                         return { ok: true, bookmarked: false, message: t('removedStatus') };
                     }
@@ -389,8 +412,9 @@ async function run(): Promise<void> {
         });
 
         const snapshot = session.snapshot;
-        applyAppearance(createAppearanceSnapshot(snapshot.theme, getThemeOverrides(settings)));
-        await panel.show(items, snapshot.startIndex, snapshot.theme, {
+        const readerTheme = resolveAppearanceTheme(snapshot.theme, settings?.appearance?.themeMode);
+        applyAppearance(createAppearanceSnapshot(readerTheme, getThemeOverrides(settings)));
+        await panel.show(items, snapshot.startIndex, readerTheme, {
             profile: 'conversation-reader',
             annotationDocument: snapshot.annotationDocument,
             actions,

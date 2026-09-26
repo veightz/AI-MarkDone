@@ -111,88 +111,7 @@ describe('SettingsTabView', () => {
         await vi.waitFor(() => expect(retryLoad).toHaveBeenCalledTimes(1));
     });
 
-    it('orders the main settings page by reading flow and moves button visibility into a secondary page', () => {
-        const modal = { confirm: vi.fn(async () => true) } as any;
-        const view = new SettingsTabView({ modal });
-        view.setState({
-            settings: structuredClone(baseSettings),
-            storageUsage: null,
-        });
-
-        const root = view.getElement();
-        const groupTitles = Array.from(root.querySelectorAll<HTMLElement>('.settings-group-title'))
-            .filter((title) => !title.closest('[hidden]'))
-            .map((title) => title.textContent?.replace(/\s+/g, ' ').trim());
-        expect(groupTitles).toEqual([
-            'platforms',
-            'buttonsEntrypointsSettingsLabel',
-            'chatgptReadingInputSettingsLabel',
-            'readerWorkflowSettingsLabel',
-            'copyFormulaExportSettingsLabel',
-            'settingsLanguageLabel',
-            'dataManagement',
-            'settingsDiscoveryDiagnosticsLabel',
-        ]);
-
-        const buttonsPage = root.querySelector<HTMLElement>('[data-role="settings-buttons-page"]')!;
-        const mainPage = root.querySelector<HTMLElement>('.settings-content:not([data-role="settings-buttons-page"])')!;
-        expect(buttonsPage.hidden).toBe(true);
-        root.querySelector<HTMLButtonElement>('[data-role="settings-buttons-page-entry"]')!.click();
-        expect(mainPage.hidden).toBe(true);
-        expect(buttonsPage.hidden).toBe(false);
-        expect(buttonsPage.querySelector('[data-role="settings-show-message-toolbar"]')).toBeTruthy();
-        expect(buttonsPage.querySelector('[data-role="settings-show-save-messages"]')).toBeTruthy();
-        expect(buttonsPage.querySelector('[data-role="settings-show-word-count"]')).toBeTruthy();
-        expect(buttonsPage.querySelector('[data-role="settings-chatgpt-show-page-bookmark-control"]')).toBeTruthy();
-        expect(buttonsPage.querySelector('[data-role="settings-chatgpt-show-detached-reader-control"]')).toBeTruthy();
-        expect(buttonsPage.querySelector('[data-role="settings-chatgpt-show-prompt-control"]')).toBeTruthy();
-        expect(buttonsPage.querySelector('[data-role="settings-chatgpt-show-message-stepper"]')).toBeTruthy();
-        expect(buttonsPage.querySelector('[data-role="settings-formula-asset-actions"]')).toBeTruthy();
-        root.querySelector<HTMLButtonElement>('[data-role="settings-buttons-page-back"]')!.click();
-        expect(mainPage.hidden).toBe(false);
-        expect(buttonsPage.hidden).toBe(true);
-
-        const chatGptGroup = Array.from(root.querySelectorAll<HTMLElement>('.settings-group'))
-            .find((group) => group.querySelector('.settings-group-title')?.textContent?.includes('chatgptReadingInputSettingsLabel'))!;
-        expect(chatGptGroup.querySelector('[data-role="settings-chatgpt-restore-position-after-send"]')).toBeTruthy();
-        expect(chatGptGroup.querySelector('[data-role="settings-chatgpt-atomic-markdown-copy-shortcut"]')).toBeTruthy();
-        expect(chatGptGroup.querySelector('[data-role="settings-chatgpt-input-enhancement"]')).toBeTruthy();
-        expect(chatGptGroup.querySelector('[data-role="settings-chatgpt-enter-key-newline"]')).toBeNull();
-        expect(chatGptGroup.querySelector('[data-role="settings-chatgpt-markdown-composer-enabled"]')).toBeNull();
-        expect(chatGptGroup.querySelector('[data-role="settings-chatgpt-prompt-autocomplete"]')).toBeTruthy();
-        expect(chatGptGroup.querySelector('[data-role="settings-chatgpt-arrow-key-message-navigation"]')).toBeTruthy();
-        expect(chatGptGroup.querySelector('[data-role="settings-chatgpt-page-width-scale"]')).toBeTruthy();
-        expect(chatGptGroup.querySelector('[data-role="settings-chatgpt-directory-retired-notice"]')).toBeNull();
-        expect(chatGptGroup.querySelector('[data-role="settings-chatgpt-directory-enabled"]')).toBeTruthy();
-        expect(chatGptGroup.querySelector('[data-role="settings-chatgpt-directory-mode"]')).toBeTruthy();
-        expect(chatGptGroup.querySelector('[data-role="settings-chatgpt-directory-prompt-label-mode"]')).toBeTruthy();
-        expect(chatGptGroup.querySelector('[data-role="settings-chatgpt-directory-right-inset"]')).toBeTruthy();
-        expect(chatGptGroup.querySelector('[data-role="settings-chatgpt-directory-preview-max-chars"]')).toBeTruthy();
-        expect(chatGptGroup.querySelector('[data-role="settings-chatgpt-directory-hide-official-navigation"]')).toBeNull();
-        expect(chatGptGroup.textContent).toContain('chatgptDirectoryEnabledDesc');
-
-        const readerGroup = Array.from(root.querySelectorAll<HTMLElement>('.settings-group'))
-            .find((group) => group.querySelector('.settings-group-title')?.textContent?.includes('readerWorkflowSettingsLabel'))!;
-        expect(readerGroup.querySelector('[data-role="settings-reader-default-open-mode"]')).toBeTruthy();
-        expect(readerGroup.querySelector('[data-role="settings-render-code-reader"]')).toBeTruthy();
-        expect(readerGroup.querySelector('[data-role="settings-reader-outline"]')).toBeTruthy();
-        expect(readerGroup.querySelector('[data-role="settings-reader-annotation-persistence"]')).toBeTruthy();
-        expect(readerGroup.querySelector('[data-role="settings-reader-comment-prompt-position-bottom"]')).toBeTruthy();
-        expect(readerGroup.querySelector('[data-role="settings-reader-comment-sort-mode"]')).toBeNull();
-        expect(readerGroup.querySelector('[data-role="settings-reader-prompts"]')).toBeTruthy();
-        expect(readerGroup.querySelector('[data-role="settings-reader-comment-template"]')).toBeTruthy();
-
-        const copyExportGroup = Array.from(root.querySelectorAll<HTMLElement>('.settings-group'))
-            .find((group) => group.querySelector('.settings-group-title')?.textContent?.includes('copyFormulaExportSettingsLabel'))!;
-        expect(copyExportGroup.querySelector('[data-role="settings-save-context-only"]')).toBeTruthy();
-        expect(copyExportGroup.querySelector('[data-role="settings-formula-click-copy-markdown"]')).toBeTruthy();
-        expect(copyExportGroup.querySelector('[data-role="settings-formula-click-copy-format"]')).toBeTruthy();
-        expect(copyExportGroup.querySelector('[data-role="settings-formula-markdown-copy-format"]')).toBeTruthy();
-        expect(copyExportGroup.querySelector('[data-role="settings-formula-asset-font-size"]')).toBeTruthy();
-        expect(copyExportGroup.querySelector('[data-role="settings-export-png-width-preset"]')).toBeTruthy();
-    });
-
-    it('exposes ChatGPT full runtime and formula-only platform toggles', () => {
+    it('exposes only ChatGPT while preserving legacy platform preferences', () => {
         const modal = { confirm: vi.fn(async () => true) } as any;
         const onSetPlatforms = vi.fn(async () => undefined);
         const view = new SettingsTabView({ modal, actions: { setPlatforms: onSetPlatforms } });
@@ -204,16 +123,16 @@ describe('SettingsTabView', () => {
         const root = view.getElement();
 
         expect(root.querySelector('[data-role="settings-platform-chatgpt"]')).toBeTruthy();
-        expect(root.querySelector('[data-role="settings-platform-gemini"]')).toBeTruthy();
-        expect(root.querySelector('[data-role="settings-platform-claude"]')).toBeTruthy();
-        expect(root.querySelector('[data-role="settings-platform-deepseek"]')).toBeTruthy();
+        expect(root.querySelector('[data-role="settings-platform-gemini"]')).toBeNull();
+        expect(root.querySelector('[data-role="settings-platform-claude"]')).toBeNull();
+        expect(root.querySelector('[data-role="settings-platform-deepseek"]')).toBeNull();
         expect(root.querySelector('[data-role="settings-platform-retirement-notice"]')).toBeNull();
 
-        const gemini = root.querySelector<HTMLInputElement>('[data-role="settings-platform-gemini"]')!;
+        const gemini = root.querySelector<HTMLInputElement>('[data-role="settings-platform-chatgpt"]')!;
         gemini.checked = false;
         gemini.dispatchEvent(new Event('change', { bubbles: true }));
 
-        expect(onSetPlatforms).toHaveBeenCalledWith({ gemini: false });
+        expect(onSetPlatforms).toHaveBeenCalledWith({ chatgpt: false });
     });
 
     it('restores the previous language selection when persistence fails', async () => {
@@ -673,12 +592,12 @@ describe('SettingsTabView', () => {
         });
 
         const root = view.getElement();
-        const platformIcons = root.querySelectorAll('.settings-card:first-child .settings-label__icon');
+        const platformIcons = root.querySelectorAll('.settings-catalog-section[data-category="advanced"] .settings-label__icon');
         const storageFill = root.querySelector('.storage-fill');
         const exportButton = root.querySelector<HTMLButtonElement>('[data-role="settings-export-all-bookmarks"]');
 
         expect(root.classList.contains('aimd-settings')).toBe(true);
-        expect(platformIcons).toHaveLength(4);
+        expect(platformIcons).toHaveLength(1);
         expect(storageFill?.getAttribute('style')).toContain('50%');
         expect(exportButton).toBeTruthy();
         expect(exportButton?.classList.contains('secondary-btn')).toBe(true);
@@ -718,8 +637,7 @@ describe('SettingsTabView', () => {
         });
 
         const root = view.getElement();
-        const group = Array.from(root.querySelectorAll<HTMLElement>('.settings-group'))
-            .find((candidate) => candidate.querySelector('.settings-group-title')?.textContent?.includes('dataManagement'))!;
+        const group = root.querySelector<HTMLElement>('.settings-catalog-section[data-category="data"]')!;
         const cards = Array.from(group.querySelectorAll<HTMLElement>('.settings-data-card'));
         const googleDriveRow = root.querySelector<HTMLElement>('[data-role="cloud-backup-google-drive-row"]')!;
         await Promise.resolve();
@@ -762,11 +680,12 @@ describe('SettingsTabView', () => {
         expect(onExportAllBookmarks).not.toHaveBeenCalled();
     });
 
-    it('keeps the Google Drive backup card polished with tokenized status and action styling', () => {
+    it('shares workspace card material while retaining tokenized backup status and actions', () => {
         const css = getBookmarksPanelCss();
-        const cloudBackupCss = css.slice(css.indexOf('.settings-data-card[data-role="settings-google-drive-backup-card"]'), css.indexOf('.settings-backup-warning'));
+        const cloudBackupCss = css.slice(css.indexOf('.settings-data-card'), css.indexOf('.settings-backup-warning'));
 
-        expect(cloudBackupCss).toContain('.settings-data-card[data-role="settings-google-drive-backup-card"]');
+        expect(css).toContain(':host .settings-data-card');
+        expect(css).toContain('var(--_workspace-card)');
         expect(cloudBackupCss).toContain('.cloud-backup-row__status--connected');
         expect(cloudBackupCss).toContain('.cloud-backup-row__status::before');
         expect(cloudBackupCss).toContain('.cloud-backup-row__actions');
@@ -861,7 +780,7 @@ describe('SettingsTabView', () => {
     });
 
 
-    it('wires formula Markdown toggle and asset action popover to scoped formula settings', () => {
+    it('wires formula Markdown and inline asset actions to scoped formula settings', () => {
         const modal = { confirm: vi.fn(async () => true) } as any;
         const onSetFormulaSettings = vi.fn(async () => undefined);
 
@@ -903,9 +822,7 @@ describe('SettingsTabView', () => {
         assetFontSizeInput.dispatchEvent(new Event('change', { bubbles: true }));
         expect(onSetFormulaSettings).toHaveBeenCalledWith({ assetFontSizePx: 44 });
 
-        assetButton.click();
-        const popover = root.querySelector<HTMLElement>('.formula-asset-settings');
-        expect(popover).toBeTruthy();
+        expect(assetButton).toBeNull();
         const toggles = Array.from(root.querySelectorAll<HTMLInputElement>('[data-role^="settings-formula-asset-action-"]'));
         expect(toggles.map((input) => input.dataset.role)).toEqual([
             'settings-formula-asset-action-copy-png',
@@ -989,35 +906,6 @@ describe('SettingsTabView', () => {
         expect(onSetExportSettings).toHaveBeenLastCalledWith({ pngPixelRatio: 2.5 });
     });
 
-    it('copies Reader workflow settings into Settings without Reader-only display controls', () => {
-        const modal = { confirm: vi.fn(async () => true) } as any;
-
-        const view = new SettingsTabView({ modal });
-        view.setState({
-            settings: structuredClone(baseSettings),
-            storageUsage: null,
-        });
-
-        const root = view.getElement();
-        const advancedButton = root.querySelector<HTMLButtonElement>('[data-role="settings-advanced-toggle"]')!;
-
-        expect(advancedButton).toBeTruthy();
-        expect(root.querySelector('[data-role="settings-reader-default-open-mode"]')).toBeTruthy();
-        expect(root.querySelector('[data-role="settings-render-code-reader"]')).toBeTruthy();
-        expect(root.querySelector('[data-role="settings-reader-outline"]')).toBeTruthy();
-        expect(root.querySelector('[data-role="settings-reader-annotation-persistence"]')).toBeTruthy();
-        expect(root.querySelector('[data-role="settings-reader-comment-prompt-position-bottom"]')).toBeTruthy();
-        expect(root.querySelector('[data-role="settings-reader-prompts"]')).toBeTruthy();
-        expect(root.querySelector('[data-role="settings-reader-comment-template"]')).toBeTruthy();
-        expect(root.querySelector('[data-role="settings-reader-content-width"]')).toBeNull();
-        expect(root.querySelector('[data-role="settings-reader-body-font-size"]')).toBeNull();
-        expect(root.querySelector('[data-role="settings-reader-panel-size-ratio"]')).toBeNull();
-        expect(root.querySelector('[data-role="settings-reader-detached-notice-reset"]')).toBeNull();
-
-        advancedButton.click();
-        expect(root.querySelector('[data-role="settings-reader-content-width"]')).toBeNull();
-    });
-
     it('renders global font size as a stepper-only advanced appearance setting', () => {
         const modal = { confirm: vi.fn(async () => true) } as any;
         const onSetAppearanceSettings = vi.fn(async () => undefined);
@@ -1029,7 +917,6 @@ describe('SettingsTabView', () => {
         });
 
         const root = view.getElement();
-        root.querySelector<HTMLButtonElement>('[data-role="settings-advanced-toggle"]')!.click();
 
         const value = root.querySelector<HTMLElement>('[data-role="settings-global-font-size-value"]')!;
         const field = value.closest<HTMLElement>('.settings-stepper-field')!;
@@ -1058,7 +945,6 @@ describe('SettingsTabView', () => {
         });
 
         const root = view.getElement();
-        root.querySelector<HTMLButtonElement>('[data-role="settings-advanced-toggle"]')!.click();
 
         const swatches = Array.from(root.querySelectorAll<HTMLButtonElement>('[data-role="settings-accent-color-swatch"]'));
         expect(swatches.length).toBeGreaterThan(3);
@@ -1075,13 +961,13 @@ describe('SettingsTabView', () => {
     it('keeps group headings at least as prominent as child item titles in settings typography', () => {
         const css = getBookmarksPanelCss();
 
-        expect(css).toContain('.card-title {');
+        expect(css).toContain('.settings-catalog-header h2');
         expect(css).toContain('font-size: var(--aimd-text-base);');
         expect(css).toContain('.settings-label strong {');
         expect(css).toContain('font-size: var(--aimd-text-sm);');
         expect(css).toContain('.settings-select-trigger {');
         expect(css).toContain('font-size: var(--aimd-text-sm);');
-        expect(css).toContain('.settings-label p,');
+        expect(css).toContain('.settings-label p');
         expect(css).toContain('font-size: var(--aimd-text-xs);');
     });
 
@@ -1133,7 +1019,6 @@ describe('SettingsTabView', () => {
         expect(css).toContain('@media (max-width: 980px)');
         expect(css).toContain('@media (max-width: 720px)');
         expect(css).toContain('@media (max-width: 560px)');
-        expect(css).toMatch(/@media \(max-width: 720px\)[\s\S]*?\.tab-btn span:last-child\s*\{[^}]*display:\s*none;/s);
         expect(css).toMatch(/@media \(max-width: 560px\)[\s\S]*?\.toggle-row,[\s\S]*?\.settings-row\s*\{[^}]*grid-template-columns:\s*minmax\(0, 1fr\);/s);
         expect(css).toMatch(/@media \(max-width: 560px\)[\s\S]*?\.settings-select-shell,[\s\S]*?\.settings-slider-field,[\s\S]*?\.settings-stepper-field\s*\{[^}]*width:\s*100%;/s);
     });
@@ -1156,7 +1041,7 @@ describe('SettingsTabView', () => {
     it('lets long reader setting summaries wrap without pushing fixed controls out of the row', () => {
         const css = getBookmarksPanelCss();
 
-        expect(css).toContain('.settings-label p,');
+        expect(css).toContain('.settings-label p');
         expect(css).toContain('overflow-wrap: anywhere;');
         expect(css).toContain('.reader-settings-summary {');
         expect(css).not.toContain('.reader-settings-summary {\n  white-space: nowrap;');

@@ -14,6 +14,7 @@ import type {
 export type ConversationNavigationExecutorV1 = (
     target: ConversationCanonicalTargetV1,
     options: ConversationNavigationOptionsV1,
+    source: ConversationNavigationInputV1['source'],
 ) => Promise<Readonly<{ ok: true } | { ok: false; message: string }>>;
 
 export type ConversationNavigationCoordinatorOptionsV1 = Readonly<{
@@ -35,19 +36,13 @@ type ActiveNavigation = Readonly<{
     promise: Promise<ConversationNavigationResultV1>;
 }>;
 
-function normalize(value: string | null | undefined): string | null {
-    const result = value?.trim();
-    return result || null;
-}
-
 function isCompleteSnapshot(snapshot: ConversationSnapshotV1): boolean {
-    return snapshot.coverage === 'complete'
-        && getConversationHistoryStatusV1(snapshot) === 'complete'
-        && snapshot.turns.length > 0;
+    return snapshot.coverage === 'complete' && getConversationHistoryStatusV1(snapshot) === 'complete';
 }
 
 function targetKey(input: ConversationNavigationInputV1): string {
     return [
+        input.source === 'directory' || input.source === 'stepper' ? 'page-control' : '',
         input.documentKey ?? '',
         input.position,
         input.messageId ?? '',
@@ -57,22 +52,25 @@ function targetKey(input: ConversationNavigationInputV1): string {
     ].join('|');
 }
 
+function normalize(value: string | null | undefined): string | null {
+    const result = value?.trim();
+    return result || null;
+}
+
 function readIdentityMatches(
     snapshot: ConversationSnapshotV1,
     input: ConversationNavigationInputV1,
 ): ConversationSnapshotV1['turns'] {
-    const expectedRoundId = normalize(input.roundId);
-    const expectedUserMessageId = normalize(input.userMessageId);
     const expectedAssistantMessageId = normalize(input.assistantMessageId ?? input.messageId);
+    const pageControlIdentity = (input.source === 'directory' || input.source === 'stepper')
+        && Boolean(expectedAssistantMessageId);
+    const expectedRoundId = pageControlIdentity ? null : normalize(input.roundId);
+    const expectedUserMessageId = pageControlIdentity ? null : normalize(input.userMessageId);
     return snapshot.turns.filter((turn) => (
         (!expectedRoundId || turn.identity.turnId === expectedRoundId)
         && (!expectedUserMessageId || turn.identity.userMessageId === expectedUserMessageId)
         && (!expectedAssistantMessageId || turn.identity.assistantMessageId === expectedAssistantMessageId)
     ));
-}
-
-function canUsePositionFallback(input: ConversationNavigationInputV1): boolean {
-    return input.source === 'bookmark';
 }
 
 function buildTarget(
@@ -115,7 +113,9 @@ function tryResolve(
     if (identityMatches.length > 1) return { kind: 'failed', reason: 'identity-conflict' };
     if (identityMatches.length === 1) {
         const turn = identityMatches[0]!;
-        if (Number.isFinite(input.position) && input.position > 0 && Math.round(input.position) !== turn.ordinal) {
+        const pageControlIdentity = (input.source === 'directory' || input.source === 'stepper')
+            && Boolean(normalize(input.assistantMessageId ?? input.messageId));
+        if (input.source !== 'bookmark' && !pageControlIdentity && Number.isFinite(input.position) && input.position > 0 && Math.round(input.position) !== turn.ordinal) {
             return { kind: 'failed', reason: 'identity-conflict' };
         }
         return {
@@ -124,19 +124,9 @@ function tryResolve(
         };
     }
 
-    if (!canUsePositionFallback(input)) {
-        return { kind: 'failed', reason: 'source-unavailable' };
-    }
-    if (!isCompleteSnapshot(snapshot)) return { kind: 'wait' };
-    if (!Number.isFinite(input.position) || input.position <= 0) {
-        return { kind: 'failed', reason: 'source-unavailable' };
-    }
-    const turn = snapshot.turns.find((candidate) => candidate.ordinal === Math.round(input.position));
-    if (!turn) return { kind: 'failed', reason: 'source-unavailable' };
-    return {
-        kind: 'resolved',
-        value: { target: buildTarget(snapshot, turn), resolvedBy: 'position' },
-    };
+    return hasIdentity && !isCompleteSnapshot(snapshot)
+        ? { kind: 'wait' }
+        : { kind: 'failed', reason: 'source-unavailable' };
 }
 
 function linkAbortSignal(source: AbortSignal | undefined, target: AbortController): () => void {
@@ -157,7 +147,12 @@ export class ConversationNavigationCoordinator implements ConversationNavigation
         options: ConversationNavigationOptionsV1 = {},
     ): Promise<ConversationNavigationResultV1> {
         const key = targetKey(input);
-        if (this.active?.key === key) return this.active.promise;
+        if (
+            input.source !== 'directory'
+            && input.source !== 'stepper'
+            && this.active?.key === key
+            && !this.active.controller.signal.aborted
+        ) return this.active.promise;
         this.cancelActive();
 
         const controller = new AbortController();
@@ -185,9 +180,10 @@ export class ConversationNavigationCoordinator implements ConversationNavigation
         if (resolved.kind !== 'resolved') return { ok: false, reason: resolved.reason };
         if (options.signal.aborted) return { ok: false, reason: 'cancelled' };
 
-        const execution = await this.options.execute(resolved.value.target, options);
+        const execution = await this.options.execute(resolved.value.target, options, input.source);
+        if (options.signal.aborted) return { ok: false, reason: 'cancelled' };
         if (!execution.ok) {
-            if (options.signal.aborted || execution.message === 'Navigation cancelled') {
+            if (execution.message === 'Navigation cancelled') {
                 return { ok: false, reason: 'cancelled' };
             }
             if (execution.message.includes('timeout')) return { ok: false, reason: 'hydration-timeout' };

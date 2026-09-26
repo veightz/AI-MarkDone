@@ -13,6 +13,13 @@ import {
 import { createAppearanceSnapshot } from '@/style/appearance';
 
 describe('lazy content features', () => {
+    it('forwards the settings destination through the real lazy panel entry', async () => {
+        const show = vi.fn(async () => undefined);
+        const loader = new ContentFeatureModuleLoader(vi.fn(async () => ({setContentFeatureLocale:vi.fn(),createBookmarksPanel:()=>({show,isVisible:()=>true,toggle:vi.fn(),hide:vi.fn()})})) as any);
+        const panel = createLazyBookmarksPanel({} as any, {} as any, {}, loader);
+        await panel.show({tab:'settings'});
+        expect(show).toHaveBeenCalledWith({tab:'settings'});
+    });
     it('prewarms Reader and export chunks once without instantiating either surface', async () => {
         const preloadReaderPanel = vi.fn(async () => undefined);
         const preloadSaveMessagesDialog = vi.fn(async () => undefined);

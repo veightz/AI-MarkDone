@@ -9,11 +9,12 @@ const MOUNT_STYLE_ID = 'aimd-chatgpt-input-enhancement-mount-style';
 const MOUNT_DATASET = 'aimdInputEnhancementMount';
 
 export function activateChatGPTComposerInputEnhancementMount(
-    mount: ChatGPTComposerInputEnhancementMount,
+    container: HTMLElement,
+    officialContainer: HTMLElement,
 ): () => void {
-    if (mount.container === mount.officialContainer) return () => undefined;
+    if (container === officialContainer) return () => undefined;
 
-    mount.container.dataset[MOUNT_DATASET] = '1';
+    container.dataset[MOUNT_DATASET] = '1';
     if (!document.getElementById(MOUNT_STYLE_ID)) {
         const style = document.createElement('style');
         style.id = MOUNT_STYLE_ID;
@@ -27,7 +28,7 @@ export function activateChatGPTComposerInputEnhancementMount(
     }
 
     return () => {
-        delete mount.container.dataset[MOUNT_DATASET];
+        delete container.dataset[MOUNT_DATASET];
         if (!document.querySelector('[data-aimd-input-enhancement-mount="1"]')) {
             document.getElementById(MOUNT_STYLE_ID)?.remove();
         }

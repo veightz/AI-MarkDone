@@ -53,7 +53,7 @@ describe('findChatGPTComposerInputEnhancementMount', () => {
         const composer = document.querySelector<HTMLElement>('#prompt-textarea')!;
         const mount = findChatGPTComposerInputEnhancementMount(composer)!;
 
-        const cleanup = activateChatGPTComposerInputEnhancementMount(mount);
+        const cleanup = activateChatGPTComposerInputEnhancementMount(mount.container, mount.officialContainer);
 
         expect(mount.container.dataset.aimdInputEnhancementMount).toBe('1');
         expect(document.getElementById('aimd-chatgpt-input-enhancement-mount-style')?.textContent)

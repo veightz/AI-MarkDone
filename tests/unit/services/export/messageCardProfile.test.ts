@@ -36,7 +36,7 @@ describe('renderMessageCardProfile', () => {
         expect(rendered.html).toContain('width: 640px;');
         expect(rendered.html).toContain('overflow-wrap: anywhere');
         expect(rendered.html).not.toContain(':root');
-        expect(rendered.html).toContain('.aimd-png-export-card {\n  --aimd-ref-color-neutral-0:');
+        expect(rendered.html).toMatch(/\.aimd-png-export-card\s*\{[^}]*--aimd-ref-color-neutral-0:/);
         expect(rendered.html).not.toContain('<script>prompt()');
     });
 

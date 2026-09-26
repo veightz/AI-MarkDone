@@ -2,6 +2,7 @@ import type { ConversationNavigationPortV1 } from '../../contracts/conversationN
 import type { ConversationContentSourceV1 } from '../../contracts/conversationContent';
 import {
     clearPendingNavigation,
+    isSameChatGPTConversationUrl,
     isSamePageUrl,
     peekPendingNavigation,
     PENDING_NAVIGATION_EVENT,
@@ -14,6 +15,7 @@ type ConversationPendingNavigationRestorerOptions = Readonly<{
     source: ConversationContentSourceV1;
     currentUrl?: () => string;
     intervalMs?: number;
+    onUnavailable?: () => void;
 }>;
 
 /**
@@ -90,13 +92,19 @@ export class ConversationPendingNavigationRestorer {
     private async tryRestore(): Promise<void> {
         if (!this.started || this.running) return;
         const pending = peekPendingNavigation();
-        if (!pending || !isSamePageUrl(this.currentUrl(), pending.url)) {
+        if (!pending || !(isSameChatGPTConversationUrl(this.currentUrl(), pending.url) || isSamePageUrl(this.currentUrl(), pending.url))) {
             if (!pending) this.stopRouteWatcher();
             return;
         }
 
         this.running = true;
         try {
+            if (!pending.messageId) {
+                clearPendingNavigation();
+                this.stopRouteWatcher();
+                this.options.onUnavailable?.();
+                return;
+            }
             // The route now matches; the navigation coordinator owns the
             // remaining bounded wait for source readiness/materialization.
             if (this.pendingDeadlineTimer !== null) {
@@ -114,7 +122,10 @@ export class ConversationPendingNavigationRestorer {
                 assistantMessageId: pending.messageId,
                 source: 'bookmark',
             }, { timeoutMs: 15_000, align: 'start' });
-            if (result.ok || result.reason === 'cancelled' || result.reason === 'stale-target' || result.reason === 'identity-conflict' || result.reason === 'slot-missing') {
+            if (!result.ok && (result.reason === 'source-unavailable' || result.reason === 'identity-conflict')) {
+                this.options.onUnavailable?.();
+            }
+            if (result.ok || result.reason === 'cancelled' || result.reason === 'stale-target' || result.reason === 'identity-conflict' || result.reason === 'source-unavailable' || result.reason === 'slot-missing') {
                 // A successful or terminal attempt consumes the target. A
                 // source/hydration timeout remains pending so the next real
                 // source revision can retry after a slow page load.

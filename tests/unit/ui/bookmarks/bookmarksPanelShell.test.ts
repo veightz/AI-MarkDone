@@ -6,6 +6,25 @@ import { createBookmarksPanelShell } from '@/ui/content/bookmarks/ui/BookmarksPa
 import { getBookmarksPanelCss } from '@/ui/content/bookmarks/ui/styles/bookmarksPanelCss';
 
 describe('BookmarksPanelShell', () => {
+    it('keeps information destinations visible and clears the category selection through the actual tab trigger', () => {
+        const navigation = document.createElement('div');
+        navigation.innerHTML = '<button data-category="reading" data-active="true" aria-pressed="true">Reading</button>';
+        const shell = createBookmarksPanelShell({titleText:'Library',closeIcon:'<svg/>',closeLabel:'Close',defaultTabId:'settings',tabs:[
+            {id:'bookmarks',label:'Library',icon:'<svg/>',content:document.createElement('div')},
+            {id:'settings',label:'Settings',icon:'<svg/>',content:document.createElement('div'),navigation},
+            {id:'about',label:'About',icon:'<svg/>',content:document.createElement('div')},
+        ]});
+        const about = shell.panel.querySelector<HTMLButtonElement>('[data-tab-id="about"]')!;
+        expect(about.closest('details')).toBeNull();
+        about.click();
+        expect(navigation.firstElementChild?.getAttribute('aria-pressed')).toBe('false');
+        expect(about.getAttribute('aria-pressed')).toBe('true');
+    });
+    it('fills the available panel height and keeps bulk controls hidden until requested', () => {
+        const css = getBookmarksPanelCss();
+        expect(css).toMatch(/\.bookmarks-shell\s*\{[^}]*flex:\s*1;/);
+        expect(css).toContain('.batch-bar[hidden]');
+    });
     it('creates dedicated header meta and actions wrappers instead of overloading the header element', () => {
         const content = document.createElement('div');
         const shell = createBookmarksPanelShell({
@@ -85,19 +104,23 @@ describe('BookmarksPanelShell', () => {
         expect(settings.dataset.active).toBe('1');
     });
 
-    it('keeps the mobile tab rail as three equal columns without stretching the whole rail vertically', () => {
-        const css = getBookmarksPanelCss();
-        const mobileSidebarBlock = Array.from(css.matchAll(/\.bookmarks-sidebar\s*\{([^}]*)\}/g))
-            .map((match) => match[1] ?? '')
-            .find((block) => block.includes('grid-template-columns: repeat(3, minmax(0, 1fr));'));
-        const mobileShellBlock = Array.from(css.matchAll(/\.bookmarks-shell\s*\{([^}]*)\}/g))
-            .map((match) => match[1] ?? '')
-            .find((block) => block.includes('grid-template-columns: 1fr;'));
-
-        expect(mobileSidebarBlock).toContain('display: grid;');
-        expect(mobileSidebarBlock).toContain('width: 100%;');
-        expect(mobileSidebarBlock).not.toContain('width: auto;');
-        expect(mobileShellBlock).toContain('grid-template-rows: auto minmax(0, 1fr);');
+    it('switches through module buttons without replacing navigation or panels', () => {
+        const navigation = document.createElement('div');
+        const content = document.createElement('div');
+        const shell = createBookmarksPanelShell({ titleText: 'Library', closeIcon: '<svg/>', closeLabel: 'Close', defaultTabId: 'bookmarks', tabs: [
+            { id: 'bookmarks', label: 'Library', icon: '<svg/>', content, navigation },
+            { id: 'settings', label: 'Settings', icon: '<svg/>', content: document.createElement('div') },
+        ] });
+        const libraryNav = shell.panel.querySelector('#aimd-library-navigation')!;
+        const settingsButton = shell.panel.querySelector<HTMLButtonElement>('[data-tab-id="settings"]')!;
+        settingsButton.click();
+        expect(libraryNav.hasAttribute('inert')).toBe(true);
+        expect(settingsButton.getAttribute('aria-expanded')).toBe('true');
+        shell.panel.querySelector<HTMLButtonElement>('[data-tab-id="bookmarks"]')!.click();
+        expect(libraryNav.firstElementChild).toBe(navigation);
+        expect(libraryNav.hasAttribute('inert')).toBe(false);
+        expect(content.parentElement?.hidden).toBe(false);
+        expect(getBookmarksPanelCss()).toContain('prefers-reduced-motion');
     });
 
     it('is the only shell source of truth used by BookmarksPanel', () => {

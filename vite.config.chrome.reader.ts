@@ -27,6 +27,8 @@ export default defineConfig({
             output: {
                 entryFileNames: '[name].js',
                 chunkFileNames: 'content-feature-chunks/[name]-[hash].js',
+                // Merge small shared helpers without merging independent lazy feature entries.
+                experimentalMinChunkSize: 128_000,
                 format: 'es',
             },
         },

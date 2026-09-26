@@ -1,0 +1,45 @@
+// Rounded SVG family; pure calls keep unused icons out of each entry.
+function glyph(body: string, identity: string): string {
+    return `<svg${identity} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${body}</svg>`;
+}
+export const sortAZIcon = /* @__PURE__ */ glyph("<path d=\"M6 4v16 m-3-3 3 3 3-3 M13.5 10V6.5a2.5 2.5 0 0 1 5 0V10 M13.5 8h5 M13.5 14h5l-5 6h5\"/>", "");
+export const sortAlphaAscIcon = /* @__PURE__ */ glyph("<path d=\"M6 20V4 m-3 3 3-3 3 3 M13.5 10V6.5a2.5 2.5 0 0 1 5 0V10 M13.5 8h5 M13.5 14h5l-5 6h5\"/>", "");
+export const sortTimeIcon = /* @__PURE__ */ glyph("<path d=\"M6 4v16 m-3-3 3 3 3-3 M16 9v3l2 1.5\"/><circle cx=\"16\" cy=\"12\" r=\"5\"/>", "");
+export const sortTimeAscIcon = /* @__PURE__ */ glyph("<path d=\"M6 20V4 m-3 3 3-3 3 3 M16 9v3l2 1.5\"/><circle cx=\"16\" cy=\"12\" r=\"5\"/>", "");
+export const refreshCwIcon = /* @__PURE__ */ glyph("<path d=\"M20 4v5h-5 M4 20v-5h5 M19.3 9a7.7 7.7 0 0 0-13-3.5L4 8 M4.7 15a7.7 7.7 0 0 0 13 3.5L20 16\"/>", "");
+export const imageIcon = /* @__PURE__ */ glyph("<rect x=\"3.5\" y=\"3.5\" width=\"17\" height=\"17\" rx=\"3\"/><circle cx=\"8.5\" cy=\"8.5\" r=\"1.5\"/><path d=\"m4 16 4-4 4 4 4-6 4 6\"/>", "");
+export const bookMarkedIcon = /* @__PURE__ */ glyph("<rect x=\"3\" y=\"5\" width=\"4\" height=\"15\" rx=\"1.4\"/><rect x=\"9\" y=\"5\" width=\"4\" height=\"15\" rx=\"1.4\"/><path d=\"m16 5 3.4-.7 2.8 14.7-3.4.7Z M3.5 16.5h3 M9.5 16.5h3\"/>", " class=\"aimd-glyph\" data-glyph=\"bookMarked\"");
+export const bookmarkIcon = /* @__PURE__ */ glyph("<path d=\"M6.5 20V5.5A2 2 0 0 1 8.5 3.5h7a2 2 0 0 1 2 2V20L12 16.5 6.5 20Z\"/>", " class=\"aimd-glyph\" data-glyph=\"bookmark\"");
+export const bookmarkCheckIcon = /* @__PURE__ */ glyph("<path d=\"M6.5 20V5.5a2 2 0 0 1 2-2h7a2 2 0 0 1 2 2V20L12 16.5 6.5 20Z m2.8-10 1.9 1.9 3.9-4\"/>", " class=\"aimd-glyph\" data-glyph=\"bookmarkCheck\"");
+export const pageBookmarkIcon = /* @__PURE__ */ glyph("<path d=\"M14 3.5H6.5a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2H11 M14 3.5 19.5 9H16a2 2 0 0 1-2-2V3.5Z M14 13h6v8l-3-2-3 2v-8Z\"/>", " class=\"aimd-glyph\" data-glyph=\"pageBookmark\"");
+export const folderIcon = /* @__PURE__ */ glyph("<path d=\"M3.5 8V6a2 2 0 0 1 2-2h3.2l2.5 3h7.3a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2V8Z M3.5 9h17\"/>", " class=\"aimd-glyph\" data-glyph=\"folder\"");
+export const folderOpenIcon = /* @__PURE__ */ glyph("<path d=\"M3.5 10V6a2 2 0 0 1 2-2h3.2l2.5 3h7.3a2 2 0 0 1 2 2 M5 20h13a2 2 0 0 0 2-1.6l1.3-6.4H6l-2.4 6.4A1.2 1.2 0 0 0 5 20Z\"/>", " class=\"aimd-glyph\" data-glyph=\"folderOpen\"");
+export const folderPlusIcon = /* @__PURE__ */ glyph("<path d=\"M3.5 8V6a2 2 0 0 1 2-2h3.2l2.5 3h7.3a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2V8Z M9 14h6 M12 11v6\"/>", " class=\"aimd-glyph\" data-glyph=\"folderPlus\"");
+export const bookOpenIcon = /* @__PURE__ */ glyph("<path d=\"M12 6C9.5 4 6.3 3.8 3.5 4.5V19C7 18.2 9.5 18.5 12 20c2.5-1.5 5-1.8 8.5-1V4.5C17.7 3.8 14.5 4 12 6Z M12 6v14 M6.5 8.5l2.5.5 M15 9l2.5-.5\"/>", " class=\"aimd-glyph\" data-glyph=\"bookOpen\"");
+export const messageSquareTextIcon = /* @__PURE__ */ glyph("<path d=\"M8 19.5 4 22V6a2.5 2.5 0 0 1 2.5-2.5h11A2.5 2.5 0 0 1 20 6v11a2.5 2.5 0 0 1-2.5 2.5H8Z M8 9h8 M8 13h5\"/>", " class=\"aimd-glyph\" data-glyph=\"messageSquareText\"");
+export const highlighterIcon = /* @__PURE__ */ glyph("<path d=\"m9 12 7-8a1.8 1.8 0 0 1 2.6-.1l1.5 1.5A1.8 1.8 0 0 1 20 8l-8 7 M9 12l3 3-3 3H5v-4l4-2Z M3 21h10\"/>", " class=\"aimd-glyph\" data-glyph=\"highlighter\"");
+export const settingsIcon = /* @__PURE__ */ glyph("<path d=\"M6 3.5v5 M6 14v6.5 M18 3.5V10 M18 15v5.5\"/><circle cx=\"6\" cy=\"11.5\" r=\"2.5\"/><circle cx=\"18\" cy=\"12.5\" r=\"2.5\"/>", " class=\"aimd-glyph\" data-glyph=\"settings\"");
+export const copyIcon = /* @__PURE__ */ glyph("<rect x=\"8\" y=\"8\" width=\"12.5\" height=\"12.5\" rx=\"2.8\"/><path d=\"M15.5 4H6A2 2 0 0 0 4 6v9.5\"/>", " class=\"aimd-glyph\" data-glyph=\"copy\"");
+export const downloadIcon = /* @__PURE__ */ glyph("<path d=\"M12 3.5v12 M7.5 11l4.5 4.5 4.5-4.5 M4 16v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3\"/>", " class=\"aimd-glyph\" data-glyph=\"download\"");
+export const uploadIcon = /* @__PURE__ */ glyph("<path d=\"M12 15.5v-12 M7.5 8 12 3.5 16.5 8 M4 16v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3\"/>", " class=\"aimd-glyph\" data-glyph=\"upload\"");
+export const searchIcon = /* @__PURE__ */ glyph("<circle cx=\"10.5\" cy=\"10.5\" r=\"6.5\"/><path d=\"m15.3 15.3 5.2 5.2\"/>", " class=\"aimd-glyph\" data-glyph=\"search\"");
+export const editIcon = /* @__PURE__ */ glyph("<path d=\"m5 14 10.3-10.3a2 2 0 0 1 2.8 0l2.2 2.2a2 2 0 0 1 0 2.8L10 19l-6 1 1-6Z M13.8 5.2l5 5 M5 14l5 5\"/>", " class=\"aimd-glyph\" data-glyph=\"edit\"");
+export const trashIcon = /* @__PURE__ */ glyph("<path d=\"M3.5 6h17 M9 6V3.5h6V6 M5.5 6l.8 13a2 2 0 0 0 2 2h7.4a2 2 0 0 0 2-2l.8-13 M10 10v7 M14 10v7\"/>", " class=\"aimd-glyph\" data-glyph=\"trash\"");
+export const moveIcon = /* @__PURE__ */ glyph("<path d=\"M12 3v18 M3 12h18 M9 6l3-3 3 3 M18 9l3 3-3 3 M9 18l3 3 3-3 M6 9l-3 3 3 3\"/>", " class=\"aimd-glyph\" data-glyph=\"move\"");
+export const chevronLeftIcon = /* @__PURE__ */ glyph("<path d=\"m15 5-7 7 7 7\"/>", " class=\"aimd-glyph\" data-glyph=\"chevronLeft\"");
+export const chevronRightIcon = /* @__PURE__ */ glyph("<path d=\"m9 5 7 7-7 7\"/>", " class=\"aimd-glyph\" data-glyph=\"chevronRight\"");
+export const chevronDownIcon = /* @__PURE__ */ glyph("<path d=\"m5 9 7 7 7-7\"/>", " class=\"aimd-glyph\" data-glyph=\"chevronDown\"");
+export const chevronUpIcon = /* @__PURE__ */ glyph("<path d=\"m5 15 7-7 7 7\"/>", " class=\"aimd-glyph\" data-glyph=\"chevronUp\"");
+export const moreHorizontalIcon = /* @__PURE__ */ glyph("<circle cx=\"5\" cy=\"12\" r=\"1.2\" fill=\"currentColor\" stroke=\"none\"/><circle cx=\"12\" cy=\"12\" r=\"1.2\" fill=\"currentColor\" stroke=\"none\"/><circle cx=\"19\" cy=\"12\" r=\"1.2\" fill=\"currentColor\" stroke=\"none\"/>", " class=\"aimd-glyph\" data-glyph=\"moreHorizontal\"");
+export const xIcon = /* @__PURE__ */ glyph("<path d=\"m5 5 14 14 M19 5 5 19\"/>", " class=\"aimd-glyph\" data-glyph=\"x\"");
+export const plusIcon = /* @__PURE__ */ glyph("<path d=\"M12 4v16 M4 12h16\"/>", " class=\"aimd-glyph\" data-glyph=\"plus\"");
+export const checkIcon = /* @__PURE__ */ glyph("<path d=\"m4.5 12.5 5 5L20 6.5\"/>", " class=\"aimd-glyph\" data-glyph=\"check\"");
+export const sunIcon = /* @__PURE__ */ glyph("<circle cx=\"12\" cy=\"12\" r=\"4\"/><path d=\"M12 2.5v2 M12 19.5v2 M2.5 12h2 M19.5 12h2 M5.3 5.3l1.4 1.4 M17.3 17.3l1.4 1.4 M5.3 18.7l1.4-1.4 M17.3 6.7l1.4-1.4\"/>", " class=\"aimd-glyph\" data-glyph=\"sun\"");
+export const moonIcon = /* @__PURE__ */ glyph("<path d=\"M19.8 15.2A8.5 8.5 0 0 1 8.8 4.2 8.5 8.5 0 1 0 19.8 15.2Z\"/>", " class=\"aimd-glyph\" data-glyph=\"moon\"");
+export const keyboardIcon = /* @__PURE__ */ glyph("<rect x=\"2.5\" y=\"5\" width=\"19\" height=\"14\" rx=\"3\"/><path d=\"M7 15h10\"/><circle cx=\"6\" cy=\"9\" r=\"0.65\" fill=\"currentColor\" stroke=\"none\"/><circle cx=\"6\" cy=\"12\" r=\"0.65\" fill=\"currentColor\" stroke=\"none\"/><circle cx=\"10\" cy=\"9\" r=\"0.65\" fill=\"currentColor\" stroke=\"none\"/><circle cx=\"10\" cy=\"12\" r=\"0.65\" fill=\"currentColor\" stroke=\"none\"/><circle cx=\"14\" cy=\"9\" r=\"0.65\" fill=\"currentColor\" stroke=\"none\"/><circle cx=\"14\" cy=\"12\" r=\"0.65\" fill=\"currentColor\" stroke=\"none\"/><circle cx=\"18\" cy=\"9\" r=\"0.65\" fill=\"currentColor\" stroke=\"none\"/><circle cx=\"18\" cy=\"12\" r=\"0.65\" fill=\"currentColor\" stroke=\"none\"/>", " class=\"aimd-glyph\" data-glyph=\"keyboard\"");
+export const textCursorIcon = /* @__PURE__ */ glyph("<path d=\"M4 5h9 M8.5 5v14 M6 19h5 M17 3.5h4 M19 3.5v17 M17 20.5h4\"/>", " class=\"aimd-glyph\" data-glyph=\"textCursor\"");
+export const databaseIcon = /* @__PURE__ */ glyph("<ellipse cx=\"12\" cy=\"5.5\" rx=\"8\" ry=\"3\"/><path d=\"M4 5.5v13c0 1.7 3.6 3 8 3s8-1.3 8-3v-13 M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3\"/>", " class=\"aimd-glyph\" data-glyph=\"database\"");
+export const outlineIcon = /* @__PURE__ */ glyph("<path d=\"M8 5h12 M8 12h12 M8 19h8\"/><circle cx=\"4\" cy=\"5\" r=\"1\" fill=\"currentColor\" stroke=\"none\"/><circle cx=\"4\" cy=\"12\" r=\"1\" fill=\"currentColor\" stroke=\"none\"/><circle cx=\"4\" cy=\"19\" r=\"1\" fill=\"currentColor\" stroke=\"none\"/>", " class=\"aimd-glyph\" data-glyph=\"outline\"");
+export const sendIcon = /* @__PURE__ */ glyph("<path d=\"m3 11 18-8-8 18-3-8-7-2Z M10 13 21 3\"/>", " class=\"aimd-glyph\" data-glyph=\"send\"");
+export const splitViewIcon = /* @__PURE__ */ glyph("<rect x=\"3.5\" y=\"4.5\" width=\"17\" height=\"15\" rx=\"3\"/><path d=\"M12 4.5v15 M6.5 8h2 M15.5 8h2\"/>", " class=\"aimd-glyph\" data-glyph=\"splitView\"");
+export const promptIcon = /* @__PURE__ */ glyph("<path d=\"M8 19.5 4 22V6a2.5 2.5 0 0 1 2.5-2.5h11A2.5 2.5 0 0 1 20 6v11a2.5 2.5 0 0 1-2.5 2.5H8Z M8 8l3 3-3 3 M13 14h3\"/>", " class=\"aimd-glyph\" data-glyph=\"prompt\"");

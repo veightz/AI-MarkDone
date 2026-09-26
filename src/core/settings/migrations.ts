@@ -282,6 +282,7 @@ export function normalizeThemeAccentColor(value: unknown): ThemeAccentColor | nu
 export function normalizeAppearanceSettings(value: unknown): AppSettings['appearance'] {
     const record = isRecord(value) ? value : {};
     return {
+        themeMode: record.themeMode === 'light' || record.themeMode === 'dark' ? record.themeMode : 'auto',
         fontSizePx: normalizeGlobalFontSizePx((record as any).fontSizePx),
         accentColor: normalizeThemeAccentColor((record as any).accentColor),
     };

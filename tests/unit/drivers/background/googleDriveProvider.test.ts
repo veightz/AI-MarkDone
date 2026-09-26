@@ -682,6 +682,77 @@ describe('Google Drive cloud backup provider', () => {
         expect(fetch.mock.calls.some(([, init]) => (init as RequestInit | undefined)?.method === 'POST')).toBe(false);
     });
 
+    it('refuses an ambiguous Drive folder rather than hiding backups in another copy', async () => {
+        const getAuthToken = vi.fn((_details, callback) => callback('cached-token'));
+        installChromeIdentity(getAuthToken);
+        const fetch = vi.fn(async () => driveJson({ files: [{ id: 'root-one' }, { id: 'root-two' }] }));
+        vi.stubGlobal('fetch', fetch);
+
+        await expect(createGoogleDriveProvider().listSnapshots()).rejects.toMatchObject({ code: 'CONFLICT' });
+        expect(fetch).toHaveBeenCalledTimes(1);
+    });
+
+    it('discovers old bookmark and new Library backups in the same Drive folder', async () => {
+        const getAuthToken = vi.fn((_details, callback) => callback('cached-token'));
+        installChromeIdentity(getAuthToken);
+        let reads = 0;
+        const fetch = vi.fn(async () => {
+            reads++;
+            if (reads <= 3) return driveJson({ files: [{ id: `folder-${reads}` }] });
+            return driveJson({ files: [
+                { id: 'old', name: 'aimd-bookmarks-2026-05-01T00-00-00-000Z-123e4567-e89b-12d3-a456-426614174001.json', size: '10', createdTime: '2026-05-01T00:00:00Z' },
+                { id: 'new', name: 'aimd-library-2026-09-25T00-00-00-000Z-123e4567-e89b-12d3-a456-426614174002.json', size: '20', createdTime: '2026-09-25T00:00:00Z' },
+                { id: 'other', name: 'aimd-unrelated.json', size: '30', createdTime: '2026-09-25T00:00:00Z' },
+            ] });
+        });
+        vi.stubGlobal('fetch', fetch);
+
+        const snapshots = await createGoogleDriveProvider().listSnapshots();
+
+        expect(snapshots.map(item => item.snapshotId)).toEqual([
+            '123e4567-e89b-12d3-a456-426614174001',
+            '123e4567-e89b-12d3-a456-426614174002',
+        ]);
+        const query = new URL(String(fetch.mock.calls.at(-1)?.[0])).searchParams.get('q');
+        expect(query).toContain("name contains 'aimd-bookmarks-'");
+        expect(query).toContain("name contains 'aimd-library-'");
+    });
+
+    it('continues listing older backups when Drive returns another page', async () => {
+        installChromeIdentity(vi.fn((_details, callback) => callback('cached-token')));
+        let reads = 0;
+        const fetch = vi.fn(async (url: string) => {
+            reads++;
+            if (reads <= 3) return driveJson({ files: [{ id: `folder-${reads}` }] });
+            const token = new URL(url).searchParams.get('pageToken');
+            return token
+                ? driveJson({ files: [{ id: 'older', name: 'aimd-bookmarks-old.json', size: '10', createdTime: '2025-01-01T00:00:00Z' }] })
+                : driveJson({ files: [{ id: 'newer', name: 'aimd-library-new.json', size: '20', createdTime: '2026-09-25T00:00:00Z' }], nextPageToken: 'page-2' });
+        });
+        vi.stubGlobal('fetch', fetch);
+
+        const snapshots = await createGoogleDriveProvider().listSnapshots();
+
+        expect(snapshots.map(item => item.name)).toEqual(['aimd-library-new.json', 'aimd-bookmarks-old.json']);
+        expect(new URL(String(fetch.mock.calls.at(-1)?.[0])).searchParams.get('pageToken')).toBe('page-2');
+    });
+
+    it('does not silently choose one of two Drive files with the same snapshot ID', async () => {
+        installChromeIdentity(vi.fn((_details, callback) => callback('cached-token')));
+        let reads = 0;
+        const name = 'aimd-library-2026-09-25T00-00-00-000Z-123e4567-e89b-12d3-a456-426614174002.json';
+        vi.stubGlobal('fetch', vi.fn(async () => {
+            reads++;
+            return reads <= 3
+                ? driveJson({ files: [{ id: `folder-${reads}` }] })
+                : driveJson({ files: [{ id: 'copy-1', name }, { id: 'copy-2', name }] });
+        }));
+
+        const provider = createGoogleDriveProvider();
+        await expect(provider.listSnapshots()).rejects.toMatchObject({ code: 'CONFLICT' });
+        await expect(provider.downloadSnapshot('123e4567-e89b-12d3-a456-426614174002')).rejects.toMatchObject({ code: 'CONFLICT' });
+    });
+
     it('removes a stale browser-managed token and retries once when Drive returns 401', async () => {
         const getAuthToken = vi.fn()
             .mockImplementationOnce((_details, callback) => callback('stale-token'))
@@ -716,7 +787,7 @@ describe('Google Drive cloud backup provider', () => {
         const getAuthToken = vi.fn((_details, callback) => callback('cached-token'));
         installChromeIdentity(getAuthToken);
         const payload = {
-            version: '2.0' as const,
+            version: '3.0' as const,
             exportDate: new Date(0).toISOString(),
             bookmarks: [{
                 url: 'https://chatgpt.com/c/1',
@@ -771,7 +842,7 @@ describe('Google Drive cloud backup provider', () => {
         installChromeIdentity(getAuthToken);
         const largeText = 'x'.repeat(5 * 1024 * 1024 + 1);
         const snapshot = await createCloudBackupSnapshot({
-            version: '2.0',
+            version: '3.0',
             exportDate: new Date(0).toISOString(),
             bookmarks: [{
                 url: 'https://chatgpt.com/c/large',
@@ -807,7 +878,7 @@ describe('Google Drive cloud backup provider', () => {
         const getAuthToken = vi.fn((_details, callback) => callback('cached-token'));
         installChromeIdentity(getAuthToken);
         const snapshot = await createCloudBackupSnapshot({
-            version: '2.0',
+            version: '3.0',
             exportDate: new Date(0).toISOString(),
             bookmarks: [{
                 url: 'https://chatgpt.com/c/mismatch',
@@ -848,7 +919,7 @@ describe('Google Drive cloud backup provider', () => {
         const getAuthToken = vi.fn((_details, callback) => callback('cached-token'));
         installChromeIdentity(getAuthToken);
         const snapshot = await createCloudBackupSnapshot({
-            version: '2.0',
+            version: '3.0',
             exportDate: new Date(0).toISOString(),
             bookmarks: [{
                 url: 'https://chatgpt.com/c/cleanup-fails',

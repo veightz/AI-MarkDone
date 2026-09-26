@@ -309,6 +309,33 @@ function collectRangeClientRects(range: Range): DOMRect[] {
     return [];
 }
 
+function excludeControlRects(range: Range, root: HTMLElement, rects: DOMRect[]): DOMRect[] {
+    const selector = 'button, [role="button"], [data-testid="chatgpt-citation"], [data-markdown-copy="exclude"]';
+    const ancestor = range.commonAncestorContainer;
+    const scope = ancestor instanceof HTMLElement ? ancestor : ancestor.parentElement;
+    if (!scope || !root.contains(scope)) return rects;
+    const controls = [
+        ...(scope.matches(selector) ? [scope] : []),
+        ...scope.querySelectorAll<HTMLElement>(selector),
+    ];
+    const excluded: DOMRect[] = [];
+    controls.forEach((control) => {
+        try {
+            if (!range.intersectsNode(control)) return;
+            const boxes = Array.from(control.getClientRects());
+            excluded.push(...(boxes.length > 0 ? boxes : [control.getBoundingClientRect()]));
+        } catch { /* A detached host control cannot contribute selection geometry. */ }
+    });
+    if (excluded.length === 0) return rects;
+    return rects.filter((rect) => !excluded.some((control) => {
+        const area = rect.width * rect.height;
+        if (area <= 0) return false;
+        const width = Math.max(0, Math.min(rect.right, control.right) - Math.max(rect.left, control.left));
+        const height = Math.max(0, Math.min(rect.bottom, control.bottom) - Math.max(rect.top, control.top));
+        return width * height / area >= 0.8;
+    }));
+}
+
 function resolveAtomicRef(root: HTMLElement, ref: ReaderCommentAtomicRef): SelectedAtomicUnit | null {
     const selector = `[data-aimd-unit-kind="${ref.kind}"][data-aimd-md-start="${ref.start}"][data-aimd-md-end="${ref.end}"]`;
     const element = root.querySelector<HTMLElement>(selector);
@@ -393,7 +420,7 @@ export function resolveSelectionLayout(params: {
     const unitRects: ReaderCommentRect[] = [];
 
     if (range) {
-        collectRangeClientRects(range).forEach((clientRect) => {
+        excludeControlRects(range, root, collectRangeClientRects(range)).forEach((clientRect) => {
             const relative = toRelativeRect(containerRect, clientRect);
             if (relative) textRects.push(relative);
         });

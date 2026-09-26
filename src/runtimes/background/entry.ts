@@ -1,9 +1,11 @@
+import { handleMarkLibraryRequest } from './handlers/markLibrary';
 import { PROTOCOL_VERSION, createRequestId, isExtRequest, type ExtResponse, type ExtRequest } from '../../contracts/protocol';
 import { handleBookmarksRequest, recoverJournalIfAny, recordPendingChangelogNotice } from './handlers/bookmarks';
 import { handleCloudBackupRequest } from './handlers/cloudBackup';
 import { handlePromptsRequest } from './handlers/prompts';
 import { handleReaderSessionRequest, handleReaderSessionTabRemoved } from './handlers/readerSession';
 import { consumeReaderAnnotationNavigationIntent, handleReaderAnnotationRequest } from './handlers/annotations';
+import { handleHighlightRequest } from './handlers/highlights';
 import { handleSettingsRequest } from './handlers/settings';
 import { browserCompat } from '../../drivers/shared/browser';
 import { logger } from '../../core/logger';
@@ -256,6 +258,10 @@ runtime?.onMessage?.addListener?.((msg: unknown, sender: any, sendResponse: (r: 
     void (async () => {
         const readerSession = await handleReaderSessionRequest(msg, sender);
         if (readerSession) return readerSession;
+        const markLibrary = await handleMarkLibraryRequest(msg);
+        if (markLibrary) return markLibrary;
+        const highlights = await handleHighlightRequest(msg);
+        if (highlights) return highlights;
         const annotations = await handleReaderAnnotationRequest(msg);
         if (annotations) return annotations;
         const prompts = await handlePromptsRequest(msg);

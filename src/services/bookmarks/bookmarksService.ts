@@ -6,7 +6,7 @@ import type {
     ImportParseResult,
     QuarantineEntry,
 } from '../../core/bookmarks/types';
-import { buildBookmarkStorageKey, buildBookmarkStorageKeyForBookmark, buildPageBookmarkStorageKey, normalizeUrlWithoutProtocol } from '../../core/bookmarks/keys';
+import { buildBookmarkDedupeKey, buildBookmarkMessageStorageKey, buildBookmarkStorageKey, buildBookmarkStorageKeyForBookmark, buildPageBookmarkStorageKey, normalizeUrlWithoutProtocol, rememberBookmarkStorageKey } from '../../core/bookmarks/keys';
 import { buildExportPayload, collectImportFolderPaths, parseImportData } from '../../core/bookmarks/importExport';
 import { planImportMerge } from '../../core/bookmarks/merge';
 import { PathUtils, PathValidationError } from '../../core/bookmarks/path';
@@ -141,16 +141,19 @@ export function planSaveBookmark(params: {
         ? truncateContext(params.input.aiResponse)
         : params.input.aiResponse;
 
-    const key = buildBookmarkStorageKey(params.input.url, params.input.position);
-    const urlWithoutProtocol = key.slice(BOOKMARK_KEY_PREFIX.length, key.lastIndexOf(':'));
+    const messageId = typeof params.input.messageId === 'string' && params.input.messageId.trim()
+        ? params.input.messageId.trim()
+        : null;
+    const key = messageId
+        ? (buildBookmarkMessageStorageKey(params.input.url, messageId) ?? buildBookmarkStorageKey(params.input.url, params.input.position))
+        : buildBookmarkStorageKey(params.input.url, params.input.position);
+    const urlWithoutProtocol = normalizeUrlWithoutProtocol(params.input.url);
 
     const bookmark: Bookmark = {
         url: params.input.url,
         urlWithoutProtocol,
         position: params.input.position,
-        messageId: typeof params.input.messageId === 'string' && params.input.messageId.trim().length > 0
-            ? params.input.messageId
-            : null,
+        messageId,
         userMessage: finalUserMessage,
         aiResponse: finalAiResponse,
         timestamp,
@@ -327,6 +330,16 @@ export function planImportBookmarks(params: {
         title: (b.title || '').trim() || 'Untitled',
         timestamp: b.timestamp || params.now,
     }));
+
+    const identityCounts = new Map<string, number>();
+    for (const bookmark of bookmarksToUpsert) {
+        const identity = buildBookmarkDedupeKey(bookmark);
+        identityCounts.set(identity, (identityCounts.get(identity) ?? 0) + 1);
+    }
+    for (const bookmark of bookmarksToUpsert) {
+        if (bookmark.kind === 'page' || (identityCounts.get(buildBookmarkDedupeKey(bookmark)) ?? 0) < 2) continue;
+        rememberBookmarkStorageKey(bookmark, buildBookmarkStorageKey(bookmark.url, bookmark.position ?? 0));
+    }
 
     const quota = canImportQuota({
         currentUsedBytes: params.usedBytes,

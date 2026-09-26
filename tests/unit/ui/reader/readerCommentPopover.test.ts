@@ -112,6 +112,27 @@ describe('ReaderCommentPopover', () => {
         await Promise.resolve();
     });
 
+    it('does not submit the same annotation twice while the first save is pending', async () => {
+        const { shadow, container } = createHost();
+        const popover = new ReaderCommentPopover();
+        let acknowledge: () => void = () => undefined;
+        const onSave = vi.fn(() => new Promise<void>((resolve) => { acknowledge = resolve; }));
+        popover.open({
+            shadow, container,
+            appearance: createAppearanceSnapshot('light'),
+            mode: 'create', initialText: 'One note', selectedSource: 'Selected quote',
+            anchorRect: { left: 180, top: 320, width: 120, height: 22, right: 300, bottom: 342 },
+            labels: {}, onSave,
+        });
+
+        shadow.querySelector<HTMLButtonElement>('[data-action="save"]')!.click();
+        shadow.querySelector<HTMLTextAreaElement>('[data-role="input"]')!
+            .dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', metaKey: true, bubbles: true, cancelable: true }));
+        expect(onSave).toHaveBeenCalledOnce();
+        acknowledge();
+        await vi.waitFor(() => expect(popover.isOpen()).toBe(false));
+    });
+
     it('uses Delete in edit mode and routes it through onDelete instead of cancel', () => {
         const { shadow, container } = createHost();
         const popover = new ReaderCommentPopover();
@@ -146,6 +167,50 @@ describe('ReaderCommentPopover', () => {
 
         expect(onDelete).toHaveBeenCalledTimes(1);
         expect(onCancel).not.toHaveBeenCalled();
+    });
+
+    it('keeps the edit popover open until deletion is acknowledged', async () => {
+        const { shadow, container } = createHost();
+        const popover = new ReaderCommentPopover();
+        let acknowledge: () => void = () => undefined;
+        const onDelete = vi.fn(() => new Promise<void>((resolve) => { acknowledge = resolve; }));
+        popover.open({
+            shadow, container,
+            appearance: createAppearanceSnapshot('light'),
+            mode: 'edit', initialText: 'Keep this note', selectedSource: 'Selected quote',
+            anchorRect: { left: 180, top: 320, width: 120, height: 22, right: 300, bottom: 342 },
+            labels: {}, onSave: vi.fn(), onDelete,
+        });
+
+        shadow.querySelector<HTMLButtonElement>('[data-action="cancel"]')!.click();
+        expect(onDelete).toHaveBeenCalledOnce();
+        expect(popover.isOpen()).toBe(true);
+        acknowledge();
+        await vi.waitFor(() => expect(popover.isOpen()).toBe(false));
+    });
+
+    it('keeps the annotation and allows retry when deletion fails', async () => {
+        const { shadow, container } = createHost();
+        const popover = new ReaderCommentPopover();
+        const onDelete = vi.fn()
+            .mockRejectedValueOnce(new Error('Storage unavailable'))
+            .mockResolvedValueOnce(undefined);
+        popover.open({
+            shadow, container,
+            appearance: createAppearanceSnapshot('light'),
+            mode: 'edit', initialText: 'Keep this note', selectedSource: 'Selected quote',
+            anchorRect: { left: 180, top: 320, width: 120, height: 22, right: 300, bottom: 342 },
+            labels: {}, onSave: vi.fn(), onDelete,
+        });
+
+        const deleteButton = shadow.querySelector<HTMLButtonElement>('[data-action="cancel"]')!;
+        deleteButton.click();
+        await vi.waitFor(() => expect(deleteButton.disabled).toBe(false));
+        expect(popover.isOpen()).toBe(true);
+        expect(shadow.querySelector<HTMLTextAreaElement>('[data-role="input"]')?.value).toBe('Keep this note');
+        deleteButton.click();
+        await vi.waitFor(() => expect(popover.isOpen()).toBe(false));
+        expect(onDelete).toHaveBeenCalledTimes(2);
     });
 
     it('uses an anchored Surface session for browser-like outside dismissal and focus return', () => {

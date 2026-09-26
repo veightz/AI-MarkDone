@@ -1,4 +1,4 @@
-import { checkIcon, chevronDownIcon } from '../../../../../assets/icons';
+import { checkIcon, chevronDownIcon } from '../../../../../assets/workspaceIcons';
 import { markTransientRoot } from '../../../components/transientUi';
 
 export type BookmarksInlineSelectRef = {
@@ -100,6 +100,18 @@ export function createBookmarksInlineSelectControl(params: {
             return;
         }
         open();
+    });
+
+    shell.addEventListener('keydown', (event) => {
+        if (event.key === 'Escape' && shell.dataset.open === '1') {
+            event.preventDefault(); event.stopPropagation(); close(); trigger.focus();
+        } else if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+            event.preventDefault(); event.stopPropagation();
+            if (shell.dataset.open !== '1') open();
+            const current = optionButtons.indexOf(event.target as HTMLButtonElement);
+            const next = current < 0 ? (event.key === 'ArrowDown' ? 0 : optionButtons.length - 1) : (current + (event.key === 'ArrowDown' ? 1 : -1) + optionButtons.length) % optionButtons.length;
+            optionButtons[next]?.focus();
+        } else if (event.key === 'Tab') close();
     });
 
     syncValue();

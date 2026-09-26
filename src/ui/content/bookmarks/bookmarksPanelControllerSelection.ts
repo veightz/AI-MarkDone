@@ -25,7 +25,7 @@ export function getSelectedBookmarkItems(params: {
         const bookmark = bookmarkById.get(id);
         if (!bookmark) continue;
         if (bookmark.kind === 'page') items.push({ kind: 'page', url: bookmark.url });
-        else if (typeof bookmark.position === 'number') items.push({ kind: 'message', url: bookmark.url, position: bookmark.position });
+        else if (typeof bookmark.position === 'number') items.push({ kind: 'message', url: bookmark.url, position: bookmark.position, messageId: bookmark.messageId });
     }
     return items;
 }

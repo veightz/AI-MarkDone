@@ -8,7 +8,7 @@
     <a href="./LICENSE">
       <img src="https://img.shields.io/github/license/zhaoliangbin42/AI-MarkDone?label=License" alt="License">
     </a>
-    <img src="https://img.shields.io/badge/Version-5.4.1-10A37F" alt="Version 5.4.1">
+    <img src="https://img.shields.io/badge/Version-6.0.0-10A37F" alt="Version 6.0.0">
     </br>
     <img src="https://img.shields.io/badge/Browsers-Chrome%20%7C%20Firefox-10A37F" alt="Browsers">
     <img src="https://img.shields.io/badge/Primary%20Platform-ChatGPT-10A37F" alt="Primary Platform">
@@ -17,7 +17,7 @@
     </a>
   </p>
   <p><strong>Read, save, export. Stay in flow.</strong></p>
-  <p><em>ChatGPT 消息导航、阅读器源码复制、灵动注释、书签管理、Google Drive 备份、PNG 导出与精美 PDF 导出。</em></p>
+  <p><em>ChatGPT 消息导航、阅读器、书签、持久化高亮与注释、完整资料库备份，以及 Markdown、PDF 和 PNG 导出。</em></p>
   <p><strong>全量加载历史消息，告别烦人的滚动增量加载</strong></p>
   <p>打开长对话后，点击页面右下角的“刷新消息导航”，就能把整段对话的消息加载出来。这样目录条会显示完整内容，阅读器和导出功能也可以直接使用全部消息。</p>
 
@@ -119,10 +119,10 @@ ChatGPT 的长对话可能采用增量加载，旧消息不会一次性出现在
 - **内置信息页**：可直接在书签面板里查看更新日志、常见问题和关于我。
 
 ### ☁️ Google Drive 备份（实验性功能）
-- **可选云端备份**：将经过校验的书签快照保存到你自己的 Google Drive。
-- **安全恢复**：先预览安全合并详情，二次确认后只新增远端独有书签。
-- **本地优先提醒**：由于功能仍处于实验阶段，备份到 Google Drive 前建议先导出一份本地副本。
-- **用户数据归用户**：AI-MarkDone 不会收集你的 Google 账号、token、密码或书签。
+- **可选云端备份**：将书签、已持久化的高亮和注释，以及文件夹保存到你自己的 Google Drive。
+- **安全恢复**：先预览安全合并，本地冲突项保持不变；旧书签备份仍可读取。
+- **本地副本**：同一套资料也可导出为本地文件并重新导入，旧书签文件继续兼容。
+- **用户数据归用户**：AI-MarkDone 不会在自己的服务器收集你的 Google 账号、token 或密码。
 
 ### 🧮 一键复制 LaTeX
 - **点击即复制**：支持行内公式与块级公式。
@@ -207,10 +207,13 @@ npm run build
 
 ## 📅 最新更新
 
-### 5.4.1
-- 增加 ChatGPT 页面右下角的消息全量加载功能。
-- 全量加载后，目录条、阅读器和导出功能共享同一份完整消息内容。
-- 修复导出消息不完整的问题（感谢小红书用户 @Elina 和 @忧郁的鳖老仔）。
+### 6.0.0
+- 升级资料库、设置、消息工具栏、页面控制抽屉和 AI-MarkDone 品牌 Logo。
+- 设置按类别重新整理并加入搜索，输入增强配置也移入设置。
+- 新增持久化彩色高亮和页面注释，并支持在 ChatGPT 页面与阅读器之间统一管理。
+- 本地资料库导入/导出和 Google Drive 备份现已涵盖书签、高亮、注释及文件夹。
+- 改进目录条跳转与预览，并在消息字符统计旁显示时间。
+- 本次更新范围较大，部分细节会继续打磨；欢迎反馈设置分类和日常使用中的建议。
 
 [完整更新日志](./CHANGELOG.md)
 [版本说明](./RELEASE_NOTES.md)

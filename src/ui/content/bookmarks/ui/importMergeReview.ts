@@ -1,4 +1,5 @@
 import { t } from '../../components/i18n';
+import type { LibraryRestoreCounts } from '../../../../core/cloudBackup/library';
 
 export type ImportMergeReviewResult = {
     imported?: number;
@@ -100,4 +101,29 @@ export function buildImportMergeReviewModalBody(result: ImportMergeReviewResult)
         body,
         kind: warningMessages.length > 0 || (result.folderCreateFailures ?? 0) > 0 ? 'warning' : 'info',
     };
+}
+
+export function appendLibraryImportSummary(body: HTMLElement, counts: LibraryRestoreCounts): number {
+    const summary = body.querySelector('.merge-summary');
+    for (const [label, count] of [
+        [t('libraryHighlights'), counts.highlights.added],
+        [t('libraryAnnotations'), counts.annotations.added],
+        [t('cloudBackupBookmarkFolders'), counts.bookmarkFolders.added],
+        [t('cloudBackupMarkFolders'), counts.folders.added],
+        [t('cloudBackupConversationNames'), counts.conversations.added],
+    ] as const) {
+        const item = document.createElement('article');
+        item.className = 'merge-summary-item';
+        const name = document.createElement('span'); name.className = 'merge-summary-item__label'; name.textContent = label;
+        const value = document.createElement('strong'); value.textContent = String(count);
+        item.append(name, value);
+        summary?.append(item);
+    }
+    const conflicts = counts.highlights.conflict + counts.annotations.conflict + counts.folders.conflict + counts.conversations.conflict;
+    if (conflicts) {
+        const note = document.createElement('p');
+        note.textContent = t('cloudBackupLibraryConflicts', String(conflicts));
+        body.append(note);
+    }
+    return conflicts;
 }

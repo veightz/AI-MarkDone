@@ -10,6 +10,19 @@ afterEach(() => {
 });
 
 describe('buildPageAtomicSelectionMarkdown', () => {
+    it('serializes a plain-text selection spanning paragraphs without requiring an atomic unit', () => {
+        const root = document.createElement('div');
+        root.innerHTML = '<p>First line</p><p>Second line</p>';
+        const paragraphs = root.querySelectorAll('p');
+        const range = document.createRange();
+        range.setStart(paragraphs[0]!.firstChild!, 0);
+        range.setEnd(paragraphs[1]!.firstChild!, 6);
+
+        expect(buildPageAtomicSelectionMarkdown({
+            adapter: new ChatGPTAdapter(), range, root, maxProcessingTimeMs: 1_000,
+        })).toBe('First line\n\nSecond');
+    });
+
     it('keeps visible text slices and replaces a complete inline atom with Markdown source', () => {
         const root = document.createElement('div');
         root.innerHTML = '<p>Before <code>answer</code> after</p>';

@@ -153,6 +153,7 @@ describe('ReaderPanel comments', () => {
         shadow.querySelector<HTMLButtonElement>('.reader-comment-popover [data-action="save"]')!.click();
         await Promise.resolve();
 
+        expect((panel as any).state.statusText).toBe('Only kept in this session.');
         expect(shadow.querySelectorAll('.reader-comment-highlight').length).toBeGreaterThan(0);
         expect(shadow.querySelectorAll('.reader-comment-anchor').length).toBe(1);
 
@@ -366,7 +367,7 @@ describe('ReaderPanel comments', () => {
         await Promise.resolve();
 
         expect(listReaderComments(scopeId, 'a')).toHaveLength(0);
-        expect(shadow.querySelectorAll('.reader-comment-anchor')).toHaveLength(0);
+        await vi.waitFor(() => expect(shadow.querySelectorAll('.reader-comment-anchor')).toHaveLength(0));
         expect(shadow.querySelectorAll('.reader-comment-highlight')).toHaveLength(0);
         expect(shadow.querySelector<HTMLButtonElement>('[data-action="reader-copy-comments"]')?.disabled).toBe(true);
 

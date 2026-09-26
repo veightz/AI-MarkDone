@@ -63,11 +63,10 @@ These documents record bounded refactor execution and closeout evidence. They do
 ### Decisions
 
 - `docs/adr/README.md`
+- `docs/adr/ADR-0024-chatgpt-dom-authoritative-content-pool.md`
+  - current mounted-DOM content authority and page-level admission lifecycle
 - `docs/adr/ADR-0018-chatgpt-identity-proven-single-content-pool.md`
-  - active ChatGPT lifecycle: 5.3-compatible GET seed, stable typed DOM
-    batches, one monotonic pool, `get → complete` history status, and one
-    atomic Conversation Surface; the former Coordinator, Conversation Index,
-    and standalone Materialization projections are retired and deleted
+  - retained single-pool identity and atomic Conversation Surface rules
 - `docs/adr/ADR-0030-chatgpt-get-seed-dom-completion.md`
   - defines GET admission, DOM precedence, provisional source order, and the
     shared Directory/Reader/Export snapshot contract
@@ -87,6 +86,7 @@ superseded. They are not alternate current ChatGPT architectures.
 
 - `docs/testing/CURRENT_TEST_GATES.md`
 - `docs/testing/PERFORMANCE_GATES.md`
+  - dated performance-program evidence; bundle-size thresholds are historical
 - `docs/testing/TESTING_BLUEPRINT.md`
 - `docs/testing/E2E_REGRESSION_GUIDE.md`
 

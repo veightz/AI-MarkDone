@@ -1,4 +1,5 @@
 import type { SiteAdapter } from '../adapters/base';
+import type { ConversationNavigationSourceV1 } from '../../../contracts/conversationNavigation';
 import type {
     ConversationObtainedSurfaceTurnV1,
     ConversationSurfaceMaterializationV1,
@@ -17,6 +18,7 @@ export type ChatGPTCanonicalNavigationTarget = {
 
 export type ChatGPTMaterializationOptions = {
     surface: ConversationSurfacePortV1;
+    source?: ConversationNavigationSourceV1;
     timeoutMs?: number;
     signal?: AbortSignal;
     seekStepPx?: number;
@@ -44,8 +46,10 @@ type NavigationCursor = {
 };
 
 const SEEK_SETTLE_DELAY_MS = 80;
+const PAGE_CONTROL_BOUNDARY_SETTLE_MS = 1200;
 const MAX_SEEK_STEPS = 200;
 const MAX_SEEK_STALLS = 3;
+const MAX_COARSE_SLOT_SCROLLS = 3;
 const MIN_SEEK_STEP_PX = 120;
 const MAX_SEEK_STEP_PX = 2000;
 const MIN_CONFIGURED_SEEK_STEP_PX = 1000;
@@ -176,21 +180,24 @@ function getSeekStep(root: HTMLElement, configuredStepPx?: number): number {
     return Math.min(MAX_SEEK_STEP_PX, Math.max(MIN_SEEK_STEP_PX, viewport * 0.9));
 }
 
-function getScrollMaximum(root: HTMLElement): number {
-    return Math.max(0, root.scrollHeight - root.clientHeight);
+function getScrollBounds(root: HTMLElement): { min: number; max: number } {
+    const extent = Math.max(0, root.scrollHeight - root.clientHeight);
+    return window.getComputedStyle(root).flexDirection === 'column-reverse'
+        ? { min: -extent, max: 0 }
+        : { min: 0, max: extent };
 }
 
 function isAtSeekBoundary(root: HTMLElement, relation: NavigationRelation): boolean {
-    const maximum = getScrollMaximum(root);
+    const { min, max } = getScrollBounds(root);
     return relation < 0
-        ? root.scrollTop <= 1
-        : root.scrollTop >= maximum - 1;
+        ? root.scrollTop <= min + 1
+        : root.scrollTop >= max - 1;
 }
 
 function scrollRootBy(root: HTMLElement, delta: number): boolean {
     const before = root.scrollTop;
-    const maximum = getScrollMaximum(root);
-    const next = Math.max(0, Math.min(maximum, before + delta));
+    const { min, max } = getScrollBounds(root);
+    const next = Math.max(min, Math.min(max, before + delta));
     if (typeof root.scrollTo === 'function') {
         root.scrollTo({ top: next, behavior: 'auto' });
     } else if (typeof root.scrollBy === 'function') {
@@ -211,10 +218,26 @@ function resolveCanonicalHostSlot(
     adapter: SiteAdapter,
     rounds: ChatGPTNavigationRound[],
     target: ChatGPTNavigationRound,
+    allowIncompleteRounds: boolean,
 ): HTMLElement | null {
+    // Current ChatGPT keeps an exact turn/user marker on its outer slot even
+    // while the message body is detached. Use that identity before any
+    // ordinal or pixel search; a duplicate marker is intentionally ambiguous.
+    const findCurrentSlot = (attribute: string, id: string | null | undefined): HTMLElement | null => {
+        if (!id) return null;
+        const matches = Array.from(document.querySelectorAll<HTMLElement>(`[${attribute}]`)).filter(
+            (element) => element.isConnected && element.getAttribute(attribute) === id,
+        );
+        return matches.length === 1 ? matches[0]! : null;
+    };
+    const currentSlot = findCurrentSlot('data-content-search-turn-key', target.roundId)
+        ?? findCurrentSlot('data-turn-key', target.userMessageId);
+    if (currentSlot) return currentSlot;
+
+    const hasCompleteIdentities = rounds.every((round) => round.userMessageId && round.assistantMessageId);
+    if (!hasCompleteIdentities && !allowIncompleteRounds) return null;
     const sequence: CanonicalSlotEntry[] = [];
     for (const round of rounds) {
-        if (!round.userMessageId || !round.assistantMessageId) return null;
         sequence.push({
             round,
             role: 'user',
@@ -279,7 +302,8 @@ function resolveCanonicalHostSlot(
     if (assistantIdentitySlots.size === 1) return assistantIdentitySlots.values().next().value ?? null;
     if (assistantIdentitySlots.size > 1) return null;
 
-    if (slots.length < sequence.length) return null;
+    // Exact target markers do not depend on other rounds; ordinal calibration does.
+    if (!hasCompleteIdentities || slots.length < sequence.length) return null;
 
     const slotIndexByElement = new Map(slots.map((slot, index) => [slot, index]));
     const findSlotIndex = (element: HTMLElement): number | null => {
@@ -321,9 +345,15 @@ export async function materializeChatGPTConversationTarget(
 ): Promise<ChatGPTMaterializationResult> {
     const { surface } = options;
     const readRounds = () => readNavigationRounds(surface);
-    const canonicalTarget = resolveChatGPTCanonicalTarget(surface, target);
+    const assistantMessageId = normalizeIdentity(target.assistantMessageId ?? target.messageId);
+    const pageControlTarget = (options.source === 'directory' || options.source === 'stepper') && assistantMessageId
+        ? { position: target.position, assistantMessageId }
+        : target;
+    const canonicalTarget = resolveChatGPTCanonicalTarget(surface, pageControlTarget);
     if (!canonicalTarget) return { ok: false, message: 'Canonical target unavailable' };
-    const exactTarget = toExactTarget(canonicalTarget);
+    const exactTarget = pageControlTarget === target
+        ? toExactTarget(canonicalTarget)
+        : { position: canonicalTarget.position, assistantMessageId: canonicalTarget.assistantMessageId };
     const mountedAnchor = canonicalTarget.materialization?.jumpAnchorElement;
     if (mountedAnchor instanceof HTMLElement && mountedAnchor.isConnected) {
         return { ok: true, anchor: mountedAnchor, round: canonicalTarget };
@@ -351,10 +381,15 @@ export async function materializeChatGPTConversationTarget(
             let settleTimerId = 0;
             let unsubscribe: () => void = () => undefined;
             let coarseSlot: HTMLElement | null = null;
+            let exhaustedCoarseSlot: HTMLElement | null = null;
+            let coarseScrolls = 0;
+            let coarseScrolledAt = 0;
             let seekStep = 0;
             let seekRelation: NavigationRelation | null = null;
             let seekSteps = 0;
             let seekStalls = 0;
+            let coarseSeekUsed = false;
+            let boundaryWait: { relation: NavigationRelation; startedAt: number } | null = null;
             let checking = false;
             let checkAgain = false;
             let routeChangedPending: (() => void) | null = null;
@@ -370,12 +405,14 @@ export async function materializeChatGPTConversationTarget(
                 unsubscribe();
                 window.removeEventListener('popstate', routeChanged);
                 window.removeEventListener('hashchange', routeChanged);
+                options.signal?.removeEventListener('abort', onSignalAbort);
                 routeChangedPending = null;
                 cancelPending = null;
                 resolve(result);
             };
             cancelPending = () => finish({ ok: false, message: 'Navigation cancelled' });
             routeChangedPending = () => finish({ ok: false, message: 'Conversation changed' });
+            const onSignalAbort = () => finish({ ok: false, message: 'Navigation cancelled' });
             window.addEventListener('popstate', routeChanged);
             window.addEventListener('hashchange', routeChanged);
             const scheduleCheck = (delayMs: number) => {
@@ -392,15 +429,49 @@ export async function materializeChatGPTConversationTarget(
                 if (!cursor) return false;
                 const relation = getNavigationRelation(currentTarget.position, cursor.position);
                 if (relation === 0) return false;
+                if (
+                    !coarseSeekUsed
+                    && (options.source === 'directory' || options.source === 'stepper')
+                    && surface.readFrame().snapshot?.coverage === 'complete'
+                    && Math.abs(currentTarget.position - cursor.position) > 8
+                ) {
+                    coarseSeekUsed = true;
+                    const ordered = readRounds();
+                    const first = ordered[0]?.position;
+                    const last = ordered[ordered.length - 1]?.position;
+                    if (first !== undefined && last !== undefined && last > first) {
+                        const { min, max } = getScrollBounds(root);
+                        const fraction = (currentTarget.position - first) / (last - first);
+                        if (scrollRootBy(root, min + (max - min) * fraction - root.scrollTop)) {
+                            seekSteps += 1;
+                            invalidateChatGPTDomRoundSnapshot(adapter);
+                            surface.refreshSurface();
+                            scheduleCheck(SEEK_SETTLE_DELAY_MS * 2);
+                            return true;
+                        }
+                    }
+                }
                 if (seekRelation !== null && seekRelation !== relation) {
                     seekStep = Math.max(MIN_SEEK_STEP_PX, seekStep / 2);
                 }
                 seekRelation = relation;
                 if (seekStep <= 0) seekStep = getSeekStep(root, options.seekStepPx);
-                if (seekSteps >= MAX_SEEK_STEPS || isAtSeekBoundary(root, relation)) {
+                if (seekSteps >= MAX_SEEK_STEPS) {
                     finish({ ok: false, message: 'Conversation navigation seek timeout' });
                     return true;
                 }
+                if (isAtSeekBoundary(root, relation)) {
+                    if (options.source === 'directory' || options.source === 'stepper') {
+                        if (boundaryWait?.relation !== relation) boundaryWait = { relation, startedAt: Date.now() };
+                        if (Date.now() - boundaryWait.startedAt < PAGE_CONTROL_BOUNDARY_SETTLE_MS) {
+                            scheduleCheck(SEEK_SETTLE_DELAY_MS);
+                            return true;
+                        }
+                    }
+                    finish({ ok: false, message: 'Conversation navigation seek timeout' });
+                    return true;
+                }
+                boundaryWait = null;
 
                 const moved = scrollRootBy(root, relation * seekStep);
                 seekSteps += 1;
@@ -440,11 +511,43 @@ export async function materializeChatGPTConversationTarget(
                     finish({ ok: true, anchor: currentAnchor, round: currentTarget });
                     return;
                 }
-                if (coarseSlot?.isConnected) return;
+                if (coarseSlot?.isConnected) {
+                    const root = adapter.getConversationScrollRoot?.();
+                    if (root?.contains(coarseSlot)) {
+                        const slotRect = coarseSlot.getBoundingClientRect();
+                        const rootRect = root.getBoundingClientRect();
+                        const outsideViewport = slotRect.top > rootRect.bottom || slotRect.bottom < rootRect.top;
+                        if (coarseScrolls < MAX_COARSE_SLOT_SCROLLS) {
+                            const elapsed = Date.now() - coarseScrolledAt;
+                            const settleMs = outsideViewport ? SEEK_SETTLE_DELAY_MS : SEEK_SETTLE_DELAY_MS * 2;
+                            if (elapsed < settleMs) {
+                                scheduleCheck(settleMs - elapsed);
+                            } else {
+                                coarseScrolls += 1;
+                                coarseScrolledAt = Date.now();
+                                coarseSlot.scrollIntoView({ behavior: 'auto', block: 'start' });
+                                invalidateChatGPTDomRoundSnapshot(adapter);
+                                surface.refreshSurface();
+                                scheduleCheck(SEEK_SETTLE_DELAY_MS);
+                            }
+                        }
+                    }
+                    if (coarseScrolls >= MAX_COARSE_SLOT_SCROLLS) {
+                        exhaustedCoarseSlot = coarseSlot;
+                        coarseSlot = null;
+                        seekWithoutSlot(currentTarget);
+                    }
+                    return;
+                }
                 coarseSlot = null;
-                const targetSlot = resolveCanonicalHostSlot(adapter, readRounds(), currentTarget);
-                if (targetSlot && typeof targetSlot.scrollIntoView === 'function') {
+                const targetSlot = resolveCanonicalHostSlot(
+                    adapter, readRounds(), currentTarget,
+                    options.source === 'directory' || options.source === 'stepper',
+                );
+                if (targetSlot && targetSlot !== exhaustedCoarseSlot && typeof targetSlot.scrollIntoView === 'function') {
                     coarseSlot = targetSlot;
+                    coarseScrolls = 1;
+                    coarseScrolledAt = Date.now();
                     targetSlot.scrollIntoView({ behavior: 'auto', block: 'start' });
                     // The host may hydrate synchronously inside scrollIntoView.
                     // Invalidate the existing discovery snapshot once so the
@@ -470,7 +573,7 @@ export async function materializeChatGPTConversationTarget(
             });
             subscribing = false;
             timeoutId = window.setTimeout(() => finish({ ok: false, message: 'Conversation hydration timeout' }), timeoutMs);
-            options.signal?.addEventListener('abort', () => finish({ ok: false, message: 'Navigation cancelled' }), { once: true });
+            options.signal?.addEventListener('abort', onSignalAbort, { once: true });
             check();
         });
     } finally {

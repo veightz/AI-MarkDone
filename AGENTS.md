@@ -7,6 +7,7 @@ This repository uses a Codex-first engineering guide for day-to-day development.
 | Item | Value |
 |:--|:--|
 | Product | AI-MarkDone |
+| Product platform | ChatGPT only; see the 2026-09-11 scope decision in `docs/FEATURES.md` |
 | Type | Browser extension |
 | Targets | Chrome MV3, Firefox MV2 |
 | Runtime surfaces | content runtime, background runtime, extension UI |
@@ -35,6 +36,7 @@ This repository uses a Codex-first engineering guide for day-to-day development.
 - UI changes must use the established `--aimd-*` token system. Do not hardcode colors, spacing, radius, or z-index values in shipped UI.
 - Do not use `!important` outside explicit print-only rules.
 - Keep architecture changes aligned with the authoritative docs in `docs/`.
+- New feature design, implementation, settings, and acceptance target ChatGPT only (including its in-page and detached Reader). Existing other-platform code is legacy, not a requirement for feature parity; Chrome/Firefox build parity still applies.
 - Any repo-tracked code change must be verified with `npm run build` before completion unless the user explicitly waives it.
 
 ## Required Engineering Behaviors

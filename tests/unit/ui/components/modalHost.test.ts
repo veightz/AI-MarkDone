@@ -90,6 +90,24 @@ describe('ModalHost', () => {
         await expect(resultPromise).resolves.toBe('Research/Inbox');
     });
 
+    it('keeps a failed save editable and prevents duplicate submissions while pending', async () => {
+        const root = document.createElement('div'); document.body.append(root);
+        let finish!: (message: string | null) => void;
+        const save = vi.fn(() => new Promise<string | null>(resolve => { finish = resolve; }));
+        const result = new ModalHost(root).prompt({ kind: 'info', title: 'Rename', message: '', defaultValue: 'Notes', confirmText: 'Save', cancelText: 'Cancel', onSubmit: save });
+        await Promise.resolve();
+        const input = root.querySelector<HTMLInputElement>('input')!;
+        const submit = root.querySelector<HTMLButtonElement>('[data-action="modal-confirm"]')!;
+        submit.click(); submit.click();
+        expect(save).toHaveBeenCalledTimes(1); expect(input.disabled).toBe(true);
+        finish('Already exists'); await Promise.resolve(); await Promise.resolve();
+        expect(input.value).toBe('Notes'); expect(input.disabled).toBe(false);
+        expect(root.querySelector('.mock-modal__error')?.textContent).toBe('Already exists');
+        input.value = 'Revised'; submit.click(); finish(null);
+        await expect(result).resolves.toBe('Revised');
+        root.remove();
+    });
+
     it('keeps prompt input, focus, and confirm interactions local to the shared modal host', async () => {
         const host = document.createElement('div');
         const shadow = host.attachShadow({ mode: 'open' });

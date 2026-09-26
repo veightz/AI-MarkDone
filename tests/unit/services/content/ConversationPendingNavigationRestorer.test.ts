@@ -66,6 +66,27 @@ describe('ConversationPendingNavigationRestorer', () => {
         restorer.dispose();
     });
 
+    it('opens the original conversation but does not jump for an ID-less old bookmark', async () => {
+        const id = '12345678-1234-1234-1234-123456789abc';
+        window.history.replaceState({}, '', `/g/project/c/${id}`);
+        const navigate = vi.fn();
+        const onUnavailable = vi.fn();
+        setPendingNavigation({ url: `https://chatgpt.com/c/${id}`, position: 9, messageId: null });
+        const restorer = new ConversationPendingNavigationRestorer({
+            navigation: { navigate, cancelActive: vi.fn() } as ConversationNavigationPortV1,
+            source: createConversationContentSource({ conversationId: id, rounds: [] }),
+            onUnavailable,
+        });
+
+        restorer.start();
+        await Promise.resolve();
+
+        expect(navigate).not.toHaveBeenCalled();
+        expect(onUnavailable).toHaveBeenCalledOnce();
+        expect(sessionStorage.getItem('aimd:bookmarkNavigate:v1')).toBeNull();
+        restorer.dispose();
+    });
+
     it('reacts to a pending target created after the runtime is already alive', async () => {
         const navigate = vi.fn(async () => ({
             ok: true as const,

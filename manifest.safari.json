@@ -1,7 +1,7 @@
 {
     "manifest_version": 2,
     "name": "__MSG_extName__",
-    "version": "5.4.1",
+    "version": "6.0.0",
     "description": "__MSG_extDescription__",
     "default_locale": "en",
     "homepage_url": "https://zhaoliangbin42.github.io/ai-markdone/en/",
@@ -47,6 +47,7 @@
         "128": "icons/icon128.png"
     },
     "web_accessible_resources": [
+        "icons/brand-logo.png",
         "icons/icon16.png",
         "icons/icon48.png",
         "icons/icon128.png",

@@ -32,6 +32,9 @@ export type ChatGPTHostObservationBatch = Readonly<{
 }>;
 
 const ROUND_STRUCTURE_SELECTOR = [
+    '[data-turn-key]',
+    '[data-content-search-turn-key]',
+    '[data-chatgpt-search-unit-key]',
     '[data-turn-id-container]',
     '[data-turn="user"]',
     '[data-turn="assistant"]',
@@ -41,6 +44,10 @@ const ROUND_STRUCTURE_SELECTOR = [
 ].join(',');
 
 const ROUND_IDENTITY_ATTRIBUTES = new Set([
+    'data-turn-key',
+    'data-content-search-turn-key',
+    'data-chatgpt-search-unit-key',
+    'data-chatgpt-search-message-ids',
     'data-message-id',
     'data-turn-id',
     'data-turn',
@@ -73,13 +80,13 @@ function isExtensionOwnedNode(node: Node): boolean {
 function isAssistantContentNode(node: Node): boolean {
     if (isExtensionOwnedNode(node)) return false;
     const element = getElementForOwnershipCheck(node);
-    return Boolean(element?.closest('[data-message-author-role="assistant"]'));
+    return Boolean(element?.closest('[data-message-author-role="assistant"], [data-chatgpt-search-unit-key$=":assistant"]'));
 }
 
 function isUserContentNode(node: Node): boolean {
     if (isExtensionOwnedNode(node)) return false;
     const element = getElementForOwnershipCheck(node);
-    return Boolean(element?.closest('[data-message-author-role="user"]'));
+    return Boolean(element?.closest('[data-message-author-role="user"], [data-chatgpt-search-unit-key$=":user"]'));
 }
 
 function mutationAffectsHostPage(mutation: MutationRecord): boolean {
@@ -459,17 +466,23 @@ function nodeMayContainContentLifecycleFromMutation(mutation: MutationRecord): b
 
 function collectAssistantMessageIds(mutation: MutationRecord): string[] {
     const ids = new Set<string>();
+    const addSearchUnitId = (unit: Element | null): void => {
+        const parts = unit?.getAttribute('data-chatgpt-search-message-ids')?.trim().split(/\s+/).filter(Boolean);
+        if (parts?.length && parts.every((id) => id === parts[0])) ids.add(parts[0]!);
+    };
     const collect = (node: Node): void => {
         const element = getElementForOwnershipCheck(node);
         const message = element?.closest('[data-message-author-role="assistant"]');
         const directId = message?.getAttribute('data-message-id')?.trim();
         if (directId) ids.add(directId);
+        addSearchUnitId(element?.closest('[data-chatgpt-search-unit-key$=":assistant"]') ?? null);
         if (node.nodeType !== 1 && node.nodeType !== 11) return;
         const queryable = node as Element | DocumentFragment;
         queryable.querySelectorAll?.('[data-message-author-role="assistant"][data-message-id]').forEach((candidate) => {
             const id = candidate.getAttribute('data-message-id')?.trim();
             if (id) ids.add(id);
         });
+        queryable.querySelectorAll?.('[data-chatgpt-search-unit-key$=":assistant"]').forEach(addSearchUnitId);
     };
     collect(mutation.target);
     mutation.addedNodes.forEach(collect);
@@ -491,6 +504,14 @@ function collectRemovedAssistantMessageIds(mutation: MutationRecord): string[] {
             const id = assistant.getAttribute('data-message-id')?.trim();
             if (id) ids.add(id);
         });
+        const addSearchUnitId = (unit: Element): void => {
+            const parts = unit.getAttribute('data-chatgpt-search-message-ids')?.trim().split(/\s+/).filter(Boolean);
+            if (parts?.length && parts.every((id) => id === parts[0])) ids.add(parts[0]!);
+        };
+        if (removedNode.nodeType === 1 && (removedNode as Element).matches('[data-chatgpt-search-unit-key$=":assistant"]')) {
+            addSearchUnitId(removedNode as Element);
+        }
+        root.querySelectorAll('[data-chatgpt-search-unit-key$=":assistant"]').forEach(addSearchUnitId);
     }
     return Array.from(ids);
 }

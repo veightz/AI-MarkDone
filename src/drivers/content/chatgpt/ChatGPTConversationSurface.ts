@@ -350,6 +350,9 @@ function hostMatchesTurn(round: ChatGPTDomRoundRef, turn: ConversationTurnV1): b
     const identity = resolveChatGPTDomRoundProjectionIdentity(round);
     if (!identity || identity.assistantMessageId !== turn.identity.assistantMessageId) return false;
     if (identity.userMessageId && identity.userMessageId !== turn.identity.userMessageId) return false;
+    // The current host's search-turn key is a display key, not necessarily the
+    // graph turn ID. The pair of exact message IDs identifies the mounted turn.
+    if (identity.userMessageId && identity.userMessageId === turn.identity.userMessageId) return true;
     const observedTurnId = round.identity.roundId?.trim() || round.identity.assistantTurnId?.trim() || null;
     return !observedTurnId
         || observedTurnId === turn.identity.turnId

@@ -1,4 +1,5 @@
 import '../browserExtensionMock';
+import { installHighlightFixture } from '../highlightFixture';
 
 import { DEFAULT_SETTINGS } from '../../../src/core/settings/types';
 import type { Bookmark, Folder } from '../../../src/core/bookmarks/types';
@@ -13,7 +14,7 @@ import {
     type VisualHarnessVariant,
 } from '../visualHarnessBridge';
 
-history.replaceState({}, '', '/c/12345678-abcd-4abc-8def-1234567890ab');
+// Keep the fixture URL reloadable; conversation identities come from fixture records.
 
 const now = Date.now();
 const folders: Folder[] = [
@@ -94,6 +95,7 @@ browserApi.runtime.sendMessage = async (request: { v: number; id: string; type: 
     }
     return { v: request.v, id: request.id, type: request.type, ok: true, data };
 };
+installHighlightFixture();
 
 const conversationRoot = document.querySelector<HTMLElement>('[data-role="conversation-root"]')!;
 const user = conversationRoot.querySelector<HTMLElement>('.user-message')!;
@@ -134,7 +136,8 @@ const adapter = {
 const controller = new BookmarksPanelController(adapter);
 const panel = new BookmarksPanel(controller, { show: async () => undefined, hide: () => undefined });
 let stepper: ChatGPTMessageStepperController | null = null;
-let variant: VisualHarnessVariant = { theme: 'light', locale: 'en' };
+const fixtureParams = new URLSearchParams(window.location.search);
+let variant: VisualHarnessVariant = { theme: fixtureParams.get('theme') === 'dark' ? 'dark' : 'light', locale: fixtureParams.get('locale') === 'zh_CN' ? 'zh_CN' : 'en' };
 
 const nextTask = (): Promise<void> => new Promise((resolve) => window.setTimeout(resolve, 0));
 
@@ -205,16 +208,30 @@ async function applyVariant(next: VisualHarnessVariant): Promise<void> {
 
     controller.setAppearance(createAppearanceSnapshot(next.theme));
     stepper = new ChatGPTMessageStepperController(adapter, {
-        onOpenBookmarksPanel: () => panel.toggle(),
-        onTogglePageBookmark: () => ({ saved: true }),
-        onRefreshPageBookmarkState: () => true,
+        surface: {
+            readFrame: () => ({ frameToken: 'fixture', surfaceToken: 'fixture', contentKind: 'ready', document: null, snapshot: null, projectionId: 'fixture', contentToken: 'fixture', obtainedTurns: [], pendingSurfaces: [] }),
+            subscribeFrame: (listener) => { listener(); return () => undefined; },
+            refreshSurface: () => undefined,
+            materialization: {} as any,
+        },
+        onOpenBookmarksPanel: () => panel.show({tab:'settings'}),
+        onTogglePageBookmark: () => ({ ok: true, saved: true }),
+        onRefreshPageBookmarkState: () => ({ ok: true, saved: true }),
     });
     stepper.init();
     stepper.setAppearance(createAppearanceSnapshot(next.theme));
     stepper.setPageBookmarked(true);
 
     const host = await openFromPageControl();
-    if (window.innerWidth >= 1200) {
+    const requestedView = fixtureParams.get('view');
+    if (requestedView === 'library' || requestedView === 'settings') {
+        const tabId = requestedView === 'library' ? 'bookmarks' : 'settings';
+        const button = host.shadowRoot?.querySelector<HTMLButtonElement>(`[data-action="set-bookmarks-tab"][data-tab="${tabId}"]`);
+        if (!button) throw new Error(`Missing workspace view trigger: ${requestedView}`);
+        button.click();
+        await nextTask();
+        if (button.getAttribute('aria-pressed') !== 'true') throw new Error(`Workspace view did not open: ${requestedView}`);
+    } else if (window.innerWidth >= 1200) {
         await showInfoTab(host, next.theme === 'light' ? 'feedback' : 'mappamory');
     } else if (next.locale === 'zh_CN') {
         await showInfoTab(host, next.theme === 'light' ? 'feedback' : 'mappamory');

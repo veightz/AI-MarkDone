@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { PathUtils } from '@/core/bookmarks/path';
 import type { Bookmark, Folder } from '@/core/bookmarks/types';
 import { BookmarksPanelController } from '@/ui/content/bookmarks/BookmarksPanelController';
-import { bookmarkKey, getBookmarkIdentityKey } from '@/ui/content/bookmarks/bookmarksPanelControllerHelpers';
+import { bookmarkKey, folderKey, getBookmarkIdentityKey } from '@/ui/content/bookmarks/bookmarksPanelControllerHelpers';
 import { getSelectedBookmarkItems } from '@/ui/content/bookmarks/bookmarksPanelControllerSelection';
 
 function makeBookmark(index: number, folderPath = `Folder-${index}`): Bookmark {
@@ -31,6 +31,56 @@ function makeFolder(index: number): Folder {
 }
 
 describe('BookmarksPanelController selection complexity', () => {
+    it('selects all matching bookmarks in one state update', () => {
+        const controller = new BookmarksPanelController({} as any);
+        const records = [makeBookmark(0), makeBookmark(1)];
+        const emit = vi.spyOn(controller as any, 'emit');
+
+        controller.selectBookmarks(records);
+
+        expect(controller.getSnapshot().selectedKeys).toEqual(new Set(records.map(record => bookmarkKey(getBookmarkIdentityKey(record)))));
+        expect(emit).toHaveBeenCalledOnce();
+    });
+
+    it('inverts matching bookmark selection without changing folder selections in one update', () => {
+        const controller = new BookmarksPanelController({} as any);
+        const first = makeBookmark(0);
+        const second = makeBookmark(1);
+        (controller as any).state.selectedKeys = new Set([
+            bookmarkKey(getBookmarkIdentityKey(first)),
+            folderKey('Folder-0'),
+        ]);
+        const emit = vi.spyOn(controller as any, 'emit');
+
+        controller.invertBookmarkSelection([first, second]);
+
+        expect(controller.getSnapshot().selectedKeys).toEqual(new Set([
+            bookmarkKey(getBookmarkIdentityKey(second)),
+            folderKey('Folder-0'),
+        ]));
+        expect(emit).toHaveBeenCalledOnce();
+    });
+
+    it('inverts only the supplied result set', () => {
+        const controller = new BookmarksPanelController({} as any);
+        const records = [makeBookmark(0), makeBookmark(1), makeBookmark(2)];
+        controller.selectBookmarks(records.slice(0, 2));
+
+        controller.invertBookmarkSelection(records.slice(0, 2));
+
+        expect(controller.getSnapshot().selectedKeys).toEqual(new Set());
+    });
+
+    it('selects same-position message bookmarks by stable message identity', () => {
+        const first = { ...makeBookmark(0), url: 'https://chatgpt.com/c/shared-conversation', position: 1, messageId: 'assistant-a' };
+        const second = { ...makeBookmark(1), url: first.url, position: first.position, messageId: 'assistant-b' };
+        const selectedKeys = new Set([bookmarkKey(getBookmarkIdentityKey(second))]);
+
+        const items = getSelectedBookmarkItems({ bookmarks: [first, second], selectedKeys });
+
+        expect(items).toEqual([{ kind: 'message', url: second.url, position: 1, messageId: 'assistant-b' }]);
+    });
+
     it('resolves a large selected bookmark set with one bookmark index pass', () => {
         const count = 1_500;
         let urlReads = 0;

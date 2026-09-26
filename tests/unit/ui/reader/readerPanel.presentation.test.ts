@@ -72,6 +72,11 @@ describe('ReaderPanel presentation', () => {
     });
 
     afterEach(() => {
+        // Finish the real close lifecycle before the DOM environment disappears;
+        // otherwise its animation fallback can call popover cleanup after teardown.
+        document.querySelector('#aimd-reader-panel-host')?.shadowRoot
+            ?.querySelector('.panel-window--reader[data-motion-state="closing"]')
+            ?.dispatchEvent(new Event('animationend', { bubbles: true }));
         vi.clearAllMocks();
         vi.useRealTimers();
         clearReaderCommentScope('reader-panel-comments-v1');
@@ -82,10 +87,10 @@ describe('ReaderPanel presentation', () => {
         vi.mocked(bookmarksClient.getChangelogNotice).mockResolvedValueOnce({
             ok: true,
             data: {
-                pendingVersion: '5.4.0',
+                pendingVersion: '6.0.0',
                 lastShownVersion: null,
                 reason: 'update',
-                previousVersion: '4.4.6',
+                previousVersion: '5.4.1',
             },
         } as any);
         const panel = new ReaderPanel();
@@ -100,17 +105,17 @@ describe('ReaderPanel presentation', () => {
             const shadow = host.shadowRoot as ShadowRoot;
             const modal = shadow.querySelector<HTMLElement>('.mock-modal');
 
-            expect(modal?.querySelector('.mock-modal__title-copy strong')?.textContent).toBe("What's new in AI-MarkDone 5.4.0");
-            expect(modal?.textContent).toContain('2026-08-22');
-            expect(modal?.textContent).toContain('Refresh message navigation');
-            expect(modal?.textContent).toContain('shared ordered content pool');
+            expect(modal?.querySelector('.mock-modal__title-copy strong')?.textContent).toBe("What's new in AI-MarkDone 6.0.0");
+            expect(modal?.textContent).toContain('2026-09-25');
+            expect(modal?.textContent).toContain('three highlight colors');
+            expect(modal?.textContent).toContain('Input Enhancement options have moved into Settings');
             expect(Array.from(modal?.querySelectorAll<HTMLButtonElement>('.mock-modal__button') ?? []).map((button) => button.textContent)).toEqual(['OK']);
 
             const okButton = modal?.querySelector<HTMLButtonElement>('.mock-modal__button');
             okButton?.click();
             await Promise.resolve();
 
-            expect(bookmarksClient.ackChangelogNotice).toHaveBeenCalledWith('5.4.0');
+            expect(bookmarksClient.ackChangelogNotice).toHaveBeenCalledWith('6.0.0');
         } finally {
             panel.hide();
         }
@@ -182,7 +187,7 @@ describe('ReaderPanel presentation', () => {
             const footerPage = shadow.querySelector<HTMLElement>('.reader-footer__meta .reader-footer-page');
             const katexLink = shadow.querySelector<HTMLLinkElement>('link[data-aimd-style-link="aimd-reader-panel-katex"]');
             const readerSource = fs.readFileSync(path.join(process.cwd(), 'src/ui/content/reader/ReaderPanel.ts'), 'utf8');
-            const templateSource = fs.readFileSync(path.join(process.cwd(), 'src/ui/content/reader/readerPanelTemplate.ts'), 'utf8');
+            const templateSource = ['readerPanelTemplate.ts', 'readerPanelBase.css', 'readerPanelLayout.css', 'readerPanelContent.css'].map(file => fs.readFileSync(path.join(process.cwd(), 'src/ui/content/reader', file), 'utf8')).join('\n');
 
             expect(backdropRoot?.querySelector('.panel-stage__overlay')).toBeTruthy();
             expect(surfaceRoot).toBeTruthy();
@@ -842,7 +847,7 @@ describe('ReaderPanel presentation', () => {
     });
 
     it('keeps active icon buttons visually selected on hover and gives pagination dots hover affordances', () => {
-        const source = fs.readFileSync(path.join(process.cwd(), 'src/ui/content/reader/readerPanelTemplate.ts'), 'utf8');
+        const source = ['readerPanelTemplate.ts', 'readerPanelBase.css', 'readerPanelLayout.css', 'readerPanelContent.css'].map(file => fs.readFileSync(path.join(process.cwd(), 'src/ui/content/reader', file), 'utf8')).join('\n');
 
         expect(source).toContain('.icon-btn--active:hover');
         expect(source).toContain('.reader-dot:hover');
@@ -853,7 +858,7 @@ describe('ReaderPanel presentation', () => {
     });
 
     it('uses shared panel title and body typography tokens instead of local raw reader sizes', () => {
-        const source = fs.readFileSync(path.join(process.cwd(), 'src/ui/content/reader/readerPanelTemplate.ts'), 'utf8');
+        const source = ['readerPanelTemplate.ts', 'readerPanelBase.css', 'readerPanelLayout.css', 'readerPanelContent.css'].map(file => fs.readFileSync(path.join(process.cwd(), 'src/ui/content/reader', file), 'utf8')).join('\n');
 
         expect(source).not.toContain('--aimd-panel-title-size: var(--aimd-panel-title-size-compact);');
         expect(source).toContain('.reader-message__body--prompt {');
@@ -865,7 +870,7 @@ describe('ReaderPanel presentation', () => {
     });
 
     it('keeps atomic reader selection styles local, token-driven, and lightly rounded', () => {
-        const source = fs.readFileSync(path.join(process.cwd(), 'src/ui/content/reader/readerPanelTemplate.ts'), 'utf8');
+        const source = ['readerPanelTemplate.ts', 'readerPanelBase.css', 'readerPanelLayout.css', 'readerPanelContent.css'].map(file => fs.readFileSync(path.join(process.cwd(), 'src/ui/content/reader', file), 'utf8')).join('\n');
 
         expect(source).toContain('[data-aimd-unit-state="selected"]');
         expect(source).toContain('--_reader-atomic-selected-bg');
@@ -876,7 +881,7 @@ describe('ReaderPanel presentation', () => {
     });
 
     it('keeps floating reader comment controls shadow-free and on their own hover token path', () => {
-        const source = fs.readFileSync(path.join(process.cwd(), 'src/ui/content/reader/readerPanelTemplate.ts'), 'utf8');
+        const source = ['readerPanelTemplate.ts', 'readerPanelBase.css', 'readerPanelLayout.css', 'readerPanelContent.css'].map(file => fs.readFileSync(path.join(process.cwd(), 'src/ui/content/reader', file), 'utf8')).join('\n');
 
         expect(source).toContain('--_reader-comment-floating-hover-bg');
         expect(source).toContain('--_reader-comment-floating-active-bg');
@@ -889,7 +894,7 @@ describe('ReaderPanel presentation', () => {
     });
 
     it('renders selection actions as floating controls instead of clipping them inside the markdown shell', () => {
-        const source = fs.readFileSync(path.join(process.cwd(), 'src/ui/content/reader/readerPanelTemplate.ts'), 'utf8');
+        const source = ['readerPanelTemplate.ts', 'readerPanelBase.css', 'readerPanelLayout.css', 'readerPanelContent.css'].map(file => fs.readFileSync(path.join(process.cwd(), 'src/ui/content/reader', file), 'utf8')).join('\n');
 
         expect(source).toContain('.reader-comment-action {');
         expect(source).toContain('position: absolute;');
@@ -898,7 +903,7 @@ describe('ReaderPanel presentation', () => {
     });
 
     it('keeps the sticky workspace scoped, token-driven, and drawer-only on narrow screens', () => {
-        const source = fs.readFileSync(path.join(process.cwd(), 'src/ui/content/reader/readerPanelTemplate.ts'), 'utf8');
+        const source = ['readerPanelTemplate.ts', 'readerPanelBase.css', 'readerPanelLayout.css', 'readerPanelContent.css'].map(file => fs.readFileSync(path.join(process.cwd(), 'src/ui/content/reader', file), 'utf8')).join('\n');
         const stickyStart = source.indexOf('.reader-sticky-panel {');
         const stickyEnd = source.indexOf('.reader-body {', stickyStart);
         const stickyCss = source.slice(stickyStart, stickyEnd);
@@ -924,7 +929,7 @@ describe('ReaderPanel presentation', () => {
     });
 
     it('keeps the reader outline rail scoped, token-driven, and responsive', () => {
-        const source = fs.readFileSync(path.join(process.cwd(), 'src/ui/content/reader/readerPanelTemplate.ts'), 'utf8');
+        const source = ['readerPanelTemplate.ts', 'readerPanelBase.css', 'readerPanelLayout.css', 'readerPanelContent.css'].map(file => fs.readFileSync(path.join(process.cwd(), 'src/ui/content/reader', file), 'utf8')).join('\n');
         const outlineStart = source.indexOf('.reader-outline-rail {');
         const outlineEnd = source.indexOf('@supports not', outlineStart);
         const outlineCss = source.slice(outlineStart, outlineEnd);

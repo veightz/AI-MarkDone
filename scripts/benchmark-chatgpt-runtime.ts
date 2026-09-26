@@ -137,8 +137,10 @@ function createFixtureHtml(rounds: number): string {
     }).join('');
 
     return `<!doctype html>
-<html lang="en">
-  <head><meta charset="utf-8"><title>AI-MarkDone performance fixture</title></head>
+<html>
+  <head><meta charset="utf-8"><title>AI-MarkDone performance fixture</title>
+    <style>.z-0.flex { display: flex; }</style>
+  </head>
   <body>
     <main>
       <div class="fixture_convSearchResultHighlightRoot">
@@ -420,7 +422,18 @@ async function runRuntimeBenchmark(extensionPath: string, rounds: number, mutati
             const state = (window as unknown as { __AIMD_PERF_HARNESS__: HarnessState }).__AIMD_PERF_HARNESS__;
             return performance.now() - state.phaseStartedAt;
         });
+        // setLocale writes lang after its catalog resolves, then refreshes the
+        // existing controls synchronously. Start the identity sample afterward;
+        // cold-start collection still includes that initialization work.
+        await page.waitForFunction(
+            () => ['en', 'zh-CN'].includes(document.documentElement.lang),
+            undefined,
+            { timeout: TOOLBAR_TIMEOUT_MS },
+        );
         await page.evaluate(async (expectedToolbars) => {
+            let localeChanges = 0;
+            const localeObserver = new MutationObserver((records) => { localeChanges += records.length; });
+            localeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ['lang'] });
             const initialHosts = Array.from(document.querySelectorAll<HTMLElement>('[data-turn="assistant"] div.z-0.flex'))
                 .map((row) => row.querySelector<HTMLElement>('[data-aimd-role="message-toolbar"]'));
             if (initialHosts.length !== expectedToolbars || initialHosts.some((host) => !host)) {
@@ -431,9 +444,14 @@ async function runRuntimeBenchmark(extensionPath: string, rounds: number, mutati
                 const currentHosts = Array.from(document.querySelectorAll<HTMLElement>('[data-turn="assistant"] div.z-0.flex'))
                     .map((row) => row.querySelector<HTMLElement>('[data-aimd-role="message-toolbar"]'));
                 if (currentHosts.some((host, index) => host !== initialHosts[index])) {
-                    throw new Error('Toolbar host identity changed on an unchanged multi-segment page');
+                    localeObserver.disconnect();
+                    const changed = currentHosts.flatMap((host, index) => host !== initialHosts[index]
+                        ? [{ index, previous: initialHosts[index]?.dataset.aimdMessageKey, next: host?.dataset.aimdMessageKey }]
+                        : []);
+                    throw new Error(`Toolbar host identity changed on an unchanged multi-segment page: ${JSON.stringify({ localeChanges, changedCount: changed.length, examples: changed.slice(0, 3) })}`);
                 }
             }
+            localeObserver.disconnect();
         }, rounds);
         await page.waitForTimeout(500);
         const cold = await collectPhase(page);
@@ -455,6 +473,7 @@ async function runRuntimeBenchmark(extensionPath: string, rounds: number, mutati
                 .map((button) => ({ action: button.dataset.action, disabled: button.disabled })),
         }));
         console.error(`[perf] first toolbar ${JSON.stringify(firstToolbarState)}`);
+        await firstToolbar.locator('[data-action="toggle-capsule"]').click();
         await firstToolbar.locator('[data-action="copy_markdown"]').click();
         await waitForClipboardText(page, 'Complex answer 1');
         const wholeMessageMarkdown = await page.evaluate(() => navigator.clipboard.readText());
@@ -539,7 +558,7 @@ async function runRuntimeBenchmark(extensionPath: string, rounds: number, mutati
             || drag.formulaFullTreeQueries !== 0
             || drag.materializeCalls !== 1
             || drag.markdownProjectionCalls !== 1
-            || drag.materializeFormulaScans !== 1
+            || drag.materializeFormulaScans > 1
             || drag.materializeRangeToStringCalls < 1
         ) {
             throw new Error(

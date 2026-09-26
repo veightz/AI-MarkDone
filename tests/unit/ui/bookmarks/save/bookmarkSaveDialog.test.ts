@@ -138,6 +138,50 @@ describe('BookmarkSaveDialog', () => {
         }
     });
 
+    it('rejects the current folder, a source subtree and excessive depth through the picker', async () => {
+        await setLocale('en');
+        const { bookmarksClient } = await import('@/drivers/shared/clients/bookmarksClient');
+        const paths = ['Work', 'Work/Research', 'Work/Research/Deep', 'Other', 'Other/A', 'Other/A/B'];
+        vi.mocked(bookmarksClient.foldersList).mockResolvedValueOnce({ ok: true, data: {
+            folderPaths: paths, folders: paths.map(path => ({ path, name: path.split('/').pop()!, depth: path.split('/').length })),
+        } } as any);
+        const dialog = new BookmarkSaveDialog();
+        const result = dialog.open({ theme: 'light', userPrompt: '', mode: 'folder-select', currentFolderPath: 'Work',
+            selectionOptions: { excludeCurrent: true, moveSourcePath: 'Work/Research', allowRoot: true } });
+        await new Promise(resolve => setTimeout(resolve, 0));
+        const root = document.getElementById('aimd-bookmark-save-dialog-host')!.shadowRoot!;
+        const disabled = (path: string) => root.querySelector<HTMLButtonElement>(`.picker-main[data-path="${path}"]`)!.disabled;
+        expect(disabled('Work')).toBe(true);
+        expect(disabled('Work/Research')).toBe(true);
+        root.querySelector<HTMLButtonElement>('[data-action="bookmark-save-toggle-folder"][data-path="Other"]')?.click();
+        root.querySelector<HTMLButtonElement>('[data-action="bookmark-save-toggle-folder"][data-path="Other/A"]')?.click();
+        expect(disabled('Other/A/B')).toBe(true);
+        root.querySelector<HTMLButtonElement>('[data-action="bookmark-save-select-folder"][data-path="/"]')!.click();
+        const submit = root.querySelector<HTMLButtonElement>('[data-action="bookmark-save-submit"]')!;
+        expect(submit.disabled).toBe(false);
+        submit.click();
+        await expect(result).resolves.toMatchObject({ ok: true, folderPath: '/' });
+    });
+
+    it('keeps the chosen destination after write failure and submits once at a time', async () => {
+        await setLocale('en');
+        let finish!: (message: string | null) => void;
+        const save = vi.fn(() => new Promise<string | null>(resolve => { finish = resolve; }));
+        const dialog = new BookmarkSaveDialog();
+        const result = dialog.open({ theme: 'light', userPrompt: '', mode: 'folder-select', currentFolderPath: 'Import', selectionOptions: { excludeCurrent: true, onSubmit: save } });
+        await new Promise(resolve => setTimeout(resolve, 0));
+        const root = document.getElementById('aimd-bookmark-save-dialog-host')!.shadowRoot!;
+        root.querySelector<HTMLButtonElement>('.picker-main[data-path="Work"]')!.click();
+        root.querySelector<HTMLButtonElement>('[data-action="bookmark-save-submit"]')!.click();
+        root.querySelector<HTMLButtonElement>('[data-action="bookmark-save-submit"]')!.click();
+        expect(save).toHaveBeenCalledTimes(1);
+        finish('Write failed'); await flushUi();
+        expect(root.querySelector('.picker-row[data-selected="1"]')?.getAttribute('data-path')).toBe('Work');
+        expect(root.querySelector('[role="alert"]')?.textContent).toBe('Write failed');
+        root.querySelector<HTMLButtonElement>('[data-action="bookmark-save-submit"]')!.click(); finish(null);
+        await expect(result).resolves.toMatchObject({ ok: true, folderPath: 'Work' });
+    });
+
     it('updates visible copy when the locale changes while open', async () => {
         await setLocale('en');
         const dialog = new BookmarkSaveDialog();

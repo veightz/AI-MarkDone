@@ -3,8 +3,9 @@ import { PROTOCOL_VERSION } from '../../../contracts/protocol';
 import type { ProtocolErrorCode } from '../../../contracts/protocol';
 import { LEGACY_STORAGE_KEYS, STORAGE_KEYS } from '../../../contracts/storage';
 import type { Bookmark, Folder } from '../../../core/bookmarks/types';
+import { getChatGPTConversationId } from '../../../contracts/chatgptConversationId';
 import { checkQuota } from '../../../core/bookmarks/quota';
-import { buildBookmarkStorageKeyForBookmark, buildPageBookmarkStorageKey, normalizeUrlWithoutProtocol } from '../../../core/bookmarks/keys';
+import { buildBookmarkMessageStorageKey, buildBookmarkStorageKeyForBookmark, buildPageBookmarkStorageKey, normalizeUrlWithoutProtocol, rememberBookmarkStorageKey } from '../../../core/bookmarks/keys';
 import { PathUtils, PathValidationError } from '../../../core/bookmarks/path';
 import { logger } from '../../../core/logger';
 import {
@@ -14,7 +15,6 @@ import {
     planDeleteFolder,
     planFolderRelocate,
     planImportBookmarks,
-    planRemoveBookmark,
     planRemovePageBookmark,
     planRepair,
     planSaveBookmark,
@@ -26,6 +26,8 @@ import { bookmarksIndexStore } from '../../../drivers/background/storage/bookmar
 import { folderIndexStore } from '../../../drivers/background/storage/folderIndexStore';
 import { journalStore } from '../../../drivers/background/storage/journalStore';
 import { quarantineStore } from '../../../drivers/background/storage/quarantineStore';
+import { isLibraryBackupPayload } from '../../../core/cloudBackup/library';
+import { applyLibraryExport, captureLibraryExport, type LibraryStorageReaders } from './libraryTransfer';
 
 type HandlerResult = { response: ExtResponse };
 
@@ -59,6 +61,11 @@ function toProtocolErrorCode(error: unknown): { code: ProtocolErrorCode; message
 }
 
 const DEFAULT_FOLDER_PATH = 'Import';
+const libraryReaders: LibraryStorageReaders = {
+    loadBookmarks: (now) => loadAllBookmarksForBackground(now),
+    loadFolders: () => loadAllFoldersForBackground(),
+    ensureFolders: (params) => ensureFolderRecordsExistForBackground(params),
+};
 
 function parsePositionFromKey(key: string, urlWithoutProtocol: string): number | null {
     if (key.startsWith(`${LEGACY_STORAGE_KEYS.bookmarkKeyPrefix}page:`)) return null;
@@ -69,7 +76,7 @@ function parsePositionFromKey(key: string, urlWithoutProtocol: string): number |
     return Number.isFinite(pos) && pos > 0 ? pos : null;
 }
 
-function normalizeBookmarkRef(item: unknown): { key: string; id: string } | null {
+function normalizeBookmarkRef(item: unknown, bookmarks: Bookmark[], strictIdentity = false): { key: string; id: string } | null {
     if (!item || typeof item !== 'object') return null;
     const rec = item as Record<string, unknown>;
     if (rec.kind === 'page') {
@@ -80,10 +87,25 @@ function normalizeBookmarkRef(item: unknown): { key: string; id: string } | null
         };
     }
     if (typeof rec.url !== 'string' || typeof rec.position !== 'number') return null;
-    return {
-        key: `${LEGACY_STORAGE_KEYS.bookmarkKeyPrefix}${normalizeUrlWithoutProtocol(rec.url)}:${rec.position}`,
-        id: `message:${normalizeUrlWithoutProtocol(rec.url)}:${rec.position}`,
-    };
+    const url = rec.url;
+    const messageId = typeof rec.messageId === 'string' && rec.messageId.trim() ? rec.messageId.trim() : null;
+    const conversationId = getChatGPTConversationId(url);
+    const candidates = bookmarks.filter((bookmark) => {
+        if (bookmark.kind === 'page') return false;
+        if (messageId && conversationId) {
+            return getChatGPTConversationId(bookmark.url) === conversationId && bookmark.messageId === messageId;
+        }
+        return normalizeUrlWithoutProtocol(bookmark.url) === normalizeUrlWithoutProtocol(url)
+            && bookmark.position === rec.position
+            && (!messageId || bookmark.messageId === messageId);
+    });
+    if (strictIdentity && candidates.length > 1) return null;
+    const exact = candidates.filter((bookmark) => bookmark.position === rec.position
+        && normalizeUrlWithoutProtocol(bookmark.url) === normalizeUrlWithoutProtocol(url));
+    const selected = exact.length === 1 ? exact[0] : candidates.length === 1 ? candidates[0] : null;
+    if (!selected) return null;
+    const key = buildBookmarkStorageKeyForBookmark(selected);
+    return { key, id: key };
 }
 
 function getQuotaBytesFallback(): number {
@@ -193,7 +215,7 @@ function normalizeStoredBookmark(key: string, raw: unknown, now: number): Bookma
         const folderPath = typeof rec.folderPath === 'string' && rec.folderPath.trim().length > 0 && rec.folderPath !== '/'
             ? rec.folderPath
             : 'Import';
-        return {
+        return rememberBookmarkStorageKey({
             kind: 'page',
             url,
             urlWithoutProtocol,
@@ -202,7 +224,7 @@ function normalizeStoredBookmark(key: string, raw: unknown, now: number): Bookma
             title,
             platform,
             folderPath,
-        };
+        }, key);
     }
 
     const position = typeof rec.position === 'number' ? rec.position : null;
@@ -218,7 +240,7 @@ function normalizeStoredBookmark(key: string, raw: unknown, now: number): Bookma
         ? rec.urlWithoutProtocol
         : (() => {
             // Prefer deriving from key (cheaper + consistent with key schema).
-            if (key.startsWith(LEGACY_STORAGE_KEYS.bookmarkKeyPrefix)) {
+            if (key.startsWith(LEGACY_STORAGE_KEYS.bookmarkKeyPrefix) && !key.startsWith('bookmark:message:v3:')) {
                 const lastColon = key.lastIndexOf(':');
                 if (lastColon > LEGACY_STORAGE_KEYS.bookmarkKeyPrefix.length) {
                     return key.slice(LEGACY_STORAGE_KEYS.bookmarkKeyPrefix.length, lastColon);
@@ -241,7 +263,7 @@ function normalizeStoredBookmark(key: string, raw: unknown, now: number): Bookma
 
     const aiResponse = typeof rec.aiResponse === 'string' ? rec.aiResponse : undefined;
 
-    return {
+    return rememberBookmarkStorageKey({
         kind: rec.kind === 'message' ? 'message' : undefined,
         url,
         urlWithoutProtocol,
@@ -253,7 +275,7 @@ function normalizeStoredBookmark(key: string, raw: unknown, now: number): Bookma
         title,
         platform,
         folderPath,
-    };
+    }, key);
 }
 
 export async function loadAllBookmarksForBackground(now: number): Promise<Bookmark[]> {
@@ -475,16 +497,24 @@ export async function handleBookmarksRequest(request: ExtRequest): Promise<Handl
             return { response: ok(request.id, request.type, { positions }) };
         }
         case 'bookmarks:export': {
-            const bookmarks = await loadAllBookmarksForBackground(now);
             const preserve = request.payload?.preserveStructure !== false;
-            const result = exportBookmarks({ bookmarks, preserveStructure: preserve });
-            return { response: ok(request.id, request.type, result) };
+            if (preserve) {
+                try {
+                    const payload = await backgroundStorageQueue.enqueue(() => captureLibraryExport(now, libraryReaders));
+                    return { response: ok(request.id, request.type, { payload }) };
+                } catch {
+                    return { response: err(request.id, request.type, 'SNAPSHOT_CORRUPTED', 'Could not export the complete Library') };
+                }
+            }
+            const bookmarks = await loadAllBookmarksForBackground(now);
+            return { response: ok(request.id, request.type, exportBookmarks({ bookmarks, preserveStructure: false })) };
         }
         case 'bookmarks:exportSelected': {
             const items = Array.isArray(request.payload.items) ? request.payload.items : [];
+            const allBookmarks = await loadAllBookmarksForBackground(now);
             const unique = new Map<string, { key: string; id: string }>();
             for (const it of items) {
-                const ref = normalizeBookmarkRef(it);
+                const ref = normalizeBookmarkRef(it, allBookmarks);
                 if (ref) unique.set(ref.id, ref);
             }
             const selected = Array.from(unique.values());
@@ -507,7 +537,25 @@ export async function handleBookmarksRequest(request: ExtRequest): Promise<Handl
         }
         case 'bookmarks:save': {
             return backgroundStorageQueue.enqueue(async () => {
+                if (getChatGPTConversationId(request.payload.url) && !request.payload.messageId?.trim()) {
+                    return { response: err(request.id, request.type, 'INVALID_REQUEST', 'A stable message ID is required') };
+                }
                 const index = await bookmarksIndexStore.buildIndexIfMissing(now);
+                const existing = await loadAllBookmarksForBackground(now);
+                const updateRef = request.payload.options?.updateExisting
+                    ? normalizeBookmarkRef(request.payload, existing)
+                    : null;
+                if (request.payload.options?.updateExisting && !updateRef) {
+                    return { response: err(request.id, request.type, 'CONFLICT', 'Bookmark record could not be identified') };
+                }
+                const identityKey = request.payload.messageId
+                    ? buildBookmarkMessageStorageKey(request.payload.url, request.payload.messageId)
+                    : null;
+                if (!updateRef && identityKey && existing.some((bookmark) => bookmark.kind !== 'page'
+                    && bookmark.messageId
+                    && buildBookmarkMessageStorageKey(bookmark.url, bookmark.messageId) === identityKey)) {
+                    return { response: ok(request.id, request.type, { warnings: [] }) };
+                }
                 const usedBytes = await localStoragePort.getBytesInUse(null);
                 const saveContextOnly = Boolean(request.payload.options?.saveContextOnly);
                 const plan = planSaveBookmark({
@@ -522,10 +570,9 @@ export async function handleBookmarksRequest(request: ExtRequest): Promise<Handl
                     return { response: err(request.id, request.type, 'QUOTA_EXCEEDED', plan.quota.message || 'Storage quota exceeded') };
                 }
 
-                const patch: Record<string, unknown> = {
-                    ...plan.setPatch,
-                    [STORAGE_KEYS.bookmarksIndexV1]: plan.updatedIndex,
-                };
+                const patch: Record<string, unknown> = updateRef
+                    ? { [updateRef.key]: Object.values(plan.setPatch)[0], [STORAGE_KEYS.bookmarksIndexV1]: index }
+                    : { ...plan.setPatch, [STORAGE_KEYS.bookmarksIndexV1]: plan.updatedIndex };
                 await localStoragePort.set(patch);
                 return { response: ok(request.id, request.type, { warnings: plan.warnings }) };
             });
@@ -533,10 +580,19 @@ export async function handleBookmarksRequest(request: ExtRequest): Promise<Handl
         case 'bookmarks:remove': {
             return backgroundStorageQueue.enqueue(async () => {
                 const index = await bookmarksIndexStore.buildIndexIfMissing(now);
-                const plan = planRemoveBookmark({ url: request.payload.url, position: request.payload.position, existingIndex: index });
-                await localStoragePort.remove(plan.removeKeys);
-                await bookmarksIndexStore.setIndex(plan.updatedIndex);
-                return { response: ok(request.id, request.type, { removed: plan.removeKeys.length }) };
+                const bookmarks = await loadAllBookmarksForBackground(now);
+                const ref = normalizeBookmarkRef(request.payload, bookmarks, Boolean(request.payload.messageId));
+                if (!ref && request.payload.messageId) {
+                    const conversationId = getChatGPTConversationId(request.payload.url);
+                    const ambiguous = bookmarks.filter((bookmark) => bookmark.kind !== 'page'
+                        && bookmark.messageId === request.payload.messageId
+                        && getChatGPTConversationId(bookmark.url) === conversationId).length > 1;
+                    if (ambiguous) return { response: err(request.id, request.type, 'CONFLICT', 'Multiple bookmarks match this message; manage them in the Library') };
+                }
+                if (!ref) return { response: ok(request.id, request.type, { removed: 0 }) };
+                await localStoragePort.remove([ref.key]);
+                await bookmarksIndexStore.setIndex(index.filter((key) => key !== ref.key));
+                return { response: ok(request.id, request.type, { removed: 1 }) };
             });
         }
         case 'bookmarks:page:status': {
@@ -577,9 +633,10 @@ export async function handleBookmarksRequest(request: ExtRequest): Promise<Handl
         case 'bookmarks:bulkRemove': {
             return backgroundStorageQueue.enqueue(async () => {
                 const items = Array.isArray(request.payload.items) ? request.payload.items : [];
+                const bookmarks = await loadAllBookmarksForBackground(now);
                 const unique = new Map<string, { key: string; id: string }>();
                 for (const it of items) {
-                    const ref = normalizeBookmarkRef(it);
+                    const ref = normalizeBookmarkRef(it, bookmarks);
                     if (ref) unique.set(ref.id, ref);
                 }
                 const toRemove = Array.from(unique.values());
@@ -658,9 +715,10 @@ export async function handleBookmarksRequest(request: ExtRequest): Promise<Handl
         case 'bookmarks:bulkMove': {
             return backgroundStorageQueue.enqueue(async () => {
                 const items = Array.isArray(request.payload.items) ? request.payload.items : [];
+                const bookmarks = await loadAllBookmarksForBackground(now);
                 const unique = new Map<string, { key: string; id: string }>();
                 for (const it of items) {
-                    const ref = normalizeBookmarkRef(it);
+                    const ref = normalizeBookmarkRef(it, bookmarks);
                     if (ref) unique.set(ref.id, ref);
                 }
                 const toMove = Array.from(unique.values());
@@ -734,6 +792,26 @@ export async function handleBookmarksRequest(request: ExtRequest): Promise<Handl
         }
         case 'bookmarks:import': {
             return backgroundStorageQueue.enqueue(async () => {
+                let source: unknown;
+                try { source = JSON.parse(request.payload.jsonText); } catch { /* Legacy parser reports invalid JSON. */ }
+                const candidate = source && typeof source === 'object' && !Array.isArray(source) ? source as Record<string, unknown> : null;
+                const libraryFile = candidate && (candidate.version === '4.0' || 'highlights' in candidate || 'annotations' in candidate || 'markCatalog' in candidate);
+                if (libraryFile) {
+                    if (!isLibraryBackupPayload(candidate)) {
+                        return { response: err(request.id, request.type, 'SNAPSHOT_CORRUPTED', 'Library export is invalid') };
+                    }
+                    try {
+                        const result = await applyLibraryExport({
+                            remote: candidate, readers: libraryReaders, now, strategy: 'safeMerge',
+                            saveContextOnly: Boolean(request.payload.options?.saveContextOnly), quotaBytes,
+                        });
+                        return { response: ok(request.id, request.type, result) };
+                    } catch (error) {
+                        const code = error instanceof Error && /quota|exceed|maximum/i.test(error.message) ? 'QUOTA_EXCEEDED'
+                            : error instanceof Error && error.message === 'SNAPSHOT_CORRUPTED' ? 'SNAPSHOT_CORRUPTED' : 'INTERNAL_ERROR';
+                        return { response: err(request.id, request.type, code, 'Could not import the complete Library') };
+                    }
+                }
                 const existingIndex = await bookmarksIndexStore.buildIndexIfMissing(now);
                 const existing = await loadAllBookmarksForBackground(now);
                 const usedBytes = await localStoragePort.getBytesInUse(null);
@@ -752,6 +830,15 @@ export async function handleBookmarksRequest(request: ExtRequest): Promise<Handl
                     return { response: err(request.id, request.type, 'QUOTA_EXCEEDED', plan.quota.message || 'Not enough storage space') };
                 }
 
+                const occupiedKeys = new Set(Object.keys(await localStoragePort.get(null))
+                    .filter(key => key.startsWith(LEGACY_STORAGE_KEYS.bookmarkKeyPrefix)));
+                let storageConflicts = 0;
+                const safeBookmarks = plan.bookmarksToUpsert.filter((bookmark) => {
+                    if (!occupiedKeys.has(buildBookmarkStorageKeyForBookmark(bookmark))) return true;
+                    storageConflicts++;
+                    return false;
+                });
+
                 const { folderPaths, folders } = await loadAllFoldersForBackground();
                 const ensure = await ensureFolderRecordsExistForBackground({
                     requiredPaths: plan.foldersToEnsure,
@@ -761,12 +848,14 @@ export async function handleBookmarksRequest(request: ExtRequest): Promise<Handl
                 });
 
                 // If some folders fail to create, force affected bookmarks into Import to avoid hidden entries.
-                let bookmarksToUpsert = plan.bookmarksToUpsert;
+                let bookmarksToUpsert = safeBookmarks;
                 if (ensure.failedPaths.length > 0) {
                     const matchesFailedFolder = PathUtils.createScopeMatcher(ensure.failedPaths);
                     bookmarksToUpsert = bookmarksToUpsert.map((b) => {
                         const affected = matchesFailedFolder(b.folderPath);
-                        return affected ? { ...b, folderPath: DEFAULT_FOLDER_PATH } : b;
+                        return affected
+                            ? rememberBookmarkStorageKey({ ...b, folderPath: DEFAULT_FOLDER_PATH }, buildBookmarkStorageKeyForBookmark(b))
+                            : b;
                     });
                 }
 
@@ -780,7 +869,9 @@ export async function handleBookmarksRequest(request: ExtRequest): Promise<Handl
                     ...ensure.folderSetPatch,
                     [LEGACY_STORAGE_KEYS.folderPathsIndex]: ensure.updatedFolderPaths,
                     ...bookmarkPatch,
-                    [STORAGE_KEYS.bookmarksIndexV1]: plan.updatedIndex,
+                    [STORAGE_KEYS.bookmarksIndexV1]: Array.from(new Set([
+                        ...existingIndex, ...bookmarksToUpsert.map(buildBookmarkStorageKeyForBookmark),
+                    ])),
                 };
                 await localStoragePort.set(patch);
 
@@ -788,6 +879,7 @@ export async function handleBookmarksRequest(request: ExtRequest): Promise<Handl
                     response: ok(request.id, request.type, {
                         imported: bookmarksToUpsert.length,
                         skippedDuplicates: plan.skippedDuplicates,
+                        conflicts: storageConflicts,
                         renamed: plan.renamedTitles.length,
                         warnings: plan.warnings,
                         folderCreateFailures: ensure.failedPaths.length,

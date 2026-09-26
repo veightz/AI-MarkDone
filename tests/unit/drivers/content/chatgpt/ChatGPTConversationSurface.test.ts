@@ -8,6 +8,7 @@ import type {
 import { createConversationDocumentKeyV1, createConversationPageDocumentKeyV1 } from '@/contracts/conversationContent';
 import { ChatGPTAdapter } from '@/drivers/content/adapters/sites/chatgpt';
 import { ChatGPTConversationSurface } from '@/drivers/content/chatgpt/ChatGPTConversationSurface';
+import { materializeChatGPTConversationTarget } from '@/drivers/content/chatgpt/ChatGPTConversationNavigation';
 
 const canonicalId = '695499b7-464c-8323-a998-119f661ac953';
 const pageKey = createConversationPageDocumentKeyV1('chatgpt', 'surface-test');
@@ -97,6 +98,90 @@ describe('ChatGPTConversationSurface', () => {
     beforeEach(() => {
         history.replaceState({}, '', '/');
         renderHost();
+    });
+
+    it('locates a directory target through current search-unit DOM identities', async () => {
+        document.body.innerHTML = `<main>
+          <div data-content-search-turn-key="turn-1">
+            <div data-chatgpt-search-unit-key="turn-1:0:user" data-chatgpt-search-message-ids="user-1">Question one</div>
+            <div class="group flex flex-col pb-2 pt-2">
+              <div data-chatgpt-search-unit-key="turn-1:2:assistant" data-chatgpt-search-message-ids="assistant-1 assistant-1">
+                <div data-markdown-text-style="assistant-message">Answer one</div>
+              </div>
+              <div class="turn-action-controls"><button aria-label="复制">Copy</button></div>
+            </div>
+          </div>
+        </main>`;
+        const adapter = new ChatGPTAdapter();
+        const state: ConversationContentStateV1 = { kind: 'ready', document: canonicalDocument(), snapshot: snapshot(canonicalDocument()) };
+        const content = {
+            read: () => state,
+            subscribe: (listener: (next: ConversationContentStateV1) => void) => { listener(state); return () => undefined; },
+            refresh: async () => state,
+            isCurrent: (token: string) => token === state.snapshot?.contentToken,
+        };
+        const surface = new ChatGPTConversationSurface({ adapter, content });
+        const result = await materializeChatGPTConversationTarget(adapter, {
+            position: 1, roundId: 'turn-1', userMessageId: 'user-1', assistantMessageId: 'assistant-1',
+        }, { surface, timeoutMs: 100 });
+        expect(result).toMatchObject({ ok: true, anchor: expect.any(HTMLElement) });
+        if (result.ok) expect(result.anchor.getAttribute('data-chatgpt-search-unit-key')).toBe('turn-1:0:user');
+        surface.dispose();
+        adapter.dispose();
+    });
+
+    it('joins a current fallback turn key by its exact user and assistant message IDs', () => {
+        document.body.innerHTML = `<main>
+          <div data-turn-key="user-1" data-content-search-turn-key="fallback-turn-0">
+            <div data-chatgpt-search-unit-key="fallback-turn-0:0:user" data-chatgpt-search-message-ids="user-1">Question one</div>
+            <div data-chatgpt-search-unit-key="fallback-turn-0:2:assistant" data-chatgpt-search-message-ids="assistant-1 assistant-1">
+              <div data-markdown-text-style="assistant-message">Answer one</div>
+            </div>
+          </div>
+        </main>`;
+        const adapter = new ChatGPTAdapter();
+        const state: ConversationContentStateV1 = { kind: 'ready', document: canonicalDocument(), snapshot: snapshot(canonicalDocument()) };
+        const content = {
+            read: () => state,
+            subscribe: (listener: (next: ConversationContentStateV1) => void) => { listener(state); return () => undefined; },
+            refresh: async () => state,
+            isCurrent: (token: string) => token === state.snapshot?.contentToken,
+        };
+        const surface = new ChatGPTConversationSurface({ adapter, content });
+        expect(surface.readFrame().obtainedTurns[0]?.materialization?.userElement.getAttribute('data-chatgpt-search-unit-key'))
+            .toBe('fallback-turn-0:0:user');
+        document.querySelector<HTMLElement>('[data-chatgpt-search-unit-key="fallback-turn-0:0:user"]')
+            ?.setAttribute('data-chatgpt-search-message-ids', 'another-user');
+        surface.refreshSurface();
+        expect(surface.readFrame().obtainedTurns[0]?.materialization).toBeNull();
+        surface.dispose();
+        adapter.dispose();
+    });
+
+    it('joins a mounted search turn when its display key differs from the canonical turn ID', () => {
+        document.body.innerHTML = `<main>
+          <div data-turn-key="user-1">
+            <div data-content-search-turn-key="display-turn-1">
+              <div data-chatgpt-search-unit-key="display-turn-1:0:user" data-chatgpt-search-message-ids="user-1">Question one</div>
+              <div data-chatgpt-search-unit-key="display-turn-1:2:assistant" data-chatgpt-search-message-ids="assistant-1 assistant-1">
+                <div data-markdown-text-style="assistant-message">Answer one</div>
+              </div>
+            </div>
+          </div>
+        </main>`;
+        const adapter = new ChatGPTAdapter();
+        const state: ConversationContentStateV1 = { kind: 'ready', document: canonicalDocument(), snapshot: snapshot(canonicalDocument()) };
+        const content = {
+            read: () => state,
+            subscribe: (listener: (next: ConversationContentStateV1) => void) => { listener(state); return () => undefined; },
+            refresh: async () => state,
+            isCurrent: (token: string) => token === state.snapshot?.contentToken,
+        };
+        const surface = new ChatGPTConversationSurface({ adapter, content });
+        expect(surface.readFrame().obtainedTurns[0]?.materialization?.jumpAnchorElement.getAttribute('data-chatgpt-search-unit-key'))
+            .toBe('display-turn-1:0:user');
+        surface.dispose();
+        adapter.dispose();
     });
 
     it('publishes one frame containing obtained, unmounted, and pending surface facts', async () => {

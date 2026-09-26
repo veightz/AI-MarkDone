@@ -1,4 +1,5 @@
-import { Icons, xIcon } from '../../../assets/icons';
+import { alertTriangleIcon, xCircleIcon, infoIcon } from '../../../assets/icons';
+import { xIcon } from '../../../assets/workspaceIcons';
 import { ensureStyle } from '../../../style/shadow';
 import { t } from './i18n';
 import { beginSurfaceMotionClose, setSurfaceMotionOpening } from './motionLifecycle';
@@ -12,6 +13,7 @@ import {
 type ModalKind = 'info' | 'warning' | 'error';
 
 type ModalBase = {
+    canDismiss?: () => boolean;
     kind: ModalKind;
     title: string;
     message: string;
@@ -29,9 +31,11 @@ type PromptOptions = ModalBase & {
     confirmText: string;
     cancelText: string;
     validate?: (value: string) => { ok: boolean; message?: string };
+    onSubmit?: (value: string) => Promise<string | null>;
 };
 
 type CustomOptions = {
+    canDismiss?: () => boolean;
     kind: ModalKind;
     title: string;
     body: HTMLElement;
@@ -122,6 +126,7 @@ export class ModalHost {
     async prompt(opts: PromptOptions): Promise<string | null> {
         return new Promise((resolve) => {
             void this.show({
+                canDismiss: opts.canDismiss,
                 kind: opts.kind,
                 title: opts.title,
                 message: opts.message,
@@ -146,6 +151,7 @@ export class ModalHost {
                     cancelBtn.textContent = opts.cancelText;
                     cancelBtn.dataset.action = 'modal-cancel';
                     cancelBtn.addEventListener('click', () => {
+                        if (opts.canDismiss?.() === false) return;
                         close();
                         resolve(null);
                     });
@@ -163,12 +169,22 @@ export class ModalHost {
                         return res.ok;
                     };
 
-                    confirmBtn.addEventListener('click', () => {
-                        if (!ctx) return;
-                        if (!runValidate()) return;
+                    confirmBtn.addEventListener('click', async () => {
+                        if (!ctx || confirmBtn.disabled || !runValidate()) return;
                         const value = ctx.input.value;
-                        close();
-                        resolve(value);
+                        confirmBtn.disabled = true;
+                        ctx.input.disabled = true;
+                        try {
+                            const message = await opts.onSubmit?.(value);
+                            if (message) { ctx.error.textContent = message; return; }
+                            close();
+                            resolve(value);
+                        } catch (error) {
+                            ctx.error.textContent = error instanceof Error ? error.message : t('operationFailed');
+                        } finally {
+                            confirmBtn.disabled = false;
+                            ctx.input.disabled = false;
+                        }
                     });
 
                     footer.append(cancelBtn, confirmBtn);
@@ -186,6 +202,7 @@ export class ModalHost {
 
     async showCustom(opts: CustomOptions): Promise<void> {
         await this.show({
+            canDismiss: opts.canDismiss,
             kind: opts.kind,
             title: opts.title,
             message: '',
@@ -217,6 +234,7 @@ export class ModalHost {
         message?: string;
         body?: (body: HTMLElement) => { input: HTMLInputElement; error: HTMLElement } | void;
         footer: (footer: HTMLElement, close: () => void, ctx?: { input: HTMLInputElement; error: HTMLElement }) => void;
+        canDismiss?: () => boolean;
         onDismiss?: () => void;
         onClosed?: () => void;
         dialogClassName?: string;
@@ -288,7 +306,7 @@ export class ModalHost {
         };
 
         const dismiss = () => {
-            if (overlay.dataset.motionState === 'closing') return;
+            if (params.canDismiss?.() === false || overlay.dataset.motionState === 'closing') return;
             params.onDismiss?.();
             close();
         };
@@ -404,7 +422,7 @@ function getFocusableElements(root: HTMLElement): HTMLElement[] {
 }
 
 function getKindIcon(kind: ModalKind): string {
-    if (kind === 'warning') return Icons.alertTriangle;
-    if (kind === 'error') return Icons.xCircle;
-    return Icons.info;
+    if (kind === 'warning') return alertTriangleIcon;
+    if (kind === 'error') return xCircleIcon;
+    return infoIcon;
 }

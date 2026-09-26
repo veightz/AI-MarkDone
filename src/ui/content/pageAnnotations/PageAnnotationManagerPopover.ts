@@ -19,6 +19,8 @@ type OpenParams = {
     modalHost: ModalHost;
     anchorRect?: AnchorRect | null;
     getCurrentRecords: () => ReaderCommentRecord[];
+    getCurrentLoadFailure?: () => boolean;
+    retryCurrent?: () => Promise<void>;
     loadAll: () => Promise<ReaderCommentRecord[]>;
     onSelect: (record: ReaderCommentRecord) => void;
     onDelete: (record: ReaderCommentRecord) => Promise<boolean>;
@@ -67,29 +69,37 @@ function getCss(): string {
 .mock-modal--page-annotation-manager {
   --_modal-width: min(720px, calc(100% - (var(--aimd-space-5) * 2)));
   --_modal-max-height: min(640px, calc(100% - (var(--aimd-space-5) * 2)));
+  border-color: var(--aimd-workspace-border);
+  background: var(--aimd-workspace-card);
+  box-shadow: var(--aimd-shadow-workspace), var(--aimd-workspace-edge-shadow);
 }
+.mock-modal--page-annotation-manager .mock-modal__head, .mock-modal--page-annotation-manager .mock-modal__footer { background: var(--aimd-workspace-card); border-color: var(--aimd-workspace-border); }
+.mock-modal--page-annotation-manager .mock-modal__title-copy strong { color: var(--aimd-text-primary); }
 .mock-modal--page-annotation-manager .mock-modal__content { overflow: hidden; }
 .page-annotation-manager, .page-annotation-manager * { box-sizing: border-box; }
 .page-annotation-manager { min-width: 0; min-height: 0; width: 100%; display: grid; grid-template-rows: auto minmax(0, 1fr); gap: var(--aimd-space-3); }
 .page-annotation-manager__toolbar { min-width: 0; display: grid; gap: var(--aimd-space-3); }
 .page-annotation-manager__row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--aimd-space-2); }
 .page-annotation-manager__row--primary { justify-content: space-between; }
-.page-annotation-manager__tabs { box-sizing: border-box; display: inline-flex; gap: var(--aimd-space-1); padding: var(--aimd-space-1); border: 1px solid var(--aimd-border-subtle); border-radius: var(--aimd-radius-xl); background: var(--aimd-bg-secondary); width: max-content; }
+.page-annotation-manager__tabs { box-sizing: border-box; display: inline-flex; gap: var(--aimd-space-1); padding: var(--aimd-space-1); border: 1px solid var(--aimd-workspace-border); border-radius: var(--aimd-radius-xl); background: var(--aimd-workspace-surface); width: max-content; }
 .page-annotation-manager__tab { all: unset; box-sizing: border-box; cursor: pointer; min-height: var(--aimd-size-control-compact); padding: 0 var(--aimd-space-3); border-radius: var(--aimd-radius-lg); color: var(--aimd-text-secondary); font-size: var(--aimd-text-sm); white-space: nowrap; }
 .page-annotation-manager__tab:hover { background: var(--aimd-interactive-hover); color: var(--aimd-text-primary); }
 .page-annotation-manager__tab[data-active="1"] { color: var(--aimd-interactive-primary); background: var(--aimd-interactive-selected); font-weight: var(--aimd-font-semibold); }
-.page-annotation-manager__search { width: 100%; min-height: var(--aimd-size-control-compact); box-sizing: border-box; padding: 0 var(--aimd-space-3); border: 1px solid var(--aimd-border-default); border-radius: var(--aimd-radius-lg); background: var(--aimd-bg-primary); color: var(--aimd-text-primary); font: inherit; }
+.page-annotation-manager__search { width: 100%; min-height: var(--aimd-size-control-compact); box-sizing: border-box; padding: 0 var(--aimd-space-3); border: 1px solid var(--aimd-workspace-border); border-radius: var(--aimd-radius-lg); background: var(--aimd-workspace-surface); box-shadow: var(--aimd-workspace-inset); color: var(--aimd-text-primary); font: inherit; }
 .page-annotation-manager__search:focus-visible { outline: none; border-color: var(--aimd-interactive-primary); box-shadow: var(--aimd-shadow-focus); }
 .page-annotation-manager__items { min-height: 0; overflow: auto; overscroll-behavior: contain; scrollbar-gutter: stable; }
 .page-annotation-manager__item { min-width: 0; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: var(--aimd-space-3); padding: var(--aimd-space-3) var(--aimd-space-2); border-top: 1px solid var(--aimd-border-subtle); }
+.page-annotation-manager__item:hover, .page-annotation-manager__item:focus-within { background: var(--aimd-surface-hover); }
 .page-annotation-manager__item:last-child { border-bottom: 1px solid var(--aimd-border-subtle); }
-.page-annotation-manager__open { all: unset; min-width: 0; cursor: pointer; display: grid; gap: var(--aimd-space-2); }
+.page-annotation-manager__open { all: unset; min-width: 0; cursor: pointer; display: grid; gap: var(--aimd-space-2); border-radius: var(--aimd-radius-md); }
+.page-annotation-manager__open:focus-visible, .page-annotation-manager__delete:focus-visible { outline: 2px solid var(--aimd-focus-ring); outline-offset: 2px; }
 .page-annotation-manager__quote { min-width: 0; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; color: var(--aimd-text-primary); font-size: var(--aimd-text-sm); line-height: var(--aimd-leading-normal); border-left: 2px solid var(--aimd-interactive-primary); padding-left: var(--aimd-space-2); text-wrap: pretty; }
 .page-annotation-manager__comment { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--aimd-text-secondary); font-size: var(--aimd-text-sm); }
 .page-annotation-manager__meta { display: flex; flex-wrap: wrap; gap: var(--aimd-space-2); color: var(--aimd-text-tertiary); font-size: var(--aimd-text-xs); font-variant-numeric: tabular-nums; }
 .page-annotation-manager__hint { color: var(--aimd-text-secondary); font-size: var(--aimd-text-xs); line-height: var(--aimd-leading-normal); }
 .page-annotation-manager__delete { all: unset; box-sizing: border-box; cursor: pointer; align-self: start; display: inline-flex; align-items: center; justify-content: center; width: var(--aimd-size-control-icon-panel); height: var(--aimd-size-control-icon-panel); border-radius: var(--aimd-radius-full); color: var(--aimd-text-secondary); }
 .page-annotation-manager__delete:hover { color: var(--aimd-color-danger); background: var(--aimd-interactive-hover); }
+.page-annotation-manager__delete:disabled { opacity: 0.5; cursor: not-allowed; }
 .page-annotation-manager__empty, .page-annotation-manager__loading { padding: var(--aimd-space-6) var(--aimd-space-3); color: var(--aimd-text-secondary); text-align: center; font-size: var(--aimd-text-sm); }
 .page-annotation-manager__error { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: var(--aimd-space-3); padding: var(--aimd-space-6) var(--aimd-space-3); color: var(--aimd-text-secondary); text-align: center; font-size: var(--aimd-text-sm); }
 `;
@@ -293,6 +303,7 @@ export class PageAnnotationManagerPopover {
         const listKey = [
             this.view,
             this.query,
+            this.params.getCurrentLoadFailure?.() ? 'current-failed' : 'current-ok',
             this.loadedAll ? 'loaded' : 'not-loaded',
             this.loadingAll ? 'loading' : 'idle',
             this.allLoadFailed ? 'failed' : 'ok',
@@ -307,6 +318,30 @@ export class PageAnnotationManagerPopover {
         this.renderBulkActions(viewRecords);
         const list = this.rootEl.querySelector<HTMLElement>('[data-role="items"]');
         if (!list) return;
+        if (this.view === 'current' && this.params.getCurrentLoadFailure?.()) {
+            const error = document.createElement('div');
+            error.className = 'page-annotation-manager__error';
+            error.dataset.role = 'current-load-error';
+            const message = document.createElement('span');
+            message.textContent = this.getLabel('pageAnnotationManagerLoadFailed', 'Could not load annotations');
+            const retry = document.createElement('button');
+            retry.type = 'button';
+            retry.className = 'mock-modal__button mock-modal__button--secondary';
+            retry.dataset.action = 'page-annotation-retry-current';
+            retry.textContent = this.getLabel('pageAnnotationManagerRetry', 'Retry');
+            retry.addEventListener('click', () => {
+                const reload = this.params?.retryCurrent;
+                if (!reload) return;
+                retry.disabled = true;
+                void reload().finally(() => {
+                    this.lastListRenderKey = null;
+                    this.render();
+                });
+            });
+            error.append(message, retry);
+            list.replaceChildren(error);
+            return;
+        }
         if (this.view === 'all' && !this.loadedAll) {
             list.innerHTML = `<div class="page-annotation-manager__loading">${this.getLabel('pageAnnotationManagerLoading', 'Loading annotations…')}</div>`;
             return;

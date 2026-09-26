@@ -60,6 +60,22 @@ export function getSystemTokenCss(theme: Theme, overrides: UserThemeOverrides = 
 
     return `
 :host {
+  --aimd-sys-color-highlight-blue: var(--aimd-ref-color-highlight-blue);
+  --aimd-sys-color-highlight-yellow: var(--aimd-ref-color-highlight-yellow);
+  --aimd-sys-color-highlight-red: var(--aimd-ref-color-highlight-red);
+  --aimd-sys-highlight-blend-mode: ${isDark ? 'screen' : 'multiply'};
+  --aimd-sys-shadow-workspace: var(--aimd-ref-shadow-workspace);
+  --aimd-sys-workspace-surface: var(--aimd-ref-workspace-surface);
+  --aimd-sys-workspace-sidebar: var(--aimd-ref-workspace-sidebar);
+  --aimd-sys-workspace-card: var(--aimd-ref-workspace-card);
+  --aimd-sys-workspace-border: var(--aimd-ref-workspace-border);
+  --aimd-sys-workspace-edge: var(--aimd-ref-workspace-edge);
+  --aimd-sys-workspace-edge-shadow: inset 0 1px 0 var(--aimd-sys-workspace-edge);
+  --aimd-sys-workspace-scrim: var(--aimd-ref-workspace-scrim);
+  --aimd-sys-workspace-raised: var(--aimd-ref-workspace-raised);
+  --aimd-sys-workspace-inset: var(--aimd-ref-workspace-inset);
+  --aimd-sys-opacity-disabled: var(--aimd-ref-opacity-disabled);
+  --aimd-sys-shadow-picker-selection: var(--aimd-ref-shadow-picker-selection);
   --aimd-sys-color-surface: var(--aimd-ref-color-neutral-0);
   --aimd-sys-color-surface-subtle: var(--aimd-ref-color-neutral-50);
   --aimd-sys-color-surface-elevated: var(--aimd-ref-color-neutral-0);
@@ -130,7 +146,6 @@ export function getSystemTokenCss(theme: Theme, overrides: UserThemeOverrides = 
 
   --aimd-sys-size-control-icon-toolbar: var(--aimd-ref-size-300);
   --aimd-sys-size-control-compact: var(--aimd-ref-size-300);
-  --aimd-sys-size-control-compact-relaxed: var(--aimd-ref-size-320);
   --aimd-sys-size-control-icon-panel: var(--aimd-ref-size-320);
   --aimd-sys-size-control-icon-panel-nav: var(--aimd-ref-size-320);
   --aimd-sys-size-control-glyph-panel: var(--aimd-ref-size-160);

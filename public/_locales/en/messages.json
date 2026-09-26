@@ -263,6 +263,10 @@
         "message": "Deselect All",
         "description": "Message for deselectAll"
     },
+    "invertSelection": {
+        "message": "Invert selection",
+        "description": "Invert the current selection"
+    },
     "readerMode": {
         "message": "Reader Mode",
         "description": "Message for readerMode"
@@ -274,6 +278,14 @@
     "bookmarkUnavailable": {
         "message": "This message is not ready to bookmark",
         "description": "Message shown when a conversation message lacks stable bookmark data"
+    },
+    "bookmarkUnreliableLocation": {
+        "message": "Cannot reliably locate the original message",
+        "description": "Shown when a saved message has no unique identity on this conversation branch"
+    },
+    "bookmarkDuplicateManagedInLibrary": {
+        "message": "Multiple bookmarks match this message. Manage them in the Library.",
+        "description": "Shown when the bookmark button cannot choose one old record to remove"
     },
     "copyFailed": {
         "message": "Copy failed",
@@ -375,6 +387,10 @@
         "message": "Annotation saved",
         "description": "Message for readerCommentSaved"
     },
+    "readerCommentSessionOnly": {
+        "message": "Only kept in this session.",
+        "description": "Reader annotation confirmation when persistence is disabled or unavailable"
+    },
     "readerCommentDeleted": {
         "message": "Annotation deleted",
         "description": "Message for readerCommentDeleted"
@@ -424,15 +440,15 @@
         "description": "Reader annotation manager timeline view"
     },
     "readerCommentBulkEdit": {
-        "message": "Bulk edit",
-        "description": "Reader annotation manager bulk edit action"
+        "message": "Manage selection",
+        "description": "Enter multi-selection mode in the Reader annotation manager"
     },
     "readerCommentBulkCancel": {
-        "message": "Cancel bulk edit",
-        "description": "Reader annotation manager exit bulk edit action"
+        "message": "Done",
+        "description": "Finish multi-selection in the Reader annotation manager"
     },
     "readerCommentSelectAll": {
-        "message": "Select all",
+        "message": "Select all visible",
         "description": "Reader annotation manager select all"
     },
     "readerCommentDeleteSelected": {
@@ -488,7 +504,7 @@
         "description": "Reader annotation persistence setting description"
     },
     "readerAnnotationPersistenceTooltip": {
-        "message": "When enabled, new annotations are saved locally and remain after you close the browser, but consider cleaning them up regularly.",
+        "message": "Keep new annotations after refreshing or closing the browser.",
         "description": "Reader annotation persistence tooltip"
     },
     "readerCommentCopyEmpty": {
@@ -504,7 +520,7 @@
         "description": "Message for readerCommentTemplate"
     },
     "readerCommentTemplateHint": {
-        "message": "Insert tokens with the buttons above. Token labels are localized; export uses stable internal placeholders.",
+        "message": "Placeholders are replaced with the selected text and your annotation.",
         "description": "Message for readerCommentTemplateHint"
     },
     "readerCommentTemplatePlaceholder": {
@@ -548,7 +564,7 @@
         "description": "Message for readerDefaultOpenModeLabel"
     },
     "readerDefaultOpenModeDesc": {
-        "message": "Choose whether Reader opens fullscreen or as a centered panel.",
+        "message": "Fullscreen or centered panel.",
         "description": "Message for readerDefaultOpenModeDesc"
     },
     "readerOpenModeFullscreen": {
@@ -644,7 +660,7 @@
         "description": "Message for readerCommentPromptListLabel"
     },
     "readerCommentPromptListDesc": {
-        "message": "Open the unified Prompt manager for ChatGPT input and Reader annotations.",
+        "message": "Manage prompts used in ChatGPT and Reader.",
         "description": "Message for readerCommentPromptListDesc"
     },
     "readerCommentPromptPositionBottomLabel": {
@@ -976,11 +992,11 @@
         "description": "Message for createFolder"
     },
     "importBookmarks": {
-        "message": "Import bookmarks",
+        "message": "Import Library",
         "description": "Message for importBookmarks"
     },
     "exportBookmarks": {
-        "message": "Export bookmarks",
+        "message": "Export Library",
         "description": "Message for exportBookmarks"
     },
     "toggleFolder": {
@@ -1024,7 +1040,7 @@
         "description": "Message for deleteFolder"
     },
     "deleteFolderConfirm": {
-        "message": "Delete \"$1\" and its subfolders?",
+        "message": "Delete the empty folder “$1”?",
         "description": "Message for deleteFolderConfirm"
     },
     "openConversation": {
@@ -1128,7 +1144,7 @@
         "description": "Message for buttonsEntrypointsSettingsLabel"
     },
     "buttonsEntrypointsSettingsDesc": {
-        "message": "Manage every visible AI-MarkDone button from one page.",
+        "message": "Choose which buttons to show.",
         "description": "Message for buttonsEntrypointsSettingsDesc"
     },
     "chatgptReadingInputSettingsLabel": {
@@ -1360,7 +1376,7 @@
         "description": "Prompt suggestion trigger behavior"
     },
     "promptAutocompleteKeyboardHint": {
-        "message": "Type \\ + a trigger; ↑ ↓ select, Enter/Tab insert the Prompt, → insert the Prompt + current annotations when available, Esc close.",
+        "message": "↑/↓ Select · Enter/Tab Insert · → Insert with annotations · Esc Close",
         "description": "Keyboard and trigger hint shown below Prompt autocomplete suggestions"
     },
     "chatgptFormulaPreviewTitle": {
@@ -1396,7 +1412,7 @@
         "description": "Message for chatgptShowMessageStepperLabel"
     },
     "chatgptShowMessageStepperDesc": {
-        "message": "Show the small Previous and Next message buttons on ChatGPT conversation pages.",
+        "message": "Jump to the previous or next message.",
         "description": "Message for chatgptShowMessageStepperDesc"
     },
     "chatgptShowPageBookmarkControlLabel": {
@@ -1464,7 +1480,7 @@
         "description": "Message for chatgptDirectoryRetiredNotice"
     },
     "chatgptDirectoryEnabledDesc": {
-        "message": "Show AI-MarkDone’s right-side directory for ChatGPT conversations and automatically hide ChatGPT’s own conversation navigation.",
+        "message": "Show a conversation directory on the right and hide the website navigation.",
         "description": "Message for chatgptDirectoryEnabledDesc"
     },
     "chatgptDirectoryModeLabel": {
@@ -1472,7 +1488,7 @@
         "description": "Message for chatgptDirectoryModeLabel"
     },
     "chatgptDirectoryModeDesc": {
-        "message": "Choose how the right-side directory opens while browsing a conversation.",
+        "message": "Preview a summary or expand the directory.",
         "description": "Message for chatgptDirectoryModeDesc"
     },
     "chatgptDirectoryModePreview": {
@@ -1504,7 +1520,7 @@
         "description": "Message for chatgptDirectoryPreviewMaxCharsLabel"
     },
     "chatgptDirectoryPreviewMaxCharsDesc": {
-        "message": "Choose how many characters the hover preview can show.",
+        "message": "Maximum characters in the hover preview.",
         "description": "Message for chatgptDirectoryPreviewMaxCharsDesc"
     },
     "reader": {
@@ -1808,11 +1824,11 @@
         "description": "Message for saveMessagesDesc"
     },
     "wordCountLabel": {
-        "message": "Toolbar > Word Count",
-        "description": "Message for wordCountLabel"
+        "message": "Character count",
+        "description": "Settings order or statistics label."
     },
     "wordCountDesc": {
-        "message": "Show word count statistics in toolbar",
+        "message": "Show the response character count.",
         "description": "Message for wordCountDesc"
     },
     "clickToCopyLabel": {
@@ -1908,23 +1924,23 @@
         "description": "Message for contextOnlySaveLabel"
     },
     "contextOnlySaveDesc": {
-        "message": "Save space by keeping only 500 chars. Full preview will be specific to the context.",
+        "message": "Save only the first 500 characters in each bookmark. Open the original page for the full content.",
         "description": "Message for contextOnlySaveDesc"
     },
     "renderCodeBlocksLabel": {
-        "message": "Reader > Render Code Blocks",
+        "message": "Reader code blocks",
         "description": "Message for renderCodeBlocksLabel"
     },
     "renderCodeBlocksDesc": {
-        "message": "Display syntax-highlighted code in Reader Mode",
+        "message": "Show a placeholder when disabled.",
         "description": "Message for renderCodeBlocksDesc"
     },
     "readerOutlineToggleLabel": {
-        "message": "Reader > Show Heading Outline",
+        "message": "Reader heading outline",
         "description": "Message for readerOutlineToggleLabel"
     },
     "readerOutlineToggleDesc": {
-        "message": "Show the right-side heading outline when the current Reader page has multiple Markdown headings.",
+        "message": "List the page headings on the right.",
         "description": "Message for readerOutlineToggleDesc"
     },
     "supportDevDesc": {
@@ -1984,7 +2000,7 @@
         "description": "Message for aboutWebsiteTitle"
     },
     "aboutWebsiteDesc": {
-        "message": "The website is finally online. Feel free to take a look, and I would be grateful if you shared it with someone who might need AI-MarkDone too.",
+        "message": "Visit the AI-MarkDone website for guides and updates.",
         "description": "Message for aboutWebsiteDesc"
     },
     "aboutWebsiteButton": {
@@ -2084,7 +2100,7 @@
         "description": "Message for supportContactTitle"
     },
     "supportContactDesc": {
-        "message": "Send bug reports, workflow notes, and feature ideas by email. Please avoid private conversation content unless it is needed for debugging.",
+        "message": "Send questions or suggestions by email.",
         "description": "Message for supportContactDesc"
     },
     "supportContactEmail": {
@@ -2116,7 +2132,7 @@
         "description": "Title shown above the community group cards"
     },
     "communityCardDesc": {
-        "message": "Join a group to share feedback, report issues, and compare workflows with other AI-MarkDone users.",
+        "message": "Share workflows, feedback, and ideas.",
         "description": "Description shown above the community group cards"
     },
     "communityQQTitle": {
@@ -2152,7 +2168,7 @@
         "description": "Alternative text for the Xiaohongshu community invite image"
     },
     "communityPrivacyNote": {
-        "message": "Joining is optional and group members may see your public profile. You can also follow my Xiaohongshu account and enter the group through my profile.",
+        "message": "You can also join through my Xiaohongshu profile.",
         "description": "Privacy note shown below the community group cards"
     },
     "selectFolderLabel": {
@@ -2380,7 +2396,7 @@
         "description": "Message for backupTitle"
     },
     "backupWarning": {
-        "message": "⚠️ Uninstalling the extension will delete all bookmarks.",
+        "message": "Uninstalling the extension removes locally saved Library data. Export a copy first.",
         "description": "Message for backupWarning"
     },
     "exportAllBtn": {
@@ -2408,7 +2424,7 @@
         "description": "Settings data backup card label for local export"
     },
     "cloudBackupGoogleDriveDesc": {
-        "message": "Save verified bookmark snapshots to your own Google Drive.",
+        "message": "Back up saved bookmarks, highlights, annotations and folders to your Google Drive.",
         "description": "Google Drive cloud backup row description"
     },
     "cloudBackupDisconnected": {
@@ -2444,7 +2460,7 @@
         "description": "Confirmation title before starting Google Drive authorization"
     },
     "cloudBackupConnectConfirmDesc": {
-        "message": "AI-MarkDone will open Google authorization so you can choose your own Drive. This feature is experimental; before backing up to Google Drive, we recommend exporting a local copy first. AI-MarkDone does not collect your information.",
+        "message": "Connect your Google Drive for backups of saved bookmarks, highlights, annotations and folders. Nothing uploads until you choose Back up now.",
         "description": "Confirmation message before starting Google Drive authorization"
     },
     "cloudBackupConnectConfirmAction": {
@@ -2468,7 +2484,7 @@
         "description": "Preview restoring from cloud backup"
     },
     "cloudBackupApplyRestore": {
-        "message": "Apply safe merge",
+        "message": "Merge into local Library",
         "description": "Confirm applying a safe-merge restore from Google Drive backup"
     },
     "cloudBackupCompleteTitle": {
@@ -2476,7 +2492,7 @@
         "description": "Cloud backup completion title"
     },
     "cloudBackupCompleteDesc": {
-        "message": "A verified bookmark snapshot was saved to your Google Drive.",
+        "message": "A verified Library backup was saved to your Google Drive.",
         "description": "Cloud backup completion message"
     },
     "cloudBackupErrorTitle": {
@@ -2488,7 +2504,7 @@
         "description": "No cloud backups found title"
     },
     "cloudBackupNoSnapshotsDesc": {
-        "message": "Google Drive does not have any AI-MarkDone bookmark backups yet.",
+        "message": "Google Drive does not have any AI-MarkDone backups yet.",
         "description": "No cloud backups found message"
     },
     "cloudBackupRestorePreviewTitle": {
@@ -2503,12 +2519,40 @@
         "message": "Added $1 bookmark(s). Kept $2 local-only item(s), skipped $3 duplicate(s), and left $4 conflict(s) unchanged.",
         "description": "Cloud restore completion summary"
     },
+    "cloudBackupLibraryRestoreCompleteDesc": {
+        "message": "Added $1 bookmarks, $2 highlights, $3 annotations and $4 folders. Local conflicts were kept.",
+        "description": "Complete Library restore summary"
+    },
+    "cloudBackupBookmarkFolders": {
+        "message": "Bookmark folders",
+        "description": "Library transfer preview count"
+    },
+    "cloudBackupMarkFolders": {
+        "message": "Highlight and annotation folders",
+        "description": "Library transfer preview count"
+    },
+    "cloudBackupConversationNames": {
+        "message": "Organized conversations",
+        "description": "Library transfer preview count"
+    },
+    "cloudBackupLibraryConflicts": {
+        "message": "$1 Library conflict(s) will keep the local version.",
+        "description": "Library transfer conflict note"
+    },
+    "libraryImportBookmarkConflicts": {
+        "message": "$1 bookmark conflict(s) kept the local version.",
+        "description": "Local Library import result"
+    },
+    "cloudBackupLegacyScope": {
+        "message": "This older backup contains bookmarks only. Highlights, annotations and their folders will stay unchanged.",
+        "description": "Scope note for old cloud snapshots"
+    },
     "cloudBackupStatusChecking": {
         "message": "Checking Google Drive status...",
         "description": "Cloud backup status check message"
     },
     "cloudBackupPrivacyNote": {
-        "message": "AI-MarkDone does not collect your information.",
+        "message": "Saved bookmarks, highlights, annotations and folders are stored in your authorized Google Drive.",
         "description": "Cloud backup privacy note"
     },
     "cloudBackupStatusLabel": {
@@ -2532,7 +2576,7 @@
         "description": "Title for the Google Drive restore snapshot picker"
     },
     "cloudBackupChooseSnapshotDesc": {
-        "message": "Choose the Google Drive backup to inspect. This step only previews a safe merge and does not change local bookmarks.",
+        "message": "Choose a backup to preview the merge.",
         "description": "Description for the Google Drive restore snapshot picker"
     },
     "cloudBackupProgressConfirmingAccess": {
@@ -2540,7 +2584,7 @@
         "description": "Google Drive backup progress step for confirming short-lived access"
     },
     "cloudBackupProgressPreparingBookmarks": {
-        "message": "Preparing local bookmarks...",
+        "message": "Preparing your Library...",
         "description": "Google Drive backup progress step"
     },
     "cloudBackupProgressCreatingSnapshot": {
@@ -2568,7 +2612,7 @@
         "description": "Google Drive restore progress step"
     },
     "cloudBackupProgressBuildingPreview": {
-        "message": "Generating a safe merge preview...",
+        "message": "Preparing merge preview…",
         "description": "Google Drive restore progress step"
     },
     "cloudBackupProgressWaitingConfirmation": {
@@ -2576,7 +2620,7 @@
         "description": "Google Drive restore progress step"
     },
     "cloudBackupProgressApplyingMerge": {
-        "message": "Applying safe merge...",
+        "message": "Merging…",
         "description": "Google Drive restore progress step"
     },
     "cloudBackupProgressWorking": {
@@ -2592,7 +2636,7 @@
         "description": "Fallback file size label for Google Drive backup snapshots"
     },
     "cloudBackupRestorePreviewKind": {
-        "message": "Safe merge preview",
+        "message": "Merge preview",
         "description": "Title for the Google Drive restore safe-merge preview"
     },
     "cloudBackupRestoreLocalOnlyWarning": {
@@ -2608,7 +2652,7 @@
         "description": "Button and title for managing Google Drive backup files"
     },
     "cloudBackupManageBackupsDesc": {
-        "message": "These are backup files AI-MarkDone created in your Google Drive. Moving one to trash never changes local bookmarks.",
+        "message": "Manage Library backups stored in Google Drive.",
         "description": "Description for the Google Drive backup manager"
     },
     "cloudBackupManageEmpty": {
@@ -2624,7 +2668,7 @@
         "description": "Confirmation title for moving a Google Drive backup file to trash"
     },
     "cloudBackupMoveToTrashConfirmDesc": {
-        "message": "This moves \"$1\" to Google Drive trash. Local bookmarks will not be changed.",
+        "message": "Move “$1” to Google Drive trash? Your local Library stays unchanged.",
         "description": "Confirmation message for moving a Google Drive backup file to trash"
     },
     "selectMessagesLabel": {
@@ -2968,7 +3012,7 @@
         "description": "Message for settingsInterfaceLanguageDesc"
     },
     "backupBookmarksHint": {
-        "message": "Export everything before major refactors or browser reinstalls.",
+        "message": "Export your Library before changing browsers or reinstalling the extension.",
         "description": "Message for backupBookmarksHint"
     },
     "sponsorOpenSourceTitle": {
@@ -3024,7 +3068,7 @@
         "description": "Message for sponsorThanksAriaLabel"
     },
     "exportAllBookmarksLabel": {
-        "message": "Export all bookmarks",
+        "message": "Export Library",
         "description": "Message for exportAllBookmarksLabel"
     },
     "moveBookmarkLabel": {
@@ -3164,7 +3208,7 @@
         "description": "Message for detachedReaderExperimentalTitle"
     },
     "detachedReaderExperimentalMessage": {
-        "message": "Detached Reader is experimental. It opens the current conversation in a new extension page to avoid as much ChatGPT page lag as possible. It does not collect or upload any information; the content comes from the Reader snapshot in the original ChatGPT tab. Refresh, send, and locate still use that source tab. If the source tab is closed or unavailable, the detached page keeps the opened content but cannot refresh, send, or locate. This version does not sync in real time; refresh manually when needed.",
+        "message": "Read this conversation in a separate page. Refresh content manually; sending and locating messages require the original ChatGPT tab to stay open.",
         "description": "Message for detachedReaderExperimentalMessage"
     },
     "detachedReaderExperimentalConfirm": {
@@ -3252,7 +3296,7 @@
         "description": "Tab label for all annotations"
     },
     "pageAnnotationManagerAllHint": {
-        "message": "The All view is for review and management. Switch to Current conversation to insert.",
+        "message": "Switch to Current conversation to insert.",
         "description": "Hint explaining that all-conversation annotations cannot be inserted directly"
     },
     "pageAnnotationManagerSearch": {
@@ -3394,5 +3438,437 @@
     "pageAnnotationChipAction": {
         "message": "Open current-conversation annotations",
         "description": "Accessible label for opening current-conversation annotations from the composer"
+    },
+    "highlightColorBlue": {
+        "message": "Soft blue",
+        "description": "Label for a highlight color choice"
+    },
+    "highlightColorYellow": {
+        "message": "Soft yellow",
+        "description": "Label for a highlight color choice"
+    },
+    "highlightColorRed": {
+        "message": "Soft coral",
+        "description": "Label for a highlight color choice"
+    },
+    "libraryTitle": {
+        "message": "Library",
+        "description": "Library interface label for libraryTitle"
+    },
+    "libraryFolders": {
+        "message": "Bookmark folders",
+        "description": "Library interface label for libraryFolders"
+    },
+    "libraryHighlightFolders": {
+        "message": "Highlight folders",
+        "description": "Folder navigation heading in the highlights library"
+    },
+    "libraryAnnotationFolders": {
+        "message": "Annotation folders",
+        "description": "Folder navigation heading in the annotations library"
+    },
+    "libraryMore": {
+        "message": "More",
+        "description": "Library interface label for libraryMore"
+    },
+    "libraryManage": {
+        "message": "Manage selection",
+        "description": "Library interface label for libraryManage"
+    },
+    "libraryManageDone": {
+        "message": "Done",
+        "description": "Library interface label for libraryManageDone"
+    },
+    "librarySelectPage": {
+        "message": "Select this page",
+        "description": "Library interface label for librarySelectPage"
+    },
+    "librarySelectAllBookmarks": {
+        "message": "Select all bookmarks",
+        "description": "Select all bookmark results matching the current filters"
+    },
+    "libraryInvertBookmarks": {
+        "message": "Invert bookmarks",
+        "description": "Invert bookmark selection within the current results"
+    },
+    "librarySelectAllResults": {
+        "message": "Select all results",
+        "description": "Select all items or conversations matching the current Library filters"
+    },
+    "libraryInvertResults": {
+        "message": "Invert results",
+        "description": "Invert item or conversation selection within the current Library results"
+    },
+    "librarySwitchToItems": {
+        "message": "Switch to items",
+        "description": "Change the Library batch selection scope to individual items"
+    },
+    "librarySwitchToConversations": {
+        "message": "Switch to conversations",
+        "description": "Change the Library batch selection scope to conversations"
+    },
+    "libraryLoadFailed": {
+        "message": "Could not load items",
+        "description": "Library interface label for libraryLoadFailed"
+    },
+    "libraryNoMatches": {
+        "message": "No matching items",
+        "description": "Library interface label for libraryNoMatches"
+    },
+    "libraryEmpty": {
+        "message": "No items yet",
+        "description": "Library interface label for libraryEmpty"
+    },
+    "libraryRetry": {
+        "message": "Retry",
+        "description": "Library interface label for libraryRetry"
+    },
+    "libraryRecordCount": {
+        "message": " $1 items",
+        "description": "Library interface label for libraryRecordCount"
+    },
+    "libraryPreviousPage": {
+        "message": "Previous page",
+        "description": "Library interface label for libraryPreviousPage"
+    },
+    "libraryNextPage": {
+        "message": "Next page",
+        "description": "Library interface label for libraryNextPage"
+    },
+    "libraryExpandFolder": {
+        "message": "Expand or collapse folder",
+        "description": "Library interface label for libraryExpandFolder"
+    },
+    "librarySelectFolder": {
+        "message": "Select folder $1 and its contents",
+        "description": "Library interface label for librarySelectFolder"
+    },
+    "librarySelectRecord": {
+        "message": "Select $1",
+        "description": "Library interface label for librarySelectRecord"
+    },
+    "libraryPreview": {
+        "message": "Read preview",
+        "description": "Library interface label for libraryPreview"
+    },
+    "libraryMovedTo": {
+        "message": "Moved to $1",
+        "description": "Library interface label for libraryMovedTo"
+    },
+    "libraryCurrentFolder": {
+        "message": "Current folder",
+        "description": "Library action label for libraryCurrentFolder"
+    },
+    "libraryTargetFolder": {
+        "message": "Destination",
+        "description": "Library action label for libraryTargetFolder"
+    },
+    "libraryRootFolder": {
+        "message": "Top level",
+        "description": "Library action label for libraryRootFolder"
+    },
+    "libraryPartialMove": {
+        "message": "Moved $1 items; $2 items no longer exist.",
+        "description": "Library action label for libraryPartialMove"
+    },
+    "libraryFolderNotEmpty": {
+        "message": "Move its conversations and subfolders before deleting it.",
+        "description": "Library folder and conversation management"
+    },
+    "libraryDeleteSelectionConfirm": {
+        "message": "Delete $1 selected bookmarks and $2 folders? Contents of selected folders will also be deleted.",
+        "description": "Library action label for libraryDeleteSelectionConfirm"
+    },
+    "operationFailed": {
+        "message": "Operation failed. Try again.",
+        "description": "Fallback operation error."
+    },
+    "librarySavedRefreshFailed": {
+        "message": "Saved. Refresh failed; retry to reload the list.",
+        "description": "Write succeeded but the library projection could not be refreshed."
+    },
+    "librarySavedValueChanged": {
+        "message": "Already saved. Restore the previous value to retry, or close and edit again.",
+        "description": "The saved mutation cannot be replayed with a different value after refresh failure."
+    },
+    "libraryMoveTo": {
+        "message": "Move to",
+        "description": "Library operation label."
+    },
+    "librarySelectionSummary": {
+        "message": "$1 bookmarks · $2 folders",
+        "description": "Library operation label."
+    },
+    "libraryDeletedSummary": {
+        "message": "Removed $1 bookmarks and $2 folders.",
+        "description": "Library operation label."
+    },
+    "settingsCategoryAppearance": {
+        "message": "Appearance & layout",
+        "description": "Settings center label."
+    },
+    "settingsCategoryReading": {
+        "message": "Reading & navigation",
+        "description": "Settings center label."
+    },
+    "settingsCategoryInput": {
+        "message": "Input & Prompts",
+        "description": "Settings center label."
+    },
+    "settingsCategoryMarks": {
+        "message": "Marks & annotations",
+        "description": "Settings center label."
+    },
+    "settingsCategoryExport": {
+        "message": "Copy & export",
+        "description": "Settings center label."
+    },
+    "settingsCategoryControls": {
+        "message": "Buttons & shortcuts",
+        "description": "Settings center label."
+    },
+    "settingsCategoryData": {
+        "message": "Data & backup",
+        "description": "Settings center label."
+    },
+    "settingsCategoryAdvanced": {
+        "message": "Advanced & diagnostics",
+        "description": "Settings center label."
+    },
+    "settingsSearch": {
+        "message": "Search settings",
+        "description": "Settings center label."
+    },
+    "settingsSearchResults": {
+        "message": "Search results",
+        "description": "Settings center label."
+    },
+    "settingsThemeMode": {
+        "message": "Theme",
+        "description": "Settings center label."
+    },
+    "settingsThemeAuto": {
+        "message": "Follow page",
+        "description": "Settings center label."
+    },
+    "settingsThemeLight": {
+        "message": "Light",
+        "description": "Settings center label."
+    },
+    "settingsThemeDark": {
+        "message": "Dark",
+        "description": "Settings center label."
+    },
+    "settingsHideOfficialNavigation": {
+        "message": "Hide ChatGPT navigation",
+        "description": "Settings center label."
+    },
+    "settingsReaderBodyFont": {
+        "message": "Reader text size",
+        "description": "Settings center label."
+    },
+    "settingsReaderBodyWidth": {
+        "message": "Reader text width",
+        "description": "Settings center label."
+    },
+    "settingsCommentSort": {
+        "message": "Annotation output order",
+        "description": "Settings center label."
+    },
+    "settingsSortCreated": {
+        "message": "Created",
+        "description": "Settings center label."
+    },
+    "settingsSortPosition": {
+        "message": "Message position",
+        "description": "Settings center label."
+    },
+    "settingsDefaultBookmarkSort": {
+        "message": "Default bookmark order",
+        "description": "Settings center label."
+    },
+    "settingsResetReaderNotice": {
+        "message": "Show Reader notice again",
+        "description": "Settings center label."
+    },
+    "settingsReaderNoticeReset": {
+        "message": "Reader notice reset",
+        "description": "Settings center label."
+    },
+    "sortTimeDesc": {
+        "message": "Newest first",
+        "description": "Settings order or statistics label."
+    },
+    "sortTimeAsc": {
+        "message": "Oldest first",
+        "description": "Settings order or statistics label."
+    },
+    "sortAlphaAsc": {
+        "message": "Title A–Z",
+        "description": "Settings order or statistics label."
+    },
+    "sortAlphaDesc": {
+        "message": "Title Z–A",
+        "description": "Settings order or statistics label."
+    },
+    "messageActions": {
+        "message": "Message actions",
+        "description": "Message toolbar label."
+    },
+    "messageCharacterCount": {
+        "message": "$1 Chars",
+        "description": "Message toolbar label."
+    },
+    "operationCompleted": {
+        "message": "Done",
+        "description": "Message toolbar label."
+    },
+    "highlightLoadFailed": {
+        "message": "Could not load highlights.",
+        "description": "Library and highlight interface"
+    },
+    "highlightSaveFailed": {
+        "message": "Could not save the highlight. Try again.",
+        "description": "Library and highlight interface"
+    },
+    "libraryAnnotations": {
+        "message": "Annotations",
+        "description": "Library and highlight interface"
+    },
+    "libraryHighlights": {
+        "message": "Highlights",
+        "description": "Library and highlight interface"
+    },
+    "librarySearchMarks": {
+        "message": "Search text or conversation",
+        "description": "Library and highlight interface"
+    },
+    "libraryReadFailed": {
+        "message": "Could not load this collection.",
+        "description": "Library and highlight interface"
+    },
+    "libraryFoldersUnavailable": {
+        "message": "Folders unavailable. Showing all items.",
+        "description": "Folder metadata failed; source records remain readable"
+    },
+    "libraryMarksEmpty": {
+        "message": "No items yet",
+        "description": "Library and highlight interface"
+    },
+    "libraryConversation": {
+        "message": "Conversation",
+        "description": "Library and highlight interface"
+    },
+    "libraryOpenOriginal": {
+        "message": "Open original page",
+        "description": "Library and highlight interface"
+    },
+    "libraryTemplates": {
+        "message": "Templates",
+        "description": "Library and highlight interface"
+    },
+    "libraryDeleteMarkTitle": {
+        "message": "Delete this item?",
+        "description": "Library and highlight interface"
+    },
+    "libraryDeleteMark": {
+        "message": "This item will be deleted from this browser profile.",
+        "description": "Library and highlight interface"
+    },
+    "librarySaveFailed": {
+        "message": "Could not complete the action. Try again.",
+        "description": "Library and highlight interface"
+    },
+    "librarySearchConversations": {
+        "message": "Search conversations",
+        "description": "Library conversation and batch action: librarySearchConversations"
+    },
+    "libraryAllConversations": {
+        "message": "All conversations",
+        "description": "Library conversation and batch action: libraryAllConversations"
+    },
+    "libraryBatchDeleteScope": {
+        "message": "Delete $1 selected records from $2 conversations?",
+        "description": "Library conversation and batch action: libraryBatchDeleteScope"
+    },
+    "libraryBatchRecolored": {
+        "message": "$1 recolored",
+        "description": "Library conversation and batch action: libraryBatchRecolored"
+    },
+    "libraryBatchDeleted": {
+        "message": "$1 deleted",
+        "description": "Library conversation and batch action: libraryBatchDeleted"
+    },
+    "libraryBatchIncomplete": {
+        "message": "$1 incomplete",
+        "description": "Library conversation and batch action: libraryBatchIncomplete"
+    },
+    "libraryBatchProgress": {
+        "message": "Processing $1 / $2",
+        "description": "Library conversation and batch action: libraryBatchProgress"
+    },
+    "libraryUnfiled": {
+        "message": "Unfiled",
+        "description": "Library folder and conversation management"
+    },
+    "libraryUnnamedConversation": {
+        "message": "Untitled conversation",
+        "description": "Library folder and conversation management"
+    },
+    "librarySelectEntries": {
+        "message": "Select items",
+        "description": "Library folder and conversation management"
+    },
+    "librarySelectConversations": {
+        "message": "Select conversations",
+        "description": "Library folder and conversation management"
+    },
+    "librarySelectConversation": {
+        "message": "Select $1",
+        "description": "Library folder and conversation management"
+    },
+    "librarySelectedConversations": {
+        "message": "$1 conversations · $2 items",
+        "description": "Library folder and conversation management"
+    },
+    "libraryRenameConversation": {
+        "message": "Rename conversation",
+        "description": "Library folder and conversation management"
+    },
+    "libraryRenameConversationHint": {
+        "message": "Leave blank to use the original name.",
+        "description": "Library folder and conversation management"
+    },
+    "libraryNameTooLong": {
+        "message": "Use up to 512 characters.",
+        "description": "Library folder and conversation management"
+    },
+    "libraryMoveConversations": {
+        "message": "Move conversations",
+        "description": "Library folder and conversation management"
+    },
+    "libraryMoveConversationHint": {
+        "message": "Move this conversation’s annotations and highlights together.",
+        "description": "Library folder and conversation management"
+    },
+    "libraryMoveFolderHint": {
+        "message": "The folder and its subfolders move together.",
+        "description": "Library folder and conversation management"
+    },
+    "libraryFolderNameInvalid": {
+        "message": "Use 1–100 characters without slashes.",
+        "description": "Library folder and conversation management"
+    },
+    "libraryFolderSaveFailed": {
+        "message": "Could not save. Try again.",
+        "description": "Library folder and conversation management"
+    },
+    "libraryPreviousConversations": {
+        "message": "Previous conversations",
+        "description": "Library folder and conversation management"
+    },
+    "libraryNextConversations": {
+        "message": "Next conversations",
+        "description": "Library folder and conversation management"
     }
 }

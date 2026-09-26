@@ -6,7 +6,13 @@ import { loadBookmarksDoc } from '@/ui/content/bookmarks/content/loader';
 describe('bookmarks content parser', () => {
     it('parses changelog markdown for both locales', () => {
         const zh = parseChangelogDoc(loadBookmarksDoc('changelog', 'zh_CN'));
+        expect(zh.entries[0]?.version).toBe('6.0.0');
+        expect(zh.entries[1]?.version).toBe('5.4.1');
+        zh.entries = zh.entries.filter(entry => entry.version !== '6.0.0' && entry.version !== '5.4.1');
         const en = parseChangelogDoc(loadBookmarksDoc('changelog', 'en'));
+        expect(en.entries[0]?.version).toBe('6.0.0');
+        expect(en.entries[1]?.version).toBe('5.4.1');
+        en.entries = en.entries.filter(entry => entry.version !== '6.0.0' && entry.version !== '5.4.1');
 
         expect(zh.title).toBe('更新日志');
         expect(en.title).toBe('Changelog');

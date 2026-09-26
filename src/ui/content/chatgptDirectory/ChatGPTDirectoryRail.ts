@@ -103,6 +103,7 @@ export class ChatGPTDirectoryRail {
     private viewportScrollbarWidthPx = 0;
     private expanded = false;
     private userInteracting = false;
+    private programmaticScrollTop: number | null = null;
     private interactionIdleTimer: number | null = null;
     private onSelect: (round: ChatGPTConversationRound) => void;
     private previewMaxChars = DEFAULT_CHATGPT_DIRECTORY_PREVIEW_MAX_CHARS;
@@ -182,10 +183,19 @@ export class ChatGPTDirectoryRail {
             this.releaseUserInteractionSoon();
         });
         this.listEl.addEventListener('scroll', () => {
-            this.markUserInteracting();
-            this.releaseUserInteractionSoon();
+            if (this.programmaticScrollTop === null || Math.abs(this.programmaticScrollTop - this.listEl.scrollTop) >= 1) {
+                this.markUserInteracting();
+                this.releaseUserInteractionSoon();
+            }
+            this.programmaticScrollTop = null;
             this.positionPreview();
         });
+        for (const eventName of ['wheel', 'touchstart', 'pointerdown', 'keydown']) {
+            this.listEl.addEventListener(eventName, () => {
+                this.markUserInteracting();
+                this.releaseUserInteractionSoon();
+            }, { passive: true });
+        }
         shell.appendChild(this.listEl);
         this.shadowRoot.appendChild(shell);
 
@@ -299,8 +309,8 @@ export class ChatGPTDirectoryRail {
         this.rootEl.dataset.historyStatus = status;
     }
 
-    setRounds(rounds: ChatGPTConversationRound[]): void {
-        const signature = this.buildRoundsSignature(rounds);
+    setRounds(rounds: ChatGPTConversationRound[], contentToken?: string | null): void {
+        const signature = contentToken ?? this.buildRoundsSignature(rounds);
         if (signature !== this.roundsSignature) {
             // The same ordinal can now refer to another branch or updated content.
             this.disposePreviewToolbar();
@@ -366,6 +376,10 @@ export class ChatGPTDirectoryRail {
     }
 
     private render(): void {
+        const scrollTop = this.listEl.scrollTop;
+        const focusedPosition = this.shadowRoot.activeElement instanceof HTMLElement
+            ? Number(this.shadowRoot.activeElement.dataset.position)
+            : null;
         this.listEl.replaceChildren();
         this.itemsByPosition.clear();
         this.roundsByPosition.clear();
@@ -396,6 +410,11 @@ export class ChatGPTDirectoryRail {
         this.renderHoverState();
         this.renderBookmarkedState();
         this.renderPreview();
+        this.listEl.scrollTop = scrollTop;
+        this.programmaticScrollTop = this.listEl.scrollTop;
+        if (focusedPosition !== null && Number.isFinite(focusedPosition)) {
+            this.itemsByPosition.get(focusedPosition)?.focus({ preventScroll: true });
+        }
     }
 
     private handleViewportResize = (): void => {
@@ -437,9 +456,14 @@ export class ChatGPTDirectoryRail {
     private followActiveItem(): void {
         if (this.userInteracting || !this.activePosition) return;
         const item = this.itemsByPosition.get(this.activePosition);
-        if (item && typeof item.scrollIntoView === 'function') {
-            item.scrollIntoView({ block: 'nearest' });
-        }
+        if (!item) return;
+        const desired = item.offsetTop + item.offsetHeight / 2 - this.listEl.clientHeight / 2;
+        const max = Math.max(0, this.listEl.scrollHeight - this.listEl.clientHeight);
+        const next = Math.max(0, Math.min(max, desired));
+        if (Math.abs(this.listEl.scrollTop - next) < 1) return;
+        this.listEl.scrollTop = next;
+        this.programmaticScrollTop = this.listEl.scrollTop;
+        this.positionPreview();
     }
 
     private markUserInteracting(): void {
@@ -455,6 +479,7 @@ export class ChatGPTDirectoryRail {
         this.interactionIdleTimer = window.setTimeout(() => {
             this.userInteracting = false;
             this.interactionIdleTimer = null;
+            this.followActiveItem();
         }, USER_INTERACTION_IDLE_MS);
     }
 
@@ -726,7 +751,8 @@ export class ChatGPTDirectoryRail {
   color: var(--aimd-text-primary);
   box-shadow: var(--aimd-shadow-lg);
   border: 1px solid color-mix(in srgb, var(--aimd-border-subtle) 72%, transparent);
-  pointer-events: auto;
+  pointer-events: none;
+  visibility: hidden;
   opacity: 0;
   transform: none;
   z-index: var(--aimd-z-tooltip);
@@ -738,6 +764,8 @@ export class ChatGPTDirectoryRail {
   overflow: hidden;
 }
 .aimd-chatgpt-directory-preview[data-open="1"] {
+  pointer-events: auto;
+  visibility: visible;
   opacity: 1;
 }
 .aimd-chatgpt-directory-preview__title {
@@ -801,6 +829,7 @@ export class ChatGPTDirectoryRail {
   justify-content: flex-end;
 }
 .rail__list {
+  position: relative;
   display: flex;
   flex-direction: column;
   align-items: flex-end;
@@ -811,8 +840,6 @@ export class ChatGPTDirectoryRail {
   max-height: min(78vh, 920px);
   overflow: hidden auto;
   scrollbar-width: none;
-  border: 1px solid transparent;
-  border-radius: var(--aimd-radius-lg);
 }
 .rail__list::-webkit-scrollbar {
   width: 0;
@@ -823,9 +850,7 @@ export class ChatGPTDirectoryRail {
   max-width: 100%;
   gap: var(--aimd-space-1);
   padding: var(--aimd-space-2);
-  background: color-mix(in srgb, var(--aimd-bg-surface) 94%, transparent);
-  border-color: color-mix(in srgb, var(--aimd-border-subtle) 72%, transparent);
-  box-shadow: var(--aimd-shadow-lg);
+  background: var(--aimd-bg-surface);
 }
 .rail__item {
   all: unset;
@@ -849,7 +874,7 @@ export class ChatGPTDirectoryRail {
   width: 36px;
   height: 3px;
   border-radius: var(--aimd-radius-full);
-  background: color-mix(in srgb, var(--aimd-border-default) 82%, transparent);
+  background: color-mix(in srgb, var(--aimd-text-tertiary) 28%, transparent);
   transform: scaleX(0.39) scaleY(1);
   transform-origin: right center;
   transition: transform calc(var(--aimd-duration-fast) * 0.8) var(--aimd-ease-out),
@@ -878,14 +903,6 @@ export class ChatGPTDirectoryRail {
 .rail__label {
   order: 2;
 }
-.rail__item[data-active="1"]::before {
-  transform: scaleX(0.56) scaleY(1);
-  background: var(--aimd-interactive-primary);
-}
-.rail__item[data-bookmarked="1"]::before {
-  background: var(--aimd-bookmark-marker-gradient);
-  box-shadow: var(--aimd-shadow-bookmark-marker);
-}
 .rail__item[data-proximity="0"]::before {
   transform: scaleX(1) scaleY(1.33);
   background: var(--aimd-interactive-primary);
@@ -897,15 +914,27 @@ export class ChatGPTDirectoryRail {
 }
 .rail__item[data-proximity="1"]::before {
   transform: scaleX(0.83) scaleY(1.33);
-  background: color-mix(in srgb, var(--aimd-interactive-primary) 72%, var(--aimd-border-default));
+  background: color-mix(in srgb, var(--aimd-interactive-primary) 48%, var(--aimd-border-subtle));
 }
 .rail__item[data-proximity="2"]::before {
   transform: scaleX(0.64) scaleY(1);
-  background: color-mix(in srgb, var(--aimd-interactive-primary) 48%, var(--aimd-border-default));
+  background: color-mix(in srgb, var(--aimd-interactive-primary) 30%, var(--aimd-border-subtle));
 }
 .rail__item[data-proximity="3"]::before {
   transform: scaleX(0.5) scaleY(1);
-  background: color-mix(in srgb, var(--aimd-interactive-primary) 28%, var(--aimd-border-default));
+  background: color-mix(in srgb, var(--aimd-interactive-primary) 18%, var(--aimd-border-subtle));
+}
+.rail__item[data-active="1"]::before {
+  transform: scaleX(0.72) scaleY(1.33);
+  background: var(--aimd-interactive-primary);
+  box-shadow: var(--aimd-shadow-interactive-halo);
+}
+.rail__item[data-active="1"][data-proximity="0"]::before {
+  transform: scaleX(1) scaleY(1.33);
+}
+.rail__item[data-bookmarked="1"]::before {
+  background: var(--aimd-bookmark-marker-gradient);
+  box-shadow: var(--aimd-shadow-bookmark-marker);
 }
 .rail__list[data-mode="expanded"][data-expanded="1"] .rail__item {
   display: grid;
@@ -913,6 +942,7 @@ export class ChatGPTDirectoryRail {
   height: 30px;
   padding-inline: var(--aimd-space-2);
   border-radius: var(--aimd-radius-md);
+  color: var(--aimd-text-tertiary);
 }
 .rail__list[data-mode="expanded"][data-expanded="1"] .rail__item::before {
   grid-column: 3;
@@ -953,10 +983,11 @@ export class ChatGPTDirectoryRail {
 }
 .rail__list[data-mode="expanded"][data-expanded="1"] .rail__item[data-hovered="1"],
 .rail__list[data-mode="expanded"][data-expanded="1"] .rail__item:focus-visible {
-  background: var(--aimd-interactive-selected);
+  background: var(--aimd-interactive-hover);
   color: var(--aimd-text-primary);
 }
 .rail__list[data-mode="expanded"][data-expanded="1"] .rail__item[data-active="1"] {
+  background: var(--aimd-interactive-selected);
   color: var(--aimd-interactive-primary);
 }
 .rail__item:focus-visible {
@@ -976,6 +1007,12 @@ export class ChatGPTDirectoryRail {
   .rail__item[data-bookmarked="1"][data-proximity="0"]::before,
   .rail__item[data-bookmarked="1"]:focus-visible::before {
     background: var(--aimd-interactive-primary);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .rail__list,
+  .rail__item::before {
+    transition: none;
   }
 }
 @media (max-width: 720px) {

@@ -84,6 +84,15 @@ describe('protocol', () => {
         })).toBe(true);
     });
 
+    it('requires the previewed payload hash for a cloud restore request', () => {
+        const request = { v: PROTOCOL_VERSION, id: createRequestId(), type: 'cloudBackup:applyRestore', payload: {
+            provider: 'googleDrive', snapshotId: 'snapshot-1', strategy: 'safeMerge', payloadHash: `sha256:${'a'.repeat(64)}`,
+        } };
+        expect(isExtRequest(request)).toBe(true);
+        expect(isExtRequest({ ...request, payload: { ...request.payload, payloadHash: '' } })).toBe(false);
+        expect(isExtRequest({ ...request, payload: { provider: 'googleDrive', snapshotId: 'snapshot-1', strategy: 'safeMerge' } })).toBe(false);
+    });
+
     it('accepts a valid content ready handshake and rejects malformed payloads', () => {
         expect(isExtRequest({
             v: PROTOCOL_VERSION,

@@ -71,6 +71,15 @@ export function normalizeReaderAnnotationDocument(document: ReaderAnnotationDocu
     };
 }
 
+/** Enrich display metadata on acknowledged writes without erasing previously captured values. */
+export function mergeReaderAnnotationDocument(stored: ReaderAnnotationDocument, incoming: ReaderAnnotationDocument): ReaderAnnotationDocument {
+    return normalizeReaderAnnotationDocument({
+        ...stored,
+        title: incoming.title?.trim() || stored.title,
+        lastKnownUrl: incoming.lastKnownUrl?.trim() || stored.lastKnownUrl,
+    });
+}
+
 export function readerAnnotationDocumentKey(document: ReaderAnnotationDocument): string {
     const normalized = normalizeReaderAnnotationDocument(document);
     return `${normalized.platform}:conversation:${encodeURIComponent(normalized.conversationId)}`;

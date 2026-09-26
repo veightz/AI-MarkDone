@@ -1,4 +1,5 @@
 import type { Theme } from '../../core/types/theme';
+import type { ReaderCommentRecord } from '../../services/reader/commentSession';
 import { extensionAssets } from '../../../config/extension/assets';
 import { browser } from '../../drivers/shared/browser';
 import type { ReaderItem } from '../../services/reader/types';
@@ -199,6 +200,9 @@ class LazyInstance<T> {
 }
 
 class LazyReaderPanel implements ReaderPanelPort {
+    getLibraryAnnotations(): ReaderCommentRecord[] { return this.lazy.current?.getLibraryAnnotations?.() ?? []; }
+    updateLibraryAnnotation(record: ReaderCommentRecord): void { this.lazy.current?.updateLibraryAnnotation?.(record); }
+    removeLibraryAnnotation(record: ReaderCommentRecord): void { this.lazy.current?.removeLibraryAnnotation?.(record); }
     private readonly lazy: LazyInstance<ReaderPanelPort>;
     private appearance: AppearanceSnapshot = createAppearanceSnapshot('light');
     private readerSettings: AppSettings['reader'] | null = null;
@@ -304,9 +308,9 @@ class LazyBookmarksPanel implements BookmarksPanelPort {
         await instance.toggle();
     }
 
-    async show(): Promise<void> {
+    async show(options?: Parameters<BookmarksPanelPort['show']>[0]): Promise<void> {
         const instance = await this.lazy.resolve();
-        await instance.show();
+        await instance.show(options);
     }
 
     hide(): void {

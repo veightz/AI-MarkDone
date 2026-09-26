@@ -238,6 +238,22 @@ describe('SaveMessagesDialog', () => {
         );
     });
 
+    it('inverts the selected export messages from the current selection', async () => {
+        await setLocale('en');
+        const dlg = new SaveMessagesDialog();
+        await dlg.open({ getPlatformId: () => 'chatgpt' } as any, 'light');
+        const host = document.getElementById('aimd-save-messages-dialog-host')!;
+        const shadow = host.shadowRoot!;
+        const chips = Array.from(shadow.querySelectorAll<HTMLButtonElement>('.message-chip'));
+
+        expect(chips.map(chip => chip.dataset.active)).toEqual(['1', '0']);
+        shadow.querySelector<HTMLButtonElement>('[data-action="invert-turns"]')!.click();
+        expect(Array.from(shadow.querySelectorAll<HTMLButtonElement>('.message-chip')).map(chip => chip.dataset.active)).toEqual(['0', '1']);
+        shadow.querySelector<HTMLButtonElement>('[data-action="save-turns"]')!.click();
+        await Promise.resolve();
+        expect(exportTurnsMarkdown).toHaveBeenLastCalledWith(expect.any(Array), [1], expect.any(Object), expect.any(Object));
+    });
+
     it('opens from the fresh ReaderItem source for ChatGPT exports', async () => {
         await setLocale('en');
         const adapter = {

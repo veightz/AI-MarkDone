@@ -336,6 +336,34 @@ describe('ChatGPTDirectoryController', () => {
         expect(navigationMocks.scrollToBookmarkTargetWithRetry).not.toHaveBeenCalled();
     });
 
+    it('uses the current assistant identity when a visible rail button has an old turn ID', async () => {
+        const adapter = new ChatGPTTestAdapter();
+        const engine = { subscribe: vi.fn(() => () => undefined) } as any;
+        const navigation = { navigate: vi.fn(async () => ({ ok: true as const })), cancelActive: vi.fn() };
+        const controller = createDirectoryController(adapter, engine, null, { navigation });
+        (controller as any).ensureRail();
+        const initial = buildSnapshot();
+        setCanonicalSnapshot(adapter, initial);
+        controller.render();
+        const button = document.getElementById('aimd-chatgpt-directory-rail')?.shadowRoot
+            ?.querySelector<HTMLButtonElement>('.rail__item[data-position="2"]');
+
+        setCanonicalSnapshot(adapter, {
+            ...initial,
+            revision: 2,
+            rounds: initial.rounds.map((round) => round.position === 2 ? { ...round, id: 'mounted-turn-2' } : round),
+        });
+        button?.click();
+        await Promise.resolve();
+
+        expect(navigation.navigate).toHaveBeenCalledOnce();
+        expect(navigation.navigate).toHaveBeenCalledWith(expect.objectContaining({
+            roundId: 'mounted-turn-2',
+            assistantMessageId: 'a2',
+        }), expect.anything());
+        controller.dispose();
+    });
+
     it('routes an unmounted round click through its persistent host slot when turn wrappers repeat the slot marker', async () => {
         document.body.innerHTML = `
           <main>
@@ -1910,17 +1938,21 @@ describe('ChatGPTDirectoryRail active following', () => {
         document.body.innerHTML = '';
     });
 
-    it('scrolls the active rail item into view when active position changes', () => {
+    it('centers the active item by scrolling only the rail list', () => {
         const rail = new ChatGPTDirectoryRail('light', vi.fn());
         document.body.appendChild(rail.getElement());
         rail.setRounds(buildSnapshot().rounds);
+        const list = rail.getElement().shadowRoot?.querySelector<HTMLElement>('.rail__list')!;
         const item = rail.getElement().shadowRoot?.querySelector<HTMLElement>('.rail__item[data-position="2"]');
         const scrollIntoView = vi.fn();
         if (item) item.scrollIntoView = scrollIntoView;
+        Object.defineProperties(list, { clientHeight: { configurable: true, value: 100 }, scrollHeight: { configurable: true, value: 400 } });
+        if (item) Object.defineProperties(item, { offsetTop: { configurable: true, value: 180 }, offsetHeight: { configurable: true, value: 10 } });
 
         rail.setActivePosition(2);
 
-        expect(scrollIntoView).toHaveBeenCalledWith({ block: 'nearest' });
+        expect(list.scrollTop).toBe(135);
+        expect(scrollIntoView).not.toHaveBeenCalled();
         rail.dispose();
     });
 
@@ -1930,13 +1962,53 @@ describe('ChatGPTDirectoryRail active following', () => {
         rail.setRounds(buildSnapshot().rounds);
         const list = rail.getElement().shadowRoot?.querySelector<HTMLElement>('.rail__list');
         const item = rail.getElement().shadowRoot?.querySelector<HTMLElement>('.rail__item[data-position="2"]');
-        const scrollIntoView = vi.fn();
-        if (item) item.scrollIntoView = scrollIntoView;
+        Object.defineProperties(list!, { clientHeight: { configurable: true, value: 100 }, scrollHeight: { configurable: true, value: 400 } });
+        if (item) Object.defineProperties(item, { offsetTop: { configurable: true, value: 180 }, offsetHeight: { configurable: true, value: 10 } });
 
         list?.dispatchEvent(new Event('pointerenter', { bubbles: true }));
         rail.setActivePosition(2);
 
-        expect(scrollIntoView).not.toHaveBeenCalled();
+        expect(list?.scrollTop).toBe(0);
+        list?.dispatchEvent(new Event('pointerleave', { bubbles: true }));
+        vi.advanceTimersByTime(900);
+        expect(list?.scrollTop).toBe(135);
+        rail.dispose();
+    });
+
+    it('does not treat its own centering scroll as a manual rail interaction', () => {
+        const rail = new ChatGPTDirectoryRail('light', vi.fn());
+        document.body.appendChild(rail.getElement());
+        rail.setRounds(buildSnapshot().rounds);
+        const root = rail.getElement().shadowRoot!;
+        const list = root.querySelector<HTMLElement>('.rail__list')!;
+        Object.defineProperties(list, { clientHeight: { configurable: true, value: 100 }, scrollHeight: { configurable: true, value: 400 } });
+        for (const [position, top] of [[1, 60], [2, 180]] as const) {
+            Object.defineProperties(root.querySelector<HTMLElement>(`.rail__item[data-position="${position}"]`)!, {
+                offsetTop: { configurable: true, value: top }, offsetHeight: { configurable: true, value: 10 },
+            });
+        }
+
+        rail.setActivePosition(1);
+        list.dispatchEvent(new Event('scroll'));
+        rail.setActivePosition(2);
+
+        expect(list.scrollTop).toBe(135);
+        rail.dispose();
+    });
+
+    it('preserves rail scroll and keyboard focus across a content redraw', () => {
+        const rail = new ChatGPTDirectoryRail('light', vi.fn());
+        document.body.appendChild(rail.getElement());
+        const root = rail.getElement().shadowRoot!;
+        rail.setRounds(buildSnapshot().rounds);
+        const list = root.querySelector<HTMLElement>('.rail__list')!;
+        list.scrollTop = 77;
+        root.querySelector<HTMLElement>('.rail__item[data-position="2"]')?.focus();
+
+        rail.setRounds(buildSnapshot().rounds.map((round) => ({ ...round, preview: `${round.preview} updated` })));
+
+        expect(list.scrollTop).toBe(77);
+        expect(root.activeElement?.getAttribute('data-position')).toBe('2');
         rail.dispose();
     });
 

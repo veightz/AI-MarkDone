@@ -29,18 +29,15 @@ describe('ComposerAnnotationChip', () => {
         document.body.innerHTML = '';
     });
 
-    it('renders beside the enhancement button with the annotation count and hides at zero', () => {
+    it('renders beside the official composer action container with the annotation count and hides at zero', () => {
         const { container, anchor } = mountComposer();
-        const enhancementHost = document.createElement('span');
-        enhancementHost.dataset.aimdRole = 'input-enhancement-button';
-        container.appendChild(enhancementHost);
 
         const chip = new ComposerAnnotationChip(createAppearanceSnapshot('light'));
         chip.render({ container, anchor }, 3, handlers());
 
         const host = container.querySelector<HTMLElement>('[data-aimd-role="page-annotation-composer-chip"]')!;
         expect(host).toBeTruthy();
-        expect(host.previousElementSibling).toBe(enhancementHost);
+        expect(host.previousElementSibling).toBe(anchor);
         expect(host.shadowRoot!.querySelector('.chip-count')!.textContent).toBe('3');
         const button = host.shadowRoot!.querySelector<HTMLButtonElement>('.chip-button');
         expect(button?.getAttribute('aria-label')).toBe('Open current-conversation annotations');
@@ -65,9 +62,6 @@ describe('ComposerAnnotationChip', () => {
 
     it('does not move an already positioned chip during an identical render', async () => {
         const { container, anchor } = mountComposer();
-        const enhancementHost = document.createElement('span');
-        enhancementHost.dataset.aimdRole = 'input-enhancement-button';
-        container.appendChild(enhancementHost);
 
         const chip = new ComposerAnnotationChip(createAppearanceSnapshot('light'));
         chip.render({ container, anchor }, 2, handlers());
@@ -82,7 +76,7 @@ describe('ComposerAnnotationChip', () => {
 
         expect(records).toHaveLength(0);
         expect(container.querySelector('[data-aimd-role="page-annotation-composer-chip"]')).toBe(host);
-        expect(host.previousElementSibling).toBe(enhancementHost);
+        expect(host.previousElementSibling).toBe(anchor);
         observer.disconnect();
         chip.dispose();
     });

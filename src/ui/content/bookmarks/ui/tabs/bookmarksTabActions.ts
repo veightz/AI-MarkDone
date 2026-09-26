@@ -1,6 +1,7 @@
+import type { FolderSelectionOptions } from '../../save/BookmarkSaveDialog';
 import type { Theme } from '../../../../../core/types/theme';
 import type { Bookmark } from '../../../../../core/bookmarks/types';
-import { buildBookmarkIdentityKeyForBookmark } from '../../../../../core/bookmarks/keys';
+import { buildBookmarkDedupeKey } from '../../../../../core/bookmarks/keys';
 import type { ReaderItem } from '../../../../../services/reader/types';
 import { PathUtils } from '../../../../../core/bookmarks/path';
 import { validateBookmarkTitle } from '../../../../../core/bookmarks/title';
@@ -12,7 +13,7 @@ import { titleValidationMessage, validateFolderPathInput, validateFolderSegmentN
 import { bookmarkSaveDialog } from '../../save/bookmarkSaveDialogSingleton';
 
 function bookmarkSelectionKey(b: Bookmark): string {
-    return `bm:${buildBookmarkIdentityKeyForBookmark(b)}`;
+    return `bm:${buildBookmarkDedupeKey(b)}`;
 }
 
 function buildReaderScopeList(
@@ -73,6 +74,8 @@ function findFolderNode(
     return null;
 }
 
+export type BookmarkMutationSubmit = (value: string) => Promise<string | null>;
+
 export type BookmarksTabActions = {
     requestHidePanel(): void;
     getSaveContextOnly(): boolean;
@@ -83,13 +86,13 @@ export type BookmarksTabActions = {
         onOpenConversation: (bookmark: Bookmark) => Promise<void>;
     }): Promise<void>;
     alertError(title: string, message: string): Promise<void>;
-    confirmDeleteSelected(): Promise<boolean>;
+    confirmDeleteSelected(counts?: { bookmarks: number; folders: number }): Promise<boolean>;
     confirmDeleteFolder(path: string): Promise<boolean>;
     confirmDeleteBookmark(): Promise<boolean>;
-    promptCreateFolderPath(): Promise<string | null>;
-    promptFolderName(title: string): Promise<string | null>;
-    promptBookmarkTitle(currentTitle: string): Promise<string | null>;
-    pickFolder(currentFolderPath: string | null, theme: Theme): Promise<string | null>;
+    promptCreateFolderPath(onSubmit?: BookmarkMutationSubmit): Promise<string | null>;
+    promptFolderName(title: string, currentName?: string, onSubmit?: BookmarkMutationSubmit): Promise<string | null>;
+    promptBookmarkTitle(currentTitle: string, onSubmit?: BookmarkMutationSubmit): Promise<string | null>;
+    pickFolder(currentFolderPath: string | null, theme: Theme, selectionOptions?: FolderSelectionOptions): Promise<string | null>;
     showImportMergeSummary(params: {
         kind: 'info' | 'warning';
         title: string;
@@ -154,11 +157,11 @@ export function createBookmarksTabActions(params: {
                 confirmText: t('btnOk'),
             });
         },
-        async confirmDeleteSelected() {
+        async confirmDeleteSelected(counts) {
             return params.modal.confirm({
                 kind: 'warning',
                 title: t('deleteSelectedTitle'),
-                message: t('actionCannotBeUndone'),
+                message: counts ? t('libraryDeleteSelectionConfirm', [String(counts.bookmarks), String(counts.folders)]) : t('actionCannotBeUndone'),
                 confirmText: t('btnDelete'),
                 cancelText: t('btnCancel'),
                 danger: true,
@@ -184,12 +187,13 @@ export function createBookmarksTabActions(params: {
                 danger: true,
             });
         },
-        async promptCreateFolderPath() {
+        async promptCreateFolderPath(onSubmit) {
             return params.modal.prompt({
                 kind: 'info',
                 title: t('createFolder'),
                 message: t('promptNewFolderPath'),
                 placeholder: t('folderPathPlaceholder'),
+                onSubmit,
                 defaultValue: '',
                 confirmText: t('btnSave'),
                 cancelText: t('btnCancel'),
@@ -199,13 +203,14 @@ export function createBookmarksTabActions(params: {
                 },
             });
         },
-        async promptFolderName(title) {
+        async promptFolderName(title, currentName, onSubmit) {
             return params.modal.prompt({
                 kind: 'info',
                 title,
                 message: t('promptNewFolderName'),
                 placeholder: t('folderNamePlaceholder'),
-                defaultValue: '',
+                onSubmit,
+                defaultValue: currentName ?? '',
                 confirmText: t('btnSave'),
                 cancelText: t('btnCancel'),
                 validate: (value) => {
@@ -214,13 +219,14 @@ export function createBookmarksTabActions(params: {
                 },
             });
         },
-        async promptBookmarkTitle(currentTitle) {
+        async promptBookmarkTitle(currentTitle, onSubmit) {
             return params.modal.prompt({
                 kind: 'info',
                 title: t('renameBookmarkLabel'),
                 message: t('enterBookmarkTitle'),
                 placeholder: t('enterBookmarkTitle'),
                 defaultValue: currentTitle,
+                onSubmit,
                 confirmText: t('btnSave'),
                 cancelText: t('btnCancel'),
                 validate: (value) => {
@@ -231,13 +237,14 @@ export function createBookmarksTabActions(params: {
                 },
             });
         },
-        async pickFolder(currentFolderPath, theme) {
+        async pickFolder(currentFolderPath, theme, selectionOptions) {
             const result = await bookmarkSaveDialog.open({
                 theme,
                 userPrompt: '',
                 existingTitle: '',
                 currentFolderPath,
                 mode: 'folder-select',
+                selectionOptions,
             });
             if (!result.ok) return null;
             return result.folderPath;

@@ -130,13 +130,29 @@ describe('ChatGPTMessageStepperController', () => {
         document.body.innerHTML = '';
     });
 
+    it('shows the shared tooltip when a page control is hovered', async () => {
+        const controller = new ChatGPTMessageStepperController(adapter);
+        controllers.push(controller);
+        controller.init();
+        const trigger = document.querySelector<HTMLElement>('#aimd-chatgpt-message-stepper [data-action="open-bookmarks-panel"]')!;
+        trigger.getBoundingClientRect = vi.fn(() => ({
+            left: 100, right: 130, top: 600, bottom: 630, width: 30, height: 30,
+            x: 100, y: 600, toJSON: () => ({}),
+        }));
+
+        trigger.dispatchEvent(new MouseEvent('pointerover', { bubbles: true }));
+        await vi.waitFor(() => {
+            expect(document.querySelector('.aimd-tooltip')?.textContent).toBe(trigger.getAttribute('aria-label'));
+        });
+    });
+
     it('opens on hover and focus, preserves action order, and closes with Escape or an outside pointer', async () => {
         const onOpenBookmarksPanel = vi.fn();
         const controller = new ChatGPTMessageStepperController(adapter, { onOpenBookmarksPanel });
         controllers.push(controller);
         controller.init();
         const host = document.getElementById('aimd-chatgpt-message-stepper')!;
-        const trigger = host.querySelector<HTMLButtonElement>('[data-action="toggle-page-controls"]')!;
+        const trigger = host.querySelector<HTMLButtonElement>('[data-action="open-bookmarks-panel"]')!;
         const actions = host.querySelector<HTMLElement>('.aimd-chatgpt-message-stepper__actions')!;
         expect(trigger.getAttribute('aria-expanded')).toBe('false');
         expect(actions.hasAttribute('inert')).toBe(true);
@@ -147,7 +163,8 @@ describe('ChatGPTMessageStepperController', () => {
         expect(trigger.getAttribute('aria-expanded')).toBe('false');
         trigger.focus();
         expect(trigger.getAttribute('aria-expanded')).toBe('true');
-        const bookmark = actions.querySelector<HTMLButtonElement>('[data-action="open-bookmarks-panel"]')!;
+        expect(actions.querySelector('[data-action="open-bookmarks-panel"]')).toBeNull();
+        const bookmark = trigger;
         bookmark.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true }));
         bookmark.click();
         expect(onOpenBookmarksPanel).toHaveBeenCalledOnce();
@@ -155,6 +172,9 @@ describe('ChatGPTMessageStepperController', () => {
         expect(document.activeElement).toBe(trigger);
         expect(trigger.getAttribute('aria-expanded')).toBe('false');
         trigger.click();
+        expect(trigger.getAttribute('aria-expanded')).toBe('false');
+        expect(onOpenBookmarksPanel).toHaveBeenCalledTimes(2);
+        host.dispatchEvent(new Event('pointerenter'));
         expect(trigger.getAttribute('aria-expanded')).toBe('true');
         document.body.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true }));
         expect(trigger.getAttribute('aria-expanded')).toBe('false');
@@ -184,7 +204,6 @@ describe('ChatGPTMessageStepperController', () => {
 
         expect(host).toBeTruthy();
         expect(Array.from(host.querySelectorAll<HTMLButtonElement>('.aimd-chatgpt-message-stepper__actions button')).map((button) => button.dataset.action)).toEqual([
-            'open-bookmarks-panel',
             'toggle-page-bookmark',
             'open-detached-reader',
             'open-prompts',
@@ -192,7 +211,7 @@ describe('ChatGPTMessageStepperController', () => {
             'previous-message',
             'next-message',
         ]);
-        expect(bookmarksPanel.getAttribute('aria-label')).toBe('Bookmarks');
+        expect(bookmarksPanel.getAttribute('aria-label')).toBe('Settings');
         expect(bookmarksPanel.querySelector('img')?.getAttribute('alt')).toBe('AI-MarkDone');
         expect(split.getAttribute('aria-label')).toBe('Open Reader in split view');
         expect(prompts.getAttribute('aria-label')).toBe('Prompts');
@@ -204,7 +223,7 @@ describe('ChatGPTMessageStepperController', () => {
         expect(tokens).toContain('.aimd-chatgpt-message-stepper[data-aimd-theme="light"]');
         expect(tokens).toContain('.aimd-chatgpt-message-stepper[data-aimd-theme="dark"]');
         expect(style).toContain('bottom: calc(var(--aimd-space-3) / 2);');
-        expect(style).toContain('border-radius: var(--aimd-radius-sm);');
+        expect(style).toContain('border-radius: var(--aimd-radius-full);');
         expect(style).toContain('background: var(--aimd-button-icon-hover);');
         expect(style).not.toContain('--aimd-ref-color-neutral-0');
 
@@ -359,7 +378,7 @@ describe('ChatGPTMessageStepperController', () => {
         await setLocale('zh_CN');
 
         const host = document.getElementById('aimd-chatgpt-message-stepper')!;
-        expect(host.querySelector('[data-action="open-bookmarks-panel"]')?.getAttribute('aria-label')).toBe('书签');
+        expect(host.querySelector('[data-action="open-bookmarks-panel"]')?.getAttribute('aria-label')).toBe('设置');
         expect(host.querySelector('[data-action="toggle-page-bookmark"]')?.getAttribute('aria-label')).toBe('收藏当前页面');
         expect(host.querySelector('[data-action="open-detached-reader"]')?.getAttribute('aria-label')).toBe('在分屏中打开阅读器');
         expect(host.querySelector('[data-action="open-prompts"]')?.getAttribute('aria-label')).toBe('提示词');
@@ -582,7 +601,7 @@ describe('ChatGPTMessageStepperController', () => {
         expect(button.dataset.active).toBe('unknown');
         expect(button.dataset.bookmarkState).toBe('error');
         expect(button.getAttribute('aria-pressed')).toBeNull();
-        expect(button.getAttribute('title')).toBe('Extension context invalidated.');
+        expect(button.dataset.tooltip).toBe('Extension context invalidated.');
     });
 
     it('prevents duplicate page bookmark clicks and exposes mutation failures without changing last-known state', async () => {
@@ -617,7 +636,7 @@ describe('ChatGPTMessageStepperController', () => {
         expect(button.disabled).toBe(false);
         expect(button.dataset.active).toBe('0');
         expect(button.dataset.bookmarkState).toBe('error');
-        expect(button.getAttribute('title')).toBe('Could not save bookmark.');
+        expect(button.dataset.tooltip).toBe('Could not save bookmark.');
         expect(document.body.querySelector<HTMLElement>('.aimd-toast')?.textContent).toContain('Could not save bookmark.');
     });
 

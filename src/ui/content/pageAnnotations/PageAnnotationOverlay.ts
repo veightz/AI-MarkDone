@@ -1,10 +1,12 @@
-import { copyIcon, messageSquareTextIcon } from '../../../assets/icons';
+import { copyIcon, messageSquareTextIcon } from '../../../assets/workspaceIcons';
+import { createHighlightSwatches, getHighlightSwatchesCss, type HighlightColor } from '../components/HighlightSwatches';
 import type { AppearanceSnapshot } from '../../../style/appearance';
 import { areAppearanceSnapshotsEqual } from '../../../style/appearance';
 import { AppearanceScope } from '../../../style/appearanceScope';
 import { ensureStyle } from '../../../style/shadow';
 import { createIcon } from '../components/Icon';
 import { AIMD_CONVERSATION_SURFACE_CONSUMER_ATTRIBUTE } from '../../../contracts/conversationSurface';
+import { getAnnotationActionButtonCss } from './annotationActionButtonCss';
 
 const OVERLAY_ID = 'aimd-chatgpt-page-annotation-overlay';
 const STYLE_ID = 'aimd-chatgpt-page-annotation-style';
@@ -19,10 +21,12 @@ export type PageAnnotationToolbarRender = {
     onActionPointerCancel?: () => void;
     onCopy: () => void;
     onComment: () => void;
+    commentEnabled?: boolean;
+    onHighlight?: (color: HighlightColor) => Promise<void>;
 };
 
 function getOverlayCss(): string {
-    return `
+    return getHighlightSwatchesCss() + getAnnotationActionButtonCss() + `
 :host {
   position: fixed;
   inset: 0;
@@ -53,35 +57,9 @@ function getOverlayCss(): string {
   pointer-events: none;
 }
 
-.icon-btn {
-  all: unset;
-  box-sizing: border-box;
-  cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  flex: 0 0 auto;
-  width: var(--aimd-size-control-icon-panel);
-  height: var(--aimd-size-control-icon-panel);
-  border-radius: var(--aimd-radius-full);
-  border: 1px solid transparent;
-  background: transparent;
-  color: var(--aimd-button-icon-text);
-  transition: background var(--aimd-duration-fast) var(--aimd-ease-in-out),
-    border-color var(--aimd-duration-fast) var(--aimd-ease-in-out),
-    color var(--aimd-duration-fast) var(--aimd-ease-in-out);
-}
-
-.icon-btn:focus-visible,
 .secondary-btn:focus-visible {
   outline: 2px solid var(--aimd-focus-ring);
   outline-offset: 2px;
-}
-
-.icon-btn .aimd-icon,
-.icon-btn .aimd-icon svg {
-  width: var(--aimd-size-control-glyph-panel);
-  height: var(--aimd-size-control-glyph-panel);
 }
 
 .reader-comment-action {
@@ -91,30 +69,11 @@ function getOverlayCss(): string {
   align-items: center;
   gap: var(--aimd-space-1);
   white-space: nowrap;
-}
-
-.reader-comment-action .aimd-icon {
-  color: var(--aimd-interactive-primary);
-}
-
-.reader-comment-action__button {
-  color: var(--aimd-text-secondary);
-  background: var(--aimd-button-floating-bg);
-  border-color: var(--aimd-button-floating-border);
-}
-
-.reader-comment-action__button:hover,
-.reader-comment-action__button:focus-visible {
-  color: var(--aimd-interactive-primary);
-  background: var(--aimd-button-floating-hover);
-  border-color: var(--aimd-button-floating-border);
-}
-
-.reader-comment-action__button:active,
-.reader-comment-action__button:focus {
-  color: var(--aimd-interactive-primary);
-  background: var(--aimd-button-floating-active);
-  border-color: var(--aimd-button-floating-border);
+  padding: var(--aimd-space-1) var(--aimd-space-2);
+  border: 1px solid var(--aimd-workspace-border);
+  border-radius: var(--aimd-radius-full);
+  background: var(--aimd-workspace-card);
+  box-shadow: var(--aimd-workspace-raised);
 }
 
 .secondary-btn {
@@ -230,7 +189,7 @@ export class PageAnnotationOverlay {
 
         const copyButton = document.createElement('button');
         copyButton.type = 'button';
-        copyButton.className = 'icon-btn reader-comment-action__button';
+        copyButton.className = 'icon-btn reader-comment-action__button annotation-action-button';
         copyButton.dataset.action = 'page-selection-copy';
         copyButton.setAttribute('aria-label', toolbar.copyLabel);
         copyButton.title = toolbar.copyLabel;
@@ -250,7 +209,7 @@ export class PageAnnotationOverlay {
 
         const commentButton = document.createElement('button');
         commentButton.type = 'button';
-        commentButton.className = 'icon-btn reader-comment-action__button';
+        commentButton.className = 'icon-btn reader-comment-action__button annotation-action-button';
         commentButton.dataset.action = 'page-comment-add';
         commentButton.setAttribute('aria-label', toolbar.commentLabel);
         commentButton.title = toolbar.commentLabel;
@@ -268,7 +227,21 @@ export class PageAnnotationOverlay {
             }
         });
 
-        group.append(copyButton, commentButton);
+        group.append(copyButton);
+        if (toolbar.commentEnabled !== false) group.append(commentButton);
+        if (toolbar.onHighlight) {
+            const swatches = createHighlightSwatches({ onSelect: async color => {
+                group.querySelectorAll<HTMLButtonElement>('button').forEach(button => { button.disabled = true; });
+                try { await toolbar.onHighlight!(color); }
+                finally {
+                    group.querySelectorAll<HTMLButtonElement>('button').forEach(button => { button.disabled = false; });
+                    toolbar.onActionPointerCancel?.();
+                }
+            } });
+            swatches.addEventListener('pointerdown', () => toolbar.onActionPointerDown?.());
+            swatches.addEventListener('pointercancel', () => toolbar.onActionPointerCancel?.());
+            group.append(swatches);
+        }
         this.markersLayer.appendChild(group);
         this.toolbarEl = group;
     }

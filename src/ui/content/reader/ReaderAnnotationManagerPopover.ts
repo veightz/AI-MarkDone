@@ -36,6 +36,7 @@ type OpenParams = {
         bulkEdit: string;
         bulkCancel: string;
         selectAll: string;
+        invertSelection?: string;
         deleteSelected: string;
         persistence: string;
         persistenceTooltip: string;
@@ -65,7 +66,9 @@ function formatDate(value: number): string {
 
 function getCss(): string {
     return `
-.mock-modal--reader-annotation-manager { --_modal-width: min(880px, calc(100% - (var(--aimd-space-5) * 2))); --_modal-max-height: min(760px, calc(100% - (var(--aimd-space-5) * 2))); }
+.mock-modal--reader-annotation-manager { --_modal-width: min(880px, calc(100% - (var(--aimd-space-5) * 2))); --_modal-max-height: min(760px, calc(100% - (var(--aimd-space-5) * 2))); border-color: var(--aimd-workspace-border); background: var(--aimd-workspace-card); box-shadow: var(--aimd-shadow-workspace), var(--aimd-workspace-edge-shadow); }
+.mock-modal--reader-annotation-manager .mock-modal__head, .mock-modal--reader-annotation-manager .mock-modal__footer { background: var(--aimd-workspace-card); border-color: var(--aimd-workspace-border); }
+.mock-modal--reader-annotation-manager .mock-modal__title-copy strong { color: var(--aimd-text-primary); }
 .mock-modal--reader-annotation-manager .mock-modal__content { overflow: hidden; }
 .reader-annotation-manager { min-width: 0; min-height: 0; width: 100%; display: grid; grid-template-rows: auto minmax(0, 1fr); gap: var(--aimd-space-3); }
 .reader-annotation-manager__toolbar { min-width: 0; display: grid; gap: var(--aimd-space-3); }
@@ -81,7 +84,7 @@ function getCss(): string {
 .reader-annotation-manager__select-all input:checked::before, .reader-annotation-manager__select:checked::before { border-color: var(--aimd-text-on-primary); transform: translateY(-1px) rotate(-45deg) scale(1); }
 .reader-annotation-manager__select-all input:indeterminate::before { width: 9px; height: 2px; border: 0; border-radius: var(--aimd-radius-full); background: var(--aimd-interactive-primary); transform: scale(1); }
 .reader-annotation-manager__select-all input:focus-visible, .reader-annotation-manager__select:focus-visible { outline: none; border-color: var(--aimd-interactive-primary); box-shadow: var(--aimd-shadow-focus); }
-.reader-annotation-manager__persistence { display: inline-flex; align-items: center; gap: var(--aimd-space-2); min-height: var(--aimd-size-control-action-panel); margin-left: auto; padding: var(--aimd-space-1) var(--aimd-space-2); border: 1px solid var(--aimd-border-subtle); border-radius: var(--aimd-radius-lg); background: color-mix(in srgb, var(--aimd-bg-secondary) 72%, transparent); }
+.reader-annotation-manager__persistence { display: inline-flex; align-items: center; gap: var(--aimd-space-2); min-height: var(--aimd-size-control-action-panel); margin-left: auto; padding: var(--aimd-space-1) var(--aimd-space-2); border: 1px solid var(--aimd-workspace-border); border-radius: var(--aimd-radius-lg); background: var(--aimd-workspace-surface); }
 .reader-annotation-manager__persistence:hover { border-color: var(--aimd-border-default); background: var(--aimd-surface-hover); }
 .reader-annotation-manager__persistence-copy { min-width: 0; color: var(--aimd-text-primary); font-size: var(--aimd-text-sm); font-weight: var(--aimd-font-medium); }
 .reader-annotation-manager__persistence-title { color: var(--aimd-text-primary); font-size: var(--aimd-text-sm); font-weight: var(--aimd-font-medium); }
@@ -96,12 +99,12 @@ function getCss(): string {
 .reader-annotation-manager__persistence input:checked + .reader-settings-toggle__track::after { transform: translateX(calc(var(--_toggle-width) - var(--_toggle-knob) - (var(--_toggle-inset) * 2))); }
 .reader-annotation-manager__persistence input:focus-visible + .reader-settings-toggle__track { box-shadow: var(--aimd-shadow-focus); }
 .reader-annotation-manager__persistence-error { flex: 1 0 100%; color: var(--aimd-color-danger); font-size: var(--aimd-text-sm); line-height: var(--aimd-leading-normal); text-align: right; }
-.reader-annotation-manager__tabs, .reader-annotation-manager__modes { max-width: 100%; box-sizing: border-box; display: inline-flex; gap: var(--aimd-space-1); padding: var(--aimd-space-1); border: 1px solid var(--aimd-border-subtle); border-radius: var(--aimd-radius-xl); background: var(--aimd-bg-secondary); width: max-content; }
+.reader-annotation-manager__tabs, .reader-annotation-manager__modes { max-width: 100%; box-sizing: border-box; display: inline-flex; gap: var(--aimd-space-1); padding: var(--aimd-space-1); border: 1px solid var(--aimd-workspace-border); border-radius: var(--aimd-radius-xl); background: var(--aimd-workspace-surface); width: max-content; }
 .reader-annotation-manager__tab, .reader-annotation-manager__mode { all: unset; box-sizing: border-box; cursor: pointer; min-height: var(--aimd-size-control-compact); padding: 0 var(--aimd-space-3); border-radius: var(--aimd-radius-lg); color: var(--aimd-text-secondary); font-size: var(--aimd-text-sm); white-space: nowrap; transition: background var(--aimd-duration-fast) var(--aimd-ease-in-out), color var(--aimd-duration-fast) var(--aimd-ease-in-out); }
 .reader-annotation-manager__tab:hover, .reader-annotation-manager__mode:hover { background: var(--aimd-interactive-hover); color: var(--aimd-text-primary); }
 .reader-annotation-manager__tab:focus-visible, .reader-annotation-manager__mode:focus-visible { box-shadow: var(--aimd-shadow-focus); }
 .reader-annotation-manager__tab[data-active="1"], .reader-annotation-manager__mode[data-active="1"] { color: var(--aimd-interactive-primary); background: var(--aimd-interactive-selected); font-weight: var(--aimd-font-semibold); }
-.reader-annotation-manager__search { width: 100%; min-height: var(--aimd-size-control-compact); box-sizing: border-box; padding: 0 var(--aimd-space-3); border: 1px solid var(--aimd-border-default); border-radius: var(--aimd-radius-lg); background: var(--aimd-bg-primary); color: var(--aimd-text-primary); font: inherit; transition: border-color var(--aimd-duration-fast) var(--aimd-ease-in-out), box-shadow var(--aimd-duration-fast) var(--aimd-ease-in-out); }
+.reader-annotation-manager__search { width: 100%; min-height: var(--aimd-size-control-compact); box-sizing: border-box; padding: 0 var(--aimd-space-3); border: 1px solid var(--aimd-workspace-border); border-radius: var(--aimd-radius-lg); background: var(--aimd-workspace-surface); box-shadow: var(--aimd-workspace-inset); color: var(--aimd-text-primary); font: inherit; transition: border-color var(--aimd-duration-fast) var(--aimd-ease-in-out), box-shadow var(--aimd-duration-fast) var(--aimd-ease-in-out); }
 .reader-annotation-manager__search:focus-visible { outline: none; border-color: var(--aimd-interactive-primary); box-shadow: var(--aimd-shadow-focus); }
 .reader-annotation-manager__items { min-height: 0; overflow: auto; overscroll-behavior: contain; scrollbar-gutter: stable; display: block; padding-right: var(--aimd-space-1); }
 .reader-annotation-manager__group { display: grid; gap: var(--aimd-space-1); }
@@ -308,7 +311,7 @@ export class ReaderAnnotationManagerPopover {
         actions.replaceChildren();
         const bulkButton = document.createElement('button');
         bulkButton.type = 'button';
-        bulkButton.className = 'secondary-btn secondary-btn--compact reader-annotation-manager__action';
+        bulkButton.className = 'mock-modal__button mock-modal__button--secondary reader-annotation-manager__action';
         bulkButton.textContent = this.bulkMode ? this.params.labels.bulkCancel : this.params.labels.bulkEdit;
         bulkButton.dataset.role = 'bulk-edit';
         bulkButton.addEventListener('click', () => {
@@ -339,9 +342,24 @@ export class ReaderAnnotationManagerPopover {
         selectAllText.textContent = this.params.labels.selectAll;
         selectAllLabel.append(selectAll, selectAllText);
         actions.appendChild(selectAllLabel);
+        const invertVisible = document.createElement('button');
+        invertVisible.type = 'button';
+        invertVisible.className = 'mock-modal__button mock-modal__button--secondary reader-annotation-manager__action';
+        invertVisible.dataset.role = 'invert-visible';
+        invertVisible.textContent = this.params.labels.invertSelection ?? 'Invert selection';
+        invertVisible.disabled = visible.length < 1;
+        invertVisible.addEventListener('click', () => {
+            visible.forEach((entry) => {
+                const key = this.entryKey(entry);
+                if (this.selectedKeys.has(key)) this.selectedKeys.delete(key);
+                else this.selectedKeys.add(key);
+            });
+            this.render();
+        });
+        actions.appendChild(invertVisible);
         const deleteSelected = document.createElement('button');
         deleteSelected.type = 'button';
-        deleteSelected.className = 'secondary-btn secondary-btn--compact reader-annotation-manager__action';
+        deleteSelected.className = 'mock-modal__button mock-modal__button--secondary reader-annotation-manager__action';
         deleteSelected.dataset.role = 'delete-selected';
         deleteSelected.textContent = `${this.params.labels.deleteSelected}${selectedVisible > 0 ? ` (${selectedVisible})` : ''}`;
         deleteSelected.disabled = selectedVisible < 1;

@@ -8,7 +8,7 @@ export function buildAtomicSelectionExport(params: {
     allowTextFallback?: boolean;
 }): string {
     const { range, root, selectedUnits, shouldSkipElement, allowTextFallback = true } = params;
-    if (selectedUnits.length < 1) return allowTextFallback ? range.toString().trim() : '';
+    if (selectedUnits.length < 1 && !allowTextFallback) return '';
 
     const selectedUnitMap = new Map(selectedUnits.map((unit) => [unit.element, unit]));
     const blockNames = new Set(['P', 'DIV', 'LI', 'BLOCKQUOTE', 'PRE', 'TABLE', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6']);

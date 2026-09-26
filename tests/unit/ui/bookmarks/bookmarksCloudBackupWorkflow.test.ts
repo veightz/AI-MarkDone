@@ -36,7 +36,10 @@ describe('BookmarksCloudBackupWorkflow', () => {
             })),
             previewRestore: vi.fn(async () => ({
                 ok: true,
-                data: { plan: { bookmarksToUpsert: [], duplicateCount: 0, localOnlyCount: 0, conflictCount: 0 } },
+                data: {
+                    snapshot: { snapshotId: 'snapshot-1', payloadHash: `sha256:${'a'.repeat(64)}` },
+                    plan: { bookmarksToUpsert: [], duplicateCount: 0, localOnlyCount: 0, conflictCount: 0 },
+                },
             })),
             applyRestore: vi.fn(async () => ({
                 ok: true,
@@ -68,6 +71,7 @@ describe('BookmarksCloudBackupWorkflow', () => {
             provider: 'googleDrive',
             snapshotId: 'snapshot-1',
             strategy: 'safeMerge',
+            payloadHash: `sha256:${'a'.repeat(64)}`,
         });
         expect(modal.alert).toHaveBeenCalledWith(expect.objectContaining({ kind: 'info' }));
     });

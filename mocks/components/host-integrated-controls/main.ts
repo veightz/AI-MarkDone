@@ -115,9 +115,10 @@ function mountToolbar(): void {
             icon: Icons.bookmark,
             onClick: async () => ({ ok: true as const, message: localeCopy.bookmark }),
         },
-    ], { showStats: true });
+    ], { showStats: true, collapsible: true });
     toolbar.setPlacement('actionbar');
-    toolbar.setStats(variant.locale === 'zh_CN' ? ['128 字', '约 1 分钟'] : ['128 words', '~1 min']);
+    toolbar.setStats(variant.locale === 'zh_CN' ? ['128 字符'] : ['128 Chars']);
+    toolbar.setMessageMetadata({ updatedAt: new Date('2026-09-12T08:30:00Z').getTime() });
     toolbar.setActionActive('bookmark_toggle', true);
     turnElements[0]!.querySelector<HTMLElement>('.official-actions')!.appendChild(toolbar.getElement());
 }

@@ -1,5 +1,6 @@
 import type { Bookmark, QuarantineEntry, RepairStats } from './types';
-import { normalizeUrlWithoutProtocol } from './keys';
+import { normalizeUrlWithoutProtocol, readBookmarkMessageStorageKey } from './keys';
+import { getChatGPTConversationId } from '../../contracts/chatgptConversationId';
 import { DEFAULT_FOLDER_PATH, DEFAULT_PLATFORM } from './importExport';
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -27,6 +28,7 @@ export function validateBookmarkRecord(bookmark: unknown): bookmark is Partial<B
         && typeof rec.position === 'number'
         && typeof rec.userMessage === 'string'
         && typeof rec.timestamp === 'number'
+        && (rec.messageId === undefined || rec.messageId === null || typeof rec.messageId === 'string')
         && (rec.aiResponse === undefined || typeof rec.aiResponse === 'string')
         && (rec.title === undefined || typeof rec.title === 'string')
         && (rec.platform === undefined || typeof rec.platform === 'string')
@@ -60,6 +62,11 @@ export function buildRepairPlan(params: {
         if (!key.startsWith(bookmarkKeyPrefix)) continue;
         examined += 1;
         const rawValue = params.rawStorage[key];
+        const keyIdentity = readBookmarkMessageStorageKey(key);
+        const keyMessageId = isRecord(rawValue) && typeof rawValue.url === 'string'
+            && keyIdentity?.conversationId === getChatGPTConversationId(rawValue.url)
+            ? keyIdentity.messageId
+            : null;
 
         if (validateBookmarkRecord(rawValue)) {
             const bm = rawValue as any;
@@ -88,6 +95,7 @@ export function buildRepairPlan(params: {
                 url: bm.url,
                 urlWithoutProtocol: bm.urlWithoutProtocol || normalizeUrlWithoutProtocol(bm.url),
                 position: bm.position,
+                messageId: typeof bm.messageId === 'string' && bm.messageId.trim() ? bm.messageId : keyMessageId,
                 userMessage: bm.userMessage,
                 aiResponse: bm.aiResponse,
                 timestamp: bm.timestamp,
@@ -113,6 +121,7 @@ export function buildRepairPlan(params: {
                     ? bm.urlWithoutProtocol
                     : normalizeUrlWithoutProtocol(typeof bm.url === 'string' ? bm.url : ''),
                 position: typeof bm.position === 'number' ? bm.position : 0,
+                messageId: typeof bm.messageId === 'string' && bm.messageId.trim() ? bm.messageId : keyMessageId,
                 userMessage: typeof bm.userMessage === 'string' ? bm.userMessage : '',
                 aiResponse: typeof bm.aiResponse === 'string' ? bm.aiResponse : undefined,
                 timestamp: typeof bm.timestamp === 'number' ? bm.timestamp : params.now,

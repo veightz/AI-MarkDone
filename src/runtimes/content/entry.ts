@@ -1,3 +1,4 @@
+import { ChatGPTMessageMetadataReader } from '../../drivers/content/chatgpt/ChatGPTMessageMetadataReader';
 import { getAdapter } from '../../drivers/content/adapters/registry';
 import { ThemeManager } from '../../drivers/content/theme/theme-manager';
 import { FormulaAssetHoverController } from '../../ui/content/controllers/FormulaAssetHoverController';
@@ -58,7 +59,7 @@ import {
 } from '../../core/settings/migrations';
 import { withChatGPTMessageNavigationTrigger } from '../../drivers/content/chatgpt/chatgptRoute';
 import type { UserThemeOverrides } from '../../style/tokens';
-import { areAppearanceSnapshotsEqual, createAppearanceSnapshot, type AppearanceSnapshot } from '../../style/appearance';
+import { areAppearanceSnapshotsEqual, createAppearanceSnapshot, resolveAppearanceTheme, type AppearanceSnapshot } from '../../style/appearance';
 import { getFormulaOnlyPlatformProfile, startFormulaOnlyRuntime } from './formulaOnlyRuntime';
 import { resolveFormulaSettings, shouldEnableFormulaInteractions } from './formulaRuntimeSettings';
 import {
@@ -154,7 +155,8 @@ if (adapter) {
     const conversationNavigation = adapter.getPlatformId() === 'chatgpt' && conversationContentSource
         ? new ConversationNavigationCoordinator({
             source: conversationContentSource,
-            execute: (target, options) => navigateChatGPTDirectoryTarget(adapter, target, {
+            execute: (target, options, source) => navigateChatGPTDirectoryTarget(adapter, target, {
+                source,
                 timeoutMs: options.timeoutMs,
                 signal: options.signal,
                 seekStepPx: chatGptNavigationSeekStepPx,
@@ -167,6 +169,7 @@ if (adapter) {
         ? new ConversationPendingNavigationRestorer({
             navigation: conversationNavigation,
             source: conversationContentSource!,
+            onUnavailable: () => bookmarksController.setPanelStatus(t('bookmarkUnreliableLocation')),
         })
         : null;
     if (chatGptConversationContentRuntime && typeof chatGptConversationContentRuntime.setNavigationPort === 'function') {
@@ -214,16 +217,6 @@ if (adapter) {
         ? new ChatGPTComposerEditingController(adapter, {
             bindingSource: chatGptComposerBindingSource ?? undefined,
             renderFormula: createLazyRenderFormulaSvgAsset(),
-            onInputEnhancementChange: async (inputEnhancement) => {
-                const current = {
-                    ...DEFAULT_SETTINGS.chatgptBehavior,
-                    ...settingsClient.getCached()?.chatgptBehavior,
-                };
-                return settingsClient.setCategory('chatgptBehavior', {
-                    ...current,
-                    inputEnhancement,
-                });
-            },
         })
         : null;
     const promptLibraryClient = adapter.getPlatformId() === 'chatgpt'
@@ -235,13 +228,32 @@ if (adapter) {
     sendController.setPromptAutocompleteController(chatGptPromptAutocomplete);
     const bookmarksPanel = createLazyBookmarksPanel(bookmarksController, readerPanel, {
         onOpenPromptManager: (anchor) => chatGptPromptAutocomplete?.openManager(anchor),
+        annotations: {
+            listLive: () => [...(chatGptPageAnnotation?.getLibraryAnnotations() ?? []), ...(readerPanel.getLibraryAnnotations?.() ?? [])],
+            subscribe: listener => chatGptPageAnnotation?.subscribeLibraryAnnotations(listener) ?? (() => undefined),
+            updateLive: async record => {
+                const matches = (item: typeof record) => item.id === record.id && item.document?.conversationId === record.document?.conversationId;
+                if (chatGptPageAnnotation?.getLibraryAnnotations().some(matches)) await chatGptPageAnnotation.updateLibraryAnnotation(record);
+                else if (readerPanel.getLibraryAnnotations?.().some(matches)) readerPanel.updateLibraryAnnotation?.(record);
+                else throw new Error('Annotation no longer available');
+            },
+            removeLive: async record => {
+                const matches = (item: typeof record) => item.id === record.id && item.document?.conversationId === record.document?.conversationId;
+                if (chatGptPageAnnotation?.getLibraryAnnotations().some(matches)) await chatGptPageAnnotation.removeLibraryAnnotation(record);
+                else if (readerPanel.getLibraryAnnotations?.().some(matches)) readerPanel.removeLibraryAnnotation?.(record);
+                else throw new Error('Annotation no longer available');
+            },
+            canInsert: record => chatGptPageAnnotation?.canInsertLibraryAnnotation(record) ?? false,
+            insert: async record => { await chatGptPageAnnotation?.insertLibraryAnnotation(record); },
+            compose: record => chatGptPageAnnotation?.composeLibraryAnnotation(record) ?? record.comment,
+        },
     });
     const chatGptMessageStepper = adapter.getPlatformId() === 'chatgpt'
         ? new ChatGPTMessageStepperController(adapter, {
             surface: chatGptConversationContentRuntime!.surface,
             navigation: conversationNavigation,
             activePositionTracker: chatGptActivePositionTracker ?? undefined,
-            onOpenBookmarksPanel: () => bookmarksPanel.toggle(),
+            onOpenBookmarksPanel: () => bookmarksPanel.show({tab:'settings'}),
             onOpenDetachedReader: () => openDetachedReaderFromStepper(),
             onOpenPrompts: (anchor) => chatGptPromptAutocomplete?.openManager(anchor),
             onRefreshMessageNavigation: () => {
@@ -339,6 +351,7 @@ if (adapter) {
         chatGptPageAnnotation?.composeCurrentAnnotations(userPrompt) ?? ''
     ));
     const messageToolbars = new MessageToolbarOrchestrator(adapter, {
+        messageMetadata: adapter.getPlatformId() === 'chatgpt' ? new ChatGPTMessageMetadataReader() : null,
         readerPanel,
         sendController,
         bookmarksController,
@@ -410,8 +423,10 @@ if (adapter) {
         }
         syncPageSelectionCoordinator();
     };
+    let hostTheme: 'light' | 'dark' = document.documentElement.getAttribute('data-aimd-theme') === 'dark' ? 'dark' : 'light';
+    let appearanceMode = cachedSettings?.appearance?.themeMode;
     const initialAppearance = createAppearanceSnapshot(
-        document.documentElement.getAttribute('data-aimd-theme') === 'dark' ? 'dark' : 'light',
+        resolveAppearanceTheme(hostTheme, appearanceMode),
         getThemeOverrides(cachedSettings),
     );
     let currentAppearance: AppearanceSnapshot | null = null;
@@ -596,7 +611,8 @@ if (adapter) {
         chatGptPromptAutocomplete?.setEnabled(Boolean(next.promptAutocomplete));
         chatGptMessageStepper?.setKeyboardEnabled(Boolean(next.enableArrowKeyMessageNavigation));
         chatGptPageWidth?.setScale(next.pageWidthScale);
-        pageAnnotationEnabled = runtimeEnabled && Boolean(next.pageAnnotationsEnabled);
+        pageAnnotationEnabled = runtimeEnabled;
+        chatGptPageAnnotation?.setAnnotationsEnabled(Boolean(next.pageAnnotationsEnabled));
         chatGptPageAnnotation?.setSelectionToolbarEnabled(Boolean(next.showPageSelectionToolbar));
         chatGptPageAnnotation?.setEnabled(pageAnnotationEnabled);
         syncPageSelectionCoordinator();
@@ -623,7 +639,8 @@ if (adapter) {
     };
 
     const syncAppearanceOverrides = (settings: typeof DEFAULT_SETTINGS | null | undefined) => {
-        applyAppearance(createAppearanceSnapshot(getCurrentAppearance().theme, getThemeOverrides(settings)));
+        appearanceMode = settings?.appearance?.themeMode;
+        applyAppearance(createAppearanceSnapshot(resolveAppearanceTheme(hostTheme, appearanceMode), getThemeOverrides(settings)));
     };
 
     const enableRuntime = () => {
@@ -743,7 +760,8 @@ if (adapter) {
     });
 
     themeManager.subscribe((theme) => {
-        applyAppearance(createAppearanceSnapshot(theme, getCurrentAppearance().overrides));
+        hostTheme = theme;
+        applyAppearance(createAppearanceSnapshot(resolveAppearanceTheme(hostTheme, appearanceMode), getCurrentAppearance().overrides));
     });
 
     const handleDetachedReaderRequest = async (request: ExtRequest): Promise<ExtResponse> => {

@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import type { ConversationNavigationCoordinatorOptionsV1 } from '@/services/content/ConversationNavigationCoordinator';
 
 const ensurePageTokens = vi.fn();
 const mathClickEnable = vi.fn();
@@ -103,9 +104,10 @@ const bookmarksControllerCtor = vi.fn(function () {
     };
 });
 const bookmarksToggle = vi.fn(async () => {});
+const bookmarksShow = vi.fn(async () => {});
 const bookmarksHide = vi.fn();
 const bookmarksPanelCtor = vi.fn(function () {
-    return { toggle: bookmarksToggle, hide: bookmarksHide };
+    return { toggle: bookmarksToggle, show: bookmarksShow, hide: bookmarksHide };
 });
 const bookmarkSaveDialogOpen = vi.fn(async () => ({ ok: true, title: 'Saved page title', folderPath: 'Saved/Pages' }));
 const bookmarkSaveDialogSetAppearance = vi.fn();
@@ -267,6 +269,7 @@ const pageAnnotationCtor = vi.fn(function () {
         setAppearance: pageAnnotationSetAppearance,
         setReaderSettings: pageAnnotationSetReaderSettings,
         setEnabled: pageAnnotationSetEnabled,
+        setAnnotationsEnabled: vi.fn(),
         setSelectionToolbarEnabled: pageAnnotationSetSelectionToolbarEnabled,
     };
 });
@@ -309,7 +312,7 @@ const PENDING_NAVIGATION_EVENT = 'aimd:pending-navigation';
 const isSamePageUrl = vi.fn((a: string, b: string) => a.replace(/[#?].*$/, '') === b.replace(/[#?].*$/, ''));
 const navigateChatGPTDirectoryTarget = vi.fn(async () => ({ ok: true }));
 const conversationNavigationNavigate = vi.fn(async () => ({ ok: true as const }));
-const conversationNavigationCtor = vi.fn(function () {
+const conversationNavigationCtor = vi.fn(function (_options: ConversationNavigationCoordinatorOptionsV1) {
     return {
         navigate: conversationNavigationNavigate,
         cancelActive: vi.fn(),
@@ -386,6 +389,7 @@ vi.mock('@/drivers/content/bookmarks/navigation', () => ({
     clearPendingNavigation,
     PENDING_NAVIGATION_EVENT,
     isSamePageUrl,
+    isSameChatGPTConversationUrl: isSamePageUrl,
     scrollToBookmarkTargetWithRetry,
 }));
 
@@ -620,6 +624,23 @@ afterEach(() => {
 });
 
 describe('content runtime entry', () => {
+    it('passes the navigation origin to the shared driver without widening page-control recovery', async () => {
+        adapterPlatformId = 'chatgpt';
+        vi.resetModules();
+        await import('@/runtimes/content/entry');
+        const { execute } = conversationNavigationCtor.mock.calls[0]![0];
+        const target = {
+            documentKey: 'chatgpt:conversation:test', position: 1, roundId: 'round-1',
+            userMessageId: 'user-1', assistantMessageId: 'assistant-1',
+        };
+        for (const source of ['directory', 'stepper', 'reader', 'bookmark'] as const) {
+            await execute(target, {}, source);
+            expect(navigateChatGPTDirectoryTarget).toHaveBeenLastCalledWith(
+                expect.anything(), target, expect.objectContaining({ source }),
+            );
+        }
+    });
+
     it('loads canonical Reader settings before the first write when startup has no cache', async () => {
         const { DEFAULT_SETTINGS } = await import('@/core/settings/types');
         const canonicalReader = {
@@ -881,23 +902,20 @@ describe('content runtime entry', () => {
         expect(messageStepperInit).not.toHaveBeenCalled();
     });
 
-    it('persists the complete input enhancement snapshot through the existing ChatGPT behavior category', async () => {
+    it('receives input enhancement settings without installing a composer configuration callback', async () => {
         const { DEFAULT_SETTINGS } = await import('@/core/settings/types');
         adapterPlatformId = 'chatgpt';
         settingsGetCached.mockReturnValue(structuredClone(DEFAULT_SETTINGS));
         vi.resetModules();
         await import('@/runtimes/content/entry');
 
-        expect(composerEditingOptions?.onInputEnhancementChange).toEqual(expect.any(Function));
+        expect(composerEditingOptions?.onInputEnhancementChange).toBeUndefined();
         const inputEnhancement = {
             ...DEFAULT_SETTINGS.chatgptBehavior.inputEnhancement,
             formulaPreview: false,
         };
-        await composerEditingOptions!.onInputEnhancementChange!(inputEnhancement);
-
-        expect(settingsSetCategory).toHaveBeenCalledWith('chatgptBehavior', expect.objectContaining({
-            inputEnhancement,
-        }));
+        settingsSubscriber!({ settings: { ...structuredClone(DEFAULT_SETTINGS), chatgptBehavior: { ...DEFAULT_SETTINGS.chatgptBehavior, inputEnhancement } } });
+        expect(composerInputEnhancementSetSettings).toHaveBeenLastCalledWith(inputEnhancement);
     });
 
     it('maps cached appearance accent color into runtime theme overrides', async () => {
@@ -944,6 +962,17 @@ describe('content runtime entry', () => {
             theme: 'light',
             overrides: expect.objectContaining({ accentColor: '#7c3aed' }),
         }));
+    });
+
+    it('restores the current host theme when a fixed theme is switched back to automatic', async () => {
+        const { DEFAULT_SETTINGS } = await import('@/core/settings/types');
+        const settings = structuredClone(DEFAULT_SETTINGS); settings.appearance.themeMode = 'light';
+        adapterPlatformId = 'chatgpt'; settingsGetCached.mockReturnValue(settings);
+        vi.resetModules(); await import('@/runtimes/content/entry');
+        themeListener?.('dark');
+        expect(messageToolbarsSetAppearance).toHaveBeenLastCalledWith(expect.objectContaining({ theme: 'light' }));
+        settingsSubscriber!({ settings: { ...settings, appearance: { ...settings.appearance, themeMode: 'auto' } } });
+        expect(messageToolbarsSetAppearance).toHaveBeenLastCalledWith(expect.objectContaining({ theme: 'dark' }));
     });
 
     it('distributes one complete appearance snapshot to every top-level consumer', async () => {
@@ -1173,7 +1202,7 @@ describe('content runtime entry', () => {
 
         await messageStepperCtor.mock.calls[0]?.[1]?.onOpenBookmarksPanel?.();
 
-        expect(bookmarksToggle).toHaveBeenCalledTimes(1);
+        expect(bookmarksShow).toHaveBeenCalledWith({tab:'settings'});
 
         const settingsAnchor = document.createElement('button');
         const onOpenPromptManager = bookmarksPanelCtor.mock.calls[0]?.[2]?.onOpenPromptManager;

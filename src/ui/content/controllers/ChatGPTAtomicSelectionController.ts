@@ -253,7 +253,7 @@ export class ChatGPTAtomicSelectionController {
         const style = document.createElement('style');
         style.id = STYLE_ID;
         style.textContent = `
-[data-message-author-role="assistant"][data-message-id] .markdown.prose [${STATE_ATTRIBUTE}="selected"] {
+:is(.markdown.prose, [data-markdown-text-style="assistant-message"]) [${STATE_ATTRIBUTE}="selected"] {
   --_reader-atomic-selected-bg: color-mix(in srgb, var(--aimd-interactive-selected) 92%, var(--aimd-bg-primary));
   --_reader-atomic-selected-bg-strong: color-mix(in srgb, var(--aimd-interactive-selected) 96%, var(--aimd-bg-primary));
   --_reader-atomic-selected-border: color-mix(in srgb, var(--aimd-interactive-primary) 28%, transparent);
@@ -266,12 +266,12 @@ export class ChatGPTAtomicSelectionController {
   box-shadow: var(--_reader-atomic-selection-effect);
 }
 
-[data-message-author-role="assistant"][data-message-id] .markdown.prose :is(.katex, .katex-display)[${STATE_ATTRIBUTE}="selected"] {
+:is(.markdown.prose, [data-markdown-text-style="assistant-message"]) :is(.katex, .katex-display)[${STATE_ATTRIBUTE}="selected"] {
   background: var(--_reader-atomic-selected-bg-strong);
   box-shadow: var(--_reader-atomic-formula-effect);
 }
 
-[data-message-author-role="assistant"][data-message-id] .markdown.prose :is(code, pre, table, img)[${STATE_ATTRIBUTE}="selected"] {
+:is(.markdown.prose, [data-markdown-text-style="assistant-message"]) :is(code, pre, table, img, [data-markdown-copy="inline-code"], [data-markdown-copy="code-block"])[${STATE_ATTRIBUTE}="selected"] {
   background: var(--_reader-atomic-selected-bg-strong);
   box-shadow: var(--_reader-atomic-selection-strong-effect);
 }

@@ -61,6 +61,7 @@ export class ChatGPTDirectoryController {
     private previewMaxChars = DEFAULT_CHATGPT_DIRECTORY_PREVIEW_MAX_CHARS;
     private previewActionsFactory: ChatGPTDirectoryPreviewActionsFactory | null = null;
     private roundPositions: ChatGPTRoundPosition[] = [];
+    private renderedContentToken: string | null = null;
     private activePosition = 0;
     private rebuildTimer: number | null = null;
     private rebuildTimerKind: 'idle' | 'timeout' | null = null;
@@ -139,6 +140,7 @@ export class ChatGPTDirectoryController {
         this.unbindViewportResizeSuspend();
         this.rail?.dispose();
         this.rail = null;
+        this.renderedContentToken = null;
         this.initialized = false;
     }
 
@@ -193,6 +195,7 @@ export class ChatGPTDirectoryController {
                 if (connectedRail && connectedRail !== element) {
                     this.rail.dispose();
                     this.rail = null;
+                    this.renderedContentToken = null;
                     writeDebugState({ DirectoryHost: 'stale-disconnected' });
                     return;
                 }
@@ -206,6 +209,7 @@ export class ChatGPTDirectoryController {
         this.rail = new ChatGPTDirectoryRail(this.appearance.theme, (round) => {
             void this.handleSelect(round);
         }, this.appearance.overrides);
+        this.renderedContentToken = null;
         this.rail.setDisplayMode(this.displayMode);
         this.rail.setPromptLabelMode(this.promptLabelMode);
         this.rail.setPreviewMaxChars(this.previewMaxChars);
@@ -241,6 +245,7 @@ export class ChatGPTDirectoryController {
         const hasObtainedContent = frame.obtainedTurns.length > 0;
         if (!this.enabled || !hasObtainedContent) {
             this.roundPositions = [];
+            this.renderedContentToken = null;
             this.rail.setRounds([]);
             writeDebugState({ DirectoryVisible: false, DirectoryReason: 'no-content' });
             return false;
@@ -248,7 +253,11 @@ export class ChatGPTDirectoryController {
 
         this.refreshRoundPositionsFromFrame(frame);
         const rounds = this.buildDirectoryRoundsFromFrame(frame);
-        this.rail.setRounds(rounds);
+        const listToken = `${frame.projectionId}:${frame.contentToken ?? 'none'}`;
+        if (listToken !== this.renderedContentToken) {
+            this.rail.setRounds(rounds, listToken);
+            this.renderedContentToken = listToken;
+        }
         this.syncBookmarkedPositions(rounds);
         this.updateActivePosition();
         writeDebugState({
@@ -307,7 +316,7 @@ export class ChatGPTDirectoryController {
         this.unsubscribeActivePosition = this.activePositionTracker.subscribe((state) => {
             if (!this.enabled || !this.rail) return;
             this.activePosition = state.activePosition;
-            this.rail.setActivePosition(state.activePosition, { follow: false });
+            this.rail.setActivePosition(state.activePosition);
         });
     }
 
@@ -413,23 +422,30 @@ export class ChatGPTDirectoryController {
         this.activeLocateAbortController = locateController;
         const signal = locateController.signal;
         try {
+            // History can change ordinals before the scheduled rail redraw.
+            const frame = this.surface.readFrame();
+            const assistantMessageId = (round.assistantMessageId ?? round.messageId)?.trim();
+            const matches = assistantMessageId
+                ? frame.obtainedTurns.filter((candidate) => candidate.turn.identity.assistantMessageId === assistantMessageId)
+                : [];
+            if (matches.length !== 1) {
+                this.renderedContentToken = null;
+                this.reconcile();
+                return;
+            }
+            const entry = matches[0]!;
             if (this.navigation) {
                 await this.navigation.navigate({
-                    position: round.position,
-                    messageId: round.messageId,
-                    roundId: round.id,
-                    userMessageId: round.userMessageId,
-                    assistantMessageId: round.assistantMessageId,
+                    position: entry.turn.ordinal,
+                    messageId: entry.turn.identity.assistantMessageId,
+                    roundId: entry.turn.identity.turnId,
+                    userMessageId: entry.turn.identity.userMessageId,
+                    assistantMessageId: entry.turn.identity.assistantMessageId,
+                    documentKey: entry.target.documentKey,
                     source: 'directory',
                 }, { align: 'start', signal, timeoutMs: 15_000 });
                 return;
             }
-            const frame = this.surface.readFrame();
-            const entry = frame.obtainedTurns.find((candidate) => (
-                candidate.turn.identity.turnId === round.id
-                && candidate.turn.identity.assistantMessageId === (round.assistantMessageId ?? round.messageId)
-            ));
-            if (!entry) return;
             const located = await this.surface.materialization.locate(entry.target, signal);
             if (located === 'cancelled' || signal.aborted) return;
             if (located === 'located' && !signal.aborted) {

@@ -15,7 +15,7 @@ The product UI must look like AI-MarkDone: neutral-first surfaces, compact contr
 | Asset | Type | Assign to Beat | Role |
 |:--|:--|:--|:--|
 | `capture/assets/icons/ai-markdone-icon.png` | Logo | Beats 2, 7 | Product reveal and CTA |
-| `capture/assets/icons/app-icon_hu_d20be2bd1ccb9322.png` | Logo | Beat 7 | Website-derived app icon fallback |
+| `capture/assets/icons/app-icon_hu_d20be2bd1ccb9322.png` | Logo | Beat 7 | Compact brand mark for the final install CTA |
 | `capture/assets/icons/google-chrome.svg` | SVG | Beat 7 | Chrome install CTA |
 | `capture/assets/icons/firefox-browser.svg` | SVG | Beat 7 | Firefox install CTA |
 | `capture/assets/home/ai-markdone-chatgpt-reader-toolbar.gif` | Product GIF | Beats 2, 3 | Toolbar and Reader entry proof |

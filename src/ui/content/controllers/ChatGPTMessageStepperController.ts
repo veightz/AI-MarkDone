@@ -1,5 +1,6 @@
 import type { SiteAdapter } from '../../../drivers/content/adapters/base';
-import { bookmarkCheckIcon, bookmarkIcon, chevronRightIcon, Icons, messageSquareTextIcon, refreshCwIcon, splitViewIcon } from '../../../assets/icons';
+import { createBrandIcon } from '../../../assets/icons';
+import { settingsIcon, bookmarkCheckIcon, bookmarkIcon, chevronRightIcon, messageSquareTextIcon, refreshCwIcon, splitViewIcon } from '../../../assets/workspaceIcons';
 import {
     areAppearanceSnapshotsEqual,
     createAppearanceSnapshot,
@@ -13,7 +14,7 @@ import {
     type ChatGPTRoundPosition,
 } from '../chatgptDirectory/navigation';
 import { ChatGPTActivePositionTracker } from './ChatGPTActivePositionTracker';
-import { showEphemeralTooltip } from '../../../utils/tooltip';
+import { TooltipDelegate, showEphemeralTooltip } from '../../../utils/tooltip';
 import type { ConversationNavigationPortV1 } from '../../../contracts/conversationNavigation';
 import {
     AIMD_CONVERSATION_SURFACE_CONSUMER_ATTRIBUTE,
@@ -73,6 +74,7 @@ export class ChatGPTMessageStepperController {
     private pageBookmarkStatusUrl: string | null = null;
     private pageBookmarkRequestId = 0;
     private host: HTMLDivElement | null = null;
+    private suppressRestoredFocus = false;
     private drawerTrigger: HTMLButtonElement | null = null;
     private drawerActions: HTMLDivElement | null = null;
     private pointerInside = false;
@@ -89,6 +91,7 @@ export class ChatGPTMessageStepperController {
     private activePosition = 0;
     private unsubscribeSurface: (() => void) | null = null;
     private unsubscribeLocale: (() => void) | null = null;
+    private tooltipDelegate: TooltipDelegate | null = null;
     private readonly activePositionTracker: ChatGPTActivePositionTracker;
     private unsubscribeActivePosition: (() => void) | null = null;
     private refreshAnimationFrame: number | null = null;
@@ -147,6 +150,8 @@ export class ChatGPTMessageStepperController {
         this.unsubscribeSurface = null;
         this.unsubscribeLocale?.();
         this.unsubscribeLocale = null;
+        this.tooltipDelegate?.disconnect();
+        this.tooltipDelegate = null;
         if (this.refreshAnimationFrame !== null) {
             window.cancelAnimationFrame(this.refreshAnimationFrame);
             this.refreshAnimationFrame = null;
@@ -241,9 +246,10 @@ export class ChatGPTMessageStepperController {
         host.setAttribute(AIMD_CONVERSATION_SURFACE_CONSUMER_ATTRIBUTE, '');
         host.dataset.visible = '0';
 
-        const bookmarksPanel = this.createButton('open-bookmarks-panel', this.getLabel('bookmarks', 'Bookmarks'), () => {
+        const bookmarksPanel = this.createButton('open-bookmarks-panel', this.getLabel('tabSettings', 'Settings'), () => {
+            this.suppressRestoredFocus = true; this.setDrawerOpen(false);
             void this.options.onOpenBookmarksPanel?.();
-        }, Icons.createBrandIcon());
+        }, createBrandIcon());
         const pageBookmark = this.createButton('toggle-page-bookmark', this.getLabel('chatgptPageControlBookmark', 'Bookmark current page'), () => {
             void this.handlePageBookmarkClick();
         }, bookmarkIcon);
@@ -269,23 +275,26 @@ export class ChatGPTMessageStepperController {
         const drawerActions = document.createElement('div');
         drawerActions.id = `${HOST_ID}-actions`;
         drawerActions.className = 'aimd-chatgpt-message-stepper__actions';
-        drawerActions.append(bookmarksPanel, pageBookmark, detachedReader, prompts, refreshMessageNavigation, previous, next);
-        const trigger = this.createButton('toggle-page-controls', this.getLabel('pageControls', 'Page controls'), () => {
-            this.setDrawerOpen(true);
-        }, Icons.createBrandIcon());
+        drawerActions.append(pageBookmark, detachedReader, prompts, refreshMessageNavigation, previous, next);
+        const trigger = bookmarksPanel;
+        const settingGlyph = document.createElement('span'); settingGlyph.className = 'aimd-chatgpt-message-stepper__settings'; settingGlyph.innerHTML = settingsIcon; settingGlyph.setAttribute('aria-hidden', 'true');
+        trigger.append(settingGlyph);
         trigger.classList.add('aimd-chatgpt-message-stepper__trigger');
         trigger.setAttribute('aria-controls', drawerActions.id);
         // Put the disclosure first in keyboard order while keeping it at the right edge.
         host.append(trigger, drawerActions);
         host.addEventListener('pointerenter', () => {
-            this.pointerInside = true;
+            this.pointerInside = true; this.suppressRestoredFocus = false;
             this.setDrawerOpen(true);
         });
         host.addEventListener('pointerleave', () => {
             this.pointerInside = false;
             if (!host.contains(document.activeElement)) this.setDrawerOpen(false);
         });
-        host.addEventListener('focusin', () => this.setDrawerOpen(true));
+        host.addEventListener('focusin', () => {
+            if (this.suppressRestoredFocus) { this.suppressRestoredFocus = false; return; }
+            this.setDrawerOpen(true);
+        });
         host.addEventListener('focusout', () => {
             queueMicrotask(() => {
                 if (!this.pointerInside && !host.contains(document.activeElement)) this.setDrawerOpen(false);
@@ -299,6 +308,8 @@ export class ChatGPTMessageStepperController {
         });
         document.body.appendChild(host);
         this.host = host;
+        this.tooltipDelegate?.disconnect();
+        this.tooltipDelegate = new TooltipDelegate(host, { upgradeTitles: false });
         this.drawerActions = drawerActions;
         this.drawerTrigger = trigger;
         this.setDrawerOpen(false);
@@ -326,8 +337,7 @@ export class ChatGPTMessageStepperController {
 
     private syncControlLabels(): void {
         const labels: ReadonlyArray<[HTMLButtonElement | null, string]> = [
-            [this.drawerTrigger, this.getLabel('pageControls', 'Page controls')],
-            [this.bookmarksPanelButton, this.getLabel('bookmarks', 'Bookmarks')],
+            [this.drawerTrigger, this.getLabel('tabSettings', 'Settings')],
             [this.detachedReaderButton, this.getLabel('chatgptPageControlSplitView', 'Open Reader in split view')],
             [this.promptsButton, this.getLabel('chatgptPageControlPrompts', 'Prompts')],
             [this.messageNavigationButton, this.getLabel('chatgptRefreshMessageNavigation', 'Refresh message navigation')],
@@ -337,7 +347,7 @@ export class ChatGPTMessageStepperController {
         for (const [button, label] of labels) {
             if (!button) continue;
             button.setAttribute('aria-label', label);
-            button.setAttribute('title', label);
+            button.dataset.tooltip = label;
         }
         this.syncPageBookmarkButton();
     }
@@ -348,7 +358,8 @@ export class ChatGPTMessageStepperController {
         button.className = 'aimd-chatgpt-message-stepper__button';
         button.dataset.action = action;
         button.setAttribute('aria-label', label);
-        button.setAttribute('title', label);
+        button.dataset.tooltip = label;
+        button.dataset.tooltipPlacement = 'top';
         const iconWrap = document.createElement('span');
         iconWrap.className = 'aimd-chatgpt-message-stepper__icon';
         if (typeof icon === 'string') {
@@ -377,9 +388,9 @@ export class ChatGPTMessageStepperController {
 
     private getCss(): string {
         return `.aimd-chatgpt-message-stepper {
-  --_page-control-size: calc(var(--aimd-size-control-icon-panel-nav) - var(--aimd-space-2));
+  --_page-control-size: var(--aimd-size-control-icon-toolbar);
   --_page-control-gap: calc(var(--aimd-space-1) / 2);
-  --_page-control-glyph: calc(var(--aimd-size-control-glyph-panel) - var(--_page-control-gap));
+  --_page-control-glyph: calc(var(--aimd-size-control-glyph-panel) + var(--aimd-space-1) / 2);
   position: fixed;
   right: var(--aimd-space-2);
   bottom: calc(var(--aimd-space-3) / 2);
@@ -390,9 +401,9 @@ export class ChatGPTMessageStepperController {
   max-width: calc(100vw - var(--aimd-space-2) * 2);
   box-sizing: border-box;
   border-radius: var(--aimd-radius-full);
-  border: 1px solid color-mix(in srgb, var(--aimd-border-default) 65%, transparent);
+  border: 1px solid var(--aimd-workspace-border);
   background: color-mix(in srgb, var(--aimd-bg-surface) 78%, transparent);
-  box-shadow: var(--aimd-shadow-sm), var(--aimd-shadow-field-inset);
+  box-shadow: var(--aimd-workspace-raised);
   -webkit-backdrop-filter: blur(var(--aimd-space-4)) saturate(1.5);
   backdrop-filter: blur(var(--aimd-space-4)) saturate(1.5);
   pointer-events: auto;
@@ -415,7 +426,7 @@ export class ChatGPTMessageStepperController {
     visibility var(--aimd-duration-base);
 }
 .aimd-chatgpt-message-stepper[data-expanded="1"] .aimd-chatgpt-message-stepper__actions {
-  max-width: calc(var(--_page-control-size) * 7 + var(--_page-control-gap) * 6);
+  max-width: calc(var(--_page-control-size) * 6 + var(--_page-control-gap) * 5);
   opacity: 1;
   visibility: visible;
   transform: translateX(0);
@@ -447,7 +458,7 @@ export class ChatGPTMessageStepperController {
   justify-content: center;
   width: var(--_page-control-size);
   height: var(--_page-control-size);
-  border-radius: var(--aimd-radius-sm);
+  border-radius: var(--aimd-radius-full);
   color: var(--aimd-text-secondary);
   background: transparent;
   transition: background var(--aimd-duration-fast) var(--aimd-ease-in-out), color var(--aimd-duration-fast) var(--aimd-ease-in-out);
@@ -481,6 +492,11 @@ export class ChatGPTMessageStepperController {
   width: var(--_page-control-glyph);
   height: var(--_page-control-glyph);
 }
+.aimd-chatgpt-message-stepper__icon img { object-fit: contain; }
+.aimd-chatgpt-message-stepper__settings { display: none; }
+.aimd-chatgpt-message-stepper__settings svg { width: var(--_page-control-glyph); height: var(--_page-control-glyph); }
+.aimd-chatgpt-message-stepper[data-expanded="1"] .aimd-chatgpt-message-stepper__trigger>.aimd-chatgpt-message-stepper__icon { display: none; }
+.aimd-chatgpt-message-stepper[data-expanded="1"] .aimd-chatgpt-message-stepper__settings { display: inline-flex; }
 .aimd-chatgpt-message-stepper__icon[data-direction="left"] {
   transform: scaleX(-1);
 }
@@ -646,7 +662,7 @@ export class ChatGPTMessageStepperController {
             ? this.getLabel('chatgptPageControlRemoveBookmark', 'Remove page bookmark')
             : this.getLabel('chatgptPageControlBookmark', 'Bookmark current page');
         this.pageBookmarkButton.setAttribute('aria-label', label);
-        this.pageBookmarkButton.setAttribute('title', this.pageBookmarkError ?? label);
+        this.pageBookmarkButton.dataset.tooltip = this.pageBookmarkError ?? label;
         const iconEl = this.pageBookmarkButton.querySelector<HTMLElement>('.aimd-chatgpt-message-stepper__icon');
         if (iconEl) iconEl.innerHTML = this.pageBookmarkState === 'saved' ? bookmarkCheckIcon : bookmarkIcon;
     }

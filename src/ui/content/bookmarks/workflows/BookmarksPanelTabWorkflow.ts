@@ -1,13 +1,10 @@
 import {
-    bookmarkIcon,
     coffeeIcon,
     fileTextIcon,
     infoIcon,
-    messageSquareTextIcon,
     pinIcon,
-    sendIcon,
-    settingsIcon,
 } from '../../../../assets/icons';
+import { bookmarkIcon, messageSquareTextIcon, sendIcon, settingsIcon } from '../../../../assets/workspaceIcons';
 import type { BookmarksPanelTabSpec } from '../ui/BookmarksPanelShell';
 
 export type BookmarksPanelTabId = 'bookmarks' | 'settings' | 'changelog' | 'about' | 'mappamory' | 'faq' | 'sponsor' | 'feedback';
@@ -27,7 +24,7 @@ type TabDefinition = {
 };
 
 const TAB_DEFINITIONS: readonly TabDefinition[] = [
-    { id: 'bookmarks', labelKey: 'tabBookmarks', labelFallback: 'Bookmarks', icon: bookmarkIcon, panelClassName: 'tab-panel--bookmarks', scrollSelector: '.tree-panel' },
+    { id: 'bookmarks', labelKey: 'libraryTitle', labelFallback: 'Library', icon: bookmarkIcon, panelClassName: 'tab-panel--bookmarks', scrollSelector: '.tree-panel' },
     { id: 'settings', labelKey: 'tabSettings', labelFallback: 'Settings', icon: settingsIcon, panelClassName: 'settings-panel', scrollSelector: '.settings-panel-scroll' },
     { id: 'changelog', labelKey: 'tabChangelog', labelFallback: 'Changelog', icon: fileTextIcon, panelClassName: 'changelog-panel', scrollSelector: '.changelog-panel' },
     { id: 'faq', labelKey: 'tabFaq', labelFallback: 'FAQ', icon: messageSquareTextIcon, panelClassName: 'faq-panel', scrollSelector: '.faq-panel' },

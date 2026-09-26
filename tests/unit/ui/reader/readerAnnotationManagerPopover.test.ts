@@ -134,6 +134,37 @@ describe('ReaderAnnotationManagerPopover', () => {
         expect(dialog.querySelectorAll('.reader-annotation-manager__row')).toHaveLength(0);
     });
 
+    it('inverts only visible annotation rows before bulk deletion', async () => {
+        const host = document.createElement('div');
+        document.body.appendChild(host);
+        const shadow = host.attachShadow({ mode: 'open' });
+        const modalHost = new ModalHost(shadow);
+        const first = entry('invert-first', 'conversation-a', 100);
+        const second = entry('invert-second', 'conversation-a', 200);
+        const onDeleteMany = vi.fn(async () => true);
+        const manager = new ReaderAnnotationManagerPopover();
+        manager.open({
+            shadow, modalHost, appearance: {} as any, currentDocument: first.document,
+            currentEntries: [first, second], loadAll: async () => [],
+            labels: {
+                title: 'Annotations', close: 'Close', current: 'Current', all: 'All', search: 'Search', byConversation: 'By conversation', timeline: 'Timeline',
+                empty: 'Empty', loading: 'Loading', error: 'Error', quote: 'Quote', comment: 'Comment', updated: 'Updated', reply: 'Reply', unanchored: 'Not located', delete: 'Delete',
+                bulkEdit: 'Bulk edit', bulkCancel: 'Cancel bulk edit', selectAll: 'Select all', invertSelection: 'Invert selection', deleteSelected: 'Delete selected', persistence: 'Persist annotations', persistenceTooltip: 'Keep annotations',
+            },
+            onSelect: vi.fn(), onDelete: vi.fn(async () => true), onDeleteMany, persistenceEnabled: true, onPersistenceChange: vi.fn(),
+        });
+        await Promise.resolve();
+
+        const dialog = shadow.querySelector('.mock-modal--reader-annotation-manager') as HTMLElement;
+        (dialog.querySelector('[data-role="bulk-edit"]') as HTMLButtonElement).click();
+        (dialog.querySelector('.reader-annotation-manager__select') as HTMLInputElement).click();
+        (dialog.querySelector('[data-role="invert-visible"]') as HTMLButtonElement).click();
+        expect([...dialog.querySelectorAll<HTMLInputElement>('.reader-annotation-manager__select')].map(input => input.checked)).toEqual([false, true]);
+        (dialog.querySelector('[data-role="delete-selected"]') as HTMLButtonElement).click();
+        await Promise.resolve();
+        expect(onDeleteMany).toHaveBeenCalledWith([second]);
+    });
+
     it('exposes the persistence toggle and delegates the preference change', async () => {
         const host = document.createElement('div');
         document.body.appendChild(host);

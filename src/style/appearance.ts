@@ -30,3 +30,7 @@ export function areAppearanceSnapshotsEqual(
 ): boolean {
     return left.fingerprint === right.fingerprint;
 }
+
+export function resolveAppearanceTheme(hostTheme: Theme, mode: unknown): Theme {
+    return mode === 'light' || mode === 'dark' ? mode : hostTheme;
+}

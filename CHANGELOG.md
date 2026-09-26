@@ -5,6 +5,27 @@ All notable changes to AI-MarkDone will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.0.0] - 2026-09-25
+
+### Added
+- Added persistent blue, yellow, and coral highlights for selected ChatGPT and Reader text, with shared management in the Library.
+- Added direct ChatGPT page annotations and an “Insert and delete” action that removes a note only after insertion succeeds.
+- Expanded local Library import/export and Google Drive backups to include saved bookmarks, highlights, annotations, and folders; older bookmark-only files and snapshots remain readable.
+- Added select-all and invert actions to shared Library batch selection.
+
+### Changed
+- Reworked most of the Library and Settings interface, organized Settings into searchable categories, and moved Input Enhancement options into Settings because they are usually configured once and reused.
+- Message actions now use a compact hover toolbar, while lower-right page actions open from a drawer. Character counts now include message timestamps.
+- Replaced the AI-MarkDone logo across the extension and refreshed the Directory preview and interaction styles.
+- Directory previews now support adjustable lengths, and Preview and Expanded modes use the same message content.
+
+### Fixed
+- Adapted message actions, selection controls, timestamps, and Directory behavior to ChatGPT’s September 24 website update.
+- Improved Directory and Previous/Next navigation through long conversations, including messages that are not currently mounted.
+- Fixed incomplete content in Expanded Directory mode and made selected-text actions more reliable.
+- Improved highlight persistence and placement for selections across lines and paragraphs, while keeping unsupported block content excluded.
+- This is a broad update, and some interface details will continue to be refined. Feedback on Settings categories and everyday use is welcome.
+
 ## [5.4.1] - 2026-08-26
 
 ### Added
@@ -26,31 +47,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - ChatGPT: Removed the passive Graph bridge, discovery retry controls, active conversation requests, polling, and per-message retry timers. The directory now intentionally represents only content loaded during the current page lifecycle.
 - ChatGPT: Added a Settings slider for long-distance Directory/Bookmark/Reader/Stepper navigation, from 1000 to 5000px in 400px steps, while preserving adaptive correction and cancellation.
 
-## [Unreleased]
-
-### Added
-- ChatGPT: Added “Insert and delete” to the page annotation manager. Annotations are removed only after successful insertion into the input box; failed deletions remain available.
-
-### Changed
-- ChatGPT: Page controls now collapse into one compact circular icon and expand to the left with a glass effect, preserving action order and keyboard access while taking up substantially less space.
-- ChatGPT: Restored the 5.3 source-discovery seed for Chrome and Firefox. Its messages are immediately usable by Directory, Reader, and Export, then corrected by the authoritative mounted DOM path.
-- ChatGPT: The lower-right message-navigation control now refreshes with the official `?message=` trigger without starting a page-entry scroll sweep.
-- ChatGPT: Message bookmarks use the same canonical navigation coordinator as the Directory for same-page and post-route target restoration; current-message copy and word count remain DOM-local.
-- ChatGPT: Directory hover previews now work consistently in Preview and Expanded modes, support a 200–2000 character slider, and can open Reader or Export from the shared conversation content.
-- ChatGPT: Added a setting to hide the page selection action buttons (Copy Markdown and Add annotation) when they conflict with another selection or translation tool; the setting is enabled by default.
-- ChatGPT: Page selection actions now use the existing mouse-nearby placement with two independent circular buttons instead of a large outer capsule; viewport-edge flipping and clamping remain enabled.
-
-### Fixed
-- ChatGPT: Directory preview actions now follow the current message when content changes at the same position.
-- ChatGPT: Saving an unchanged message no longer fails just because other conversation content updates while the bookmark dialog is open.
-- ChatGPT: Page and Reader annotations share their conversation even before its messages finish loading, and concurrent annotation updates no longer get overwritten by older reads.
-- ChatGPT: Annotation highlighting no longer causes conflicting saved revisions between the page and Reader.
-- ChatGPT: Aligned Toolbar and Reader message bookmarks on the same current-message content and canonical availability checks, preventing false `Content not found` failures and invalid writes during content transitions.
-- ChatGPT: Fixed loaded assistant-only messages appearing as `Message N` in the expanded Directory.
-- ChatGPT: Removed the automatic page-entry slot-by-slot scroll sweep; the page now remains usable while GET content and mounted DOM corrections converge.
-- ChatGPT: Same-page message bookmarks now use the same canonical navigation coordinator and target materialization path as the Directory.
-- ChatGPT: Fixed the 5.3 GET seed being discarded at the bridge-to-adapter boundary; Directory, Reader, and Export now receive the canonical source snapshot before DOM correction.
-- ChatGPT: Save Messages now shows the same shared conversation pool regardless of which message's Export button opens it.
 
 ## [5.3.0] - 2026-08-20
 

@@ -25,6 +25,7 @@ export const extensionSurfacePolicies = {
 } as const satisfies Record<ExtensionTarget, ExtensionSurfacePolicy>;
 
 export const extensionIconFiles = [
+    'brand-logo.png',
     'icon16.png',
     'icon48.png',
     'icon128.png',

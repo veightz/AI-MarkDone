@@ -1,5 +1,39 @@
 # Changelog
 
+# 6.0.0
+2026-09-25
+
+Hi everyone! It has been a month since my last update, and I have missed sharing progress with you. I am happy to bring you the new 6.0.0 release. GPT-6 recently came out, and I wanted to see what the new model could do for UI design. The model is expensive: my Pro 5x usage ran out quickly, and I could not upgrade to 20x again at the time. Once it ran out, I had to wait for the next reset before I could continue, so development took longer than planned. I have also been busy preparing my paper, and the slower pace gave me more time to work on it. That turned out to be a silver lining. Thank you for waiting and understanding.
+
+During that time, ChatGPT made a major website update on September 24. The timing gave me a chance to adapt the extension to the new site as part of this release.
+
+## Interface and brand refresh
+
+Most of the interface has been rebuilt. As more features were added, the message toolbars and the row of controls at the lower-right of the page could get in the way. Message actions now appear in a compact toolbar when you hover over a message, while the lower-right controls are grouped in a drawer that opens when clicked. The existing actions are still available.
+
+The Library panel has also been redesigned and now uses the new AI-MarkDone logo. Settings are reorganized into categories and searchable. Input Enhancement options have moved into Settings because they are usually configured once and then left as they are.
+
+## Highlights and annotations
+
+Select text on a page to open a small action bar with Copy, Annotation, and three highlight colors: blue, yellow, and coral. Highlights and annotations can be managed together in the Library and shared between the original ChatGPT page and Reader.
+
+**This is a broad update, so some details will continue to be refined. If you run into an issue or have suggestions about the Settings categories or interface, please let me know. I will keep building on 6.0.0 to make the extension smoother, simpler, and more pleasant to use.**
+
+**If AI-MarkDone has been useful to you, you are welcome to support the project through the Support tab and encourage me to keep improving it. Your feedback and sharing the extension are also greatly appreciated. Thank you.**
+
+## What’s new
+
+- Rebuilt most of the interface; the remaining areas will be updated in future releases.
+- Reorganized Settings and added search. Some categories may still need adjustment, so feedback is welcome.
+- Added persistent color highlights that can be managed in the Library. (Thanks to Xiaohongshu user @yizhiqq.)
+- Added “Insert and delete” to the annotation manager; an annotation is removed only after it is inserted successfully. (Thanks to QQ user @1.)
+- Annotations and highlights are now shared between the original page and Reader.
+- Improved Directory navigation and fixed incomplete content in Expanded mode. (Thanks to QQ user @dk and Xiaohongshu users @初心者与偏执狂.)
+- Added message timestamps below the character count and refined the toolbar and statistics layout.
+- Made the selected-text action bar more reliable. (Thanks to Tianshen Huang for the email feedback.)
+- Enlarged Directory previews and added a control for preview length. (Thanks to Xiaohongshu user @momo.)
+- Local Library import/export and Google Drive backups now include bookmarks, highlights, annotations, and folders; older bookmark files and backups remain readable.
+
 # 5.4.1
 2026-08-26
 

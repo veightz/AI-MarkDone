@@ -5,6 +5,20 @@ export function getReferenceTokenCss(theme: Theme): string {
 
     return `
 :host {
+  --aimd-ref-color-highlight-blue: ${isDark ? '#344B63' : '#DCE9F6'};
+  --aimd-ref-color-highlight-yellow: ${isDark ? '#554D32' : '#F5EBBF'};
+  --aimd-ref-color-highlight-red: ${isDark ? '#593E42' : '#F2DCD9'};
+  --aimd-ref-shadow-workspace: ${isDark ? '0 28px 76px #080c16b3, 0 6px 20px #080c1680' : '0 28px 76px #263a5940, 0 6px 20px #263a5926'};
+  --aimd-ref-workspace-surface: ${isDark ? '#242830' : '#F7F8FA'};
+  --aimd-ref-workspace-sidebar: ${isDark ? '#20242C' : '#EEF1F6'};
+  --aimd-ref-workspace-card: ${isDark ? '#2D323C' : '#FFFFFF'};
+  --aimd-ref-workspace-border: ${isDark ? '#5A657A80' : '#B8C3D280'};
+  --aimd-ref-workspace-edge: ${isDark ? '#AABADB24' : '#FFFFFFD9'};
+  --aimd-ref-workspace-scrim: ${isDark ? '#060B1666' : '#24365338'};
+  --aimd-ref-workspace-raised: ${isDark ? '3px 4px 12px #090E193D, -2px -2px 7px #75839C14' : '3px 4px 12px #485C771A, -2px -2px 7px #FFFFFFCC'};
+  --aimd-ref-workspace-inset: ${isDark ? 'inset 2px 3px 7px #090E1952, inset -2px -2px 6px #75839C12' : 'inset 2px 3px 7px #485C7714, inset -2px -2px 6px #FFFFFFBF'};
+  --aimd-ref-shadow-picker-selection: ${isDark ? 'inset 0 0 0 1px #5A657A80' : 'inset 0 0 0 1px #B8C3D280'};
+  --aimd-ref-opacity-disabled: 0.48;
   --aimd-ref-color-neutral-0: ${isDark ? '#1E1E1E' : '#FFFFFF'};
   --aimd-ref-color-neutral-50: ${isDark ? '#2D2D2D' : '#F6F7F9'};
   --aimd-ref-color-neutral-900: ${isDark ? '#F3F4F6' : '#111827'};

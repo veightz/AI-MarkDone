@@ -1868,7 +1868,7 @@ describe('MessageToolbarOrchestrator ChatGPT reader path', () => {
             conversationContentSource,
         }) as any;
         orchestrator.wordCounter = {
-            count: vi.fn((text: string) => ({ text })),
+            count: vi.fn((text: string) => ({ text, chars: 25 })),
             format: vi.fn(() => '3 Words / 25 Chars'),
         };
         const toolbar = { setStats: vi.fn() };
@@ -1878,7 +1878,7 @@ describe('MessageToolbarOrchestrator ChatGPT reader path', () => {
         await vi.waitFor(() => expect(orchestrator.wordCounter.count).toHaveBeenCalled());
 
         expect(orchestrator.wordCounter.count).toHaveBeenCalledWith('Canonical complete answer');
-        expect(toolbar.setStats).toHaveBeenCalledWith(['3 Words', '25 Chars']);
+        expect(toolbar.setStats).toHaveBeenCalledWith(['messageCharacterCount']);
     });
 
     it('recomputes ChatGPT word count when the canonical snapshot changes without another DOM mutation', async () => {
@@ -1892,7 +1892,7 @@ describe('MessageToolbarOrchestrator ChatGPT reader path', () => {
             conversationContentSource,
         }) as any;
         orchestrator.wordCounter = {
-            count: vi.fn((text: string) => ({ text })),
+            count: vi.fn((text: string) => ({ text, chars: 30 })),
             format: vi.fn(() => '4 Words / 30 Chars'),
         };
 

@@ -63,4 +63,27 @@ describe('ChatGPT persistent host-slot seam', () => {
 
         expect(resolveChatGPTDomRoundHostSlotId(round!, slots)).toBe('assistant-slot-1');
     });
+
+    it('keeps old and current outer slots in document order during a host transition', () => {
+        document.querySelector('#host-slots')!.innerHTML = `
+            ${hydratedSlot(1, 'user')}
+            ${hydratedSlot(1, 'assistant')}
+            <div data-turn-key="user-2">
+              <div data-content-search-turn-key="round-2">
+                <div data-chatgpt-search-unit-key="round-2:0:user" data-chatgpt-search-message-ids="user-2">Question 2</div>
+                <div class="group flex flex-col pb-2 pt-2">
+                  <div data-chatgpt-search-unit-key="round-2:2:assistant" data-chatgpt-search-message-ids="assistant-2 assistant-2">
+                    <div data-markdown-text-style="assistant-message">Answer 2</div>
+                  </div>
+                  <div class="turn-action-controls"><button aria-label="复制">Copy</button></div>
+                </div>
+              </div>
+            </div>`;
+        const slots = collectChatGPTDomHostSlots(adapter);
+        expect(slots.map((slot) => slot.id)).toEqual(['user-slot-1', 'assistant-slot-1', 'user-2']);
+        const rounds = collectChatGPTDomRoundRefs(adapter);
+        expect(rounds.map((round) => resolveChatGPTDomRoundHostSlotId(round, slots))).toEqual([
+            'assistant-slot-1', 'user-2',
+        ]);
+    });
 });

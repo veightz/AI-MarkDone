@@ -2,7 +2,7 @@ import { DEFAULT_SETTINGS, type AppSettings } from '../../../core/settings/types
 import { loadAndNormalize } from '../../../services/settings/settingsService';
 import { settingsClientRpc } from '../../../drivers/shared/clients/settingsClientRpc';
 import { browser, browserInfo } from '../../../drivers/shared/browser';
-import { xIcon } from '../../../assets/icons';
+import { xIcon } from '../../../assets/workspaceIcons';
 import { getBookmarksPanelCss } from './ui/styles/bookmarksPanelCss';
 import type { BookmarksPanelController, BookmarksPanelSnapshot } from './BookmarksPanelController';
 import { BookmarksTabView } from './ui/tabs/BookmarksTabView';
@@ -15,7 +15,7 @@ import { AboutTabView } from './ui/tabs/AboutTabView';
 import { MappamoryTabView } from './ui/tabs/MappamoryTabView';
 import { FaqTabView } from './ui/tabs/FaqTabView';
 import { SponsorTabView } from './ui/tabs/SponsorTabView';
-import { createBookmarksPanelShell } from './ui/BookmarksPanelShell';
+import { createBookmarksPanelShell, type BookmarksPanelShellRefs } from './ui/BookmarksPanelShell';
 import { OverlaySession } from '../overlay/OverlaySession';
 import type { ReaderPanelPort } from '../reader/ReaderPanelPort';
 import type { BookmarksPanelOptions } from './BookmarksPanelPort';
@@ -44,6 +44,7 @@ type UiState = {
 
 type BookmarksPanelTabView = {
     getElement(): HTMLElement;
+    getNavigationElement?(): HTMLElement;
     update?(snapshot: BookmarksPanelSnapshot | null): void;
     focusPrimaryInput?(): void;
     dismissTransientUi?(): void;
@@ -105,6 +106,7 @@ function createFallbackTabView(className: string): BookmarksPanelTabView {
 }
 
 export class BookmarksPanel {
+    private activeShell: BookmarksPanelShellRefs | null = null;
     private readonly controller: BookmarksPanelController;
     private readonly readerPanel: ReaderPanelPort;
     private readonly uiState: UiState = {
@@ -171,6 +173,7 @@ export class BookmarksPanel {
         });
         this.cloudBackupWorkflow = new BookmarksCloudBackupWorkflow({
             getModalHost: () => this.modalHost,
+            onRestoreApplied: () => this.controller.refreshAll(),
         });
     }
 
@@ -194,7 +197,11 @@ export class BookmarksPanel {
         await this.show();
     }
 
-    async show(): Promise<void> {
+    async show(options?: {tab: 'bookmarks' | 'settings'}): Promise<void> {
+        if (options) {
+            if (this.visible) { this.switchToTab(options.tab); return; }
+            this.tabWorkflow.select(options.tab);
+        }
         if (this.visible) return;
 
         this.focusLifecycle.capture();
@@ -303,6 +310,7 @@ export class BookmarksPanel {
 
     private finishHide(): void {
         this.visible = false;
+        this.activeShell = null;
         this.unsubscribeSnapshot?.();
         this.unsubscribeSnapshot = null;
         this.unsubscribeLocale?.();
@@ -344,6 +352,7 @@ export class BookmarksPanel {
             return;
         }
         this.uiState.settings = mergeSettings(result.data.settings);
+        this.controller.setSortMode(this.uiState.settings.bookmarks.sortMode);
         this.settingsDataState = { kind: 'ready' };
         this.syncSettingsViewState();
     }
@@ -389,6 +398,11 @@ export class BookmarksPanel {
                 dataState: this.settingsDataState,
             }),
             retryLoad: async () => await this.loadSettings(),
+            setBookmarksSettings: async (patch) => {
+                const saved = await this.persistSettingsCategory('bookmarks', patch, (current) => ({ ...current, bookmarks: { ...current.bookmarks, ...patch } }));
+                if (saved && patch.sortMode) this.controller.setSortMode(patch.sortMode);
+                return saved;
+            },
             setPlatforms: async (patch) => await this.persistSettingsCategory('platforms', patch, (current) => ({
                 ...current,
                 platforms: {
@@ -503,8 +517,9 @@ export class BookmarksPanel {
             closeIcon: xIcon,
             closeLabel: tr('btnClose', 'Close panel'),
             defaultTabId: this.tabWorkflow.getActiveTab(),
-            tabs: shellModel.tabs,
+            tabs: shellModel.tabs.map((tab) => ({ ...tab, navigation: tab.id === 'bookmarks' ? this.bookmarksView?.getNavigationElement?.() : tab.id === 'settings' ? this.settingsView?.getNavigationElement?.() : undefined })),
         });
+        this.activeShell = shell;
         const panel = shell.panel;
 
         this.overlaySession.replaceBackdrop(shell.overlay);
@@ -597,6 +612,12 @@ export class BookmarksPanel {
             try {
                 this.bookmarksView = new BookmarksTabView({
                     controller: this.controller,
+                    modal: this.modalHost,
+                    annotations: this.options.annotations,
+                    onOpenAnnotationTemplates: () => {
+                        this.switchToTab('settings');
+                        this.settingsView?.getNavigationElement?.().querySelector<HTMLButtonElement>('[data-category="marks"]')?.click();
+                    },
                     actions: createBookmarksTabActions({
                         readerPanel: this.readerPanel,
                         modal: this.modalHost,
@@ -739,7 +760,13 @@ export class BookmarksPanel {
         this.faqView?.dismissTransientUi?.();
         this.sponsorView?.dismissTransientUi?.();
         this.feedbackView?.dismissTransientUi?.();
-        this.render();
+        if (this.activeShell) {
+            this.activeShell.tabs.setActive(nextTab);
+            const labelKey = nextTab === 'bookmarks' ? 'libraryTitle' : 'tab' + nextTab[0]!.toUpperCase() + nextTab.slice(1);
+            this.activeShell.title.textContent = t(labelKey);
+            this.syncTabViews();
+            this.restoreScrollTop();
+        } else this.render();
     }
 
     private async maybeShowChangelogNotice(): Promise<void> {
@@ -851,7 +878,7 @@ export class BookmarksPanel {
     private async exportAll(): Promise<void> {
         const result = await this.controller.exportAll(true);
         if (result.ok) {
-            downloadJson('ai-markdone-bookmarks.json', result.data.payload);
+            downloadJson('ai-markdone-library.json', result.data.payload);
         }
     }
 

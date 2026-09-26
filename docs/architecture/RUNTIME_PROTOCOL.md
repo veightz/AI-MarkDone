@@ -117,11 +117,15 @@ UI 状态规则：
 
 ChatGPT 内容获取使用 Chrome/Firefox document-start 的 5.3-compatible page bridge 作为初始 source seed，但不新增 content ↔ background runtime message。Bridge 只观察宿主自身的 same-origin JSON conversation GET，并通过事件/bridge memory 暴露 `peek/readBaseline`；扩展不主动发起 conversation GET/POST。唯一 `ChatGPTPageIndex` observer 继续提供当前页面的 message identity、assistant root、official action row 与 generation 状态；`ChatGPTConversationHostMonitor` 在 Runtime 初始化、相关 DOM mutation 以及 `pageshow`、`resume`、重新 visible 时，通过一个页面级短防抖扫描。
 
+消息时间请求只从宿主当前页面已加载的查询缓存读取匹配的 assistant ID 和时间数字，不读取正文、不主动请求会话接口；缓存结构不可识别或时间缺失时返回空值。该可选元数据不得阻断 Toolbar、Directory 或 DOM fallback。
+
 assistant message ID、非空正文、已连接的官方操作栏和非生成状态同时满足后，Monitor clone 正文一次并通过现有 Markdown Adapter 转换一次，再按 assistant message ID 写入 `ConversationContentRepository`。官方操作栏只是完成和挂载触发信号，不是正文来源。相同正文幂等忽略，变化正文覆盖；DOM 被虚拟化移除不删除已入池内容。
 
-Repository 在当前标签页内维护 `Map<conversationKey, ConversationPool>`，SPA 切换只切换 active pool，返回旧会话时恢复旧池并用当前 DOM 更新。页面刷新或 content Runtime 重建后池自然清空。内容以稳定 `assistantMessageId` 为键；GET `mapping/current_node` 顺序是 provisional source order，DOM 提供的外层 stable-ID slot sequence 在 identity overlap 后成为最终顺序，不按 UUID 或会动态重编号的 `conversation-turn-N` 排序。完全无重叠的窗口先按 ID 暂存，出现冲突证据后拒绝该批次。普通 DOM capture 的 `historyStatus` 为 `partial`，GET seed 为 `get`；空 `?message=` 只创建官方导航骨架，不触发逐 slot sweep，新增槽位会降回 `get` 或 `partial`。内容链路没有主动 conversation 请求、轮询、逐消息计时器、Settings retry 或第二 Repository。
+Repository 在当前标签页内维护 `Map<conversationKey, ConversationPool>`，SPA 切换只切换 active pool，返回旧会话时恢复旧池并用当前 DOM 更新。页面刷新或 content Runtime 重建后池自然清空。内容以稳定 `assistantMessageId` 为键；已有 GET `mapping/current_node` 顺序是 provisional source order，DOM 提供的外层 stable-ID slot sequence（旧版 `data-turn-id-container` 或新版 `data-turn-key`）在 identity overlap 后成为最终顺序，不按 UUID 或会动态重编号的 `conversation-turn-N` 排序。完全无重叠的窗口先按 ID 暂存，出现冲突证据后拒绝该批次。普通 DOM capture 的 `historyStatus` 为 `partial`，GET seed 为 `get`；空 `?message=` 只创建官方导航骨架，不触发逐 slot sweep，新增槽位会降回 `get` 或 `partial`。内容链路没有主动 conversation 请求、轮询、逐消息计时器、Settings retry 或第二 Repository。
 
-公式点击复制与 PNG/SVG/MathML 动作直接从被操作的公式 DOM 经 math parser Adapter 解析，不依赖 Repository 是否已收录所属消息。Toolbar 及当前消息 Copy/Reader/Export/词数可直接从仍挂载的对应消息 DOM 工作；跨消息 Reader/Export、Directory 与 Stepper 使用 Repository/Surface，书签保存继续要求 canonical identity 与 pool-proven position。公开协议保持不变。
+目录和 Stepper 的显式点击按当前 Surface 中唯一的 assistant message ID 重新解析，临时 turn ID、user ID 或序号变化不否决同一消息；重复点击取消仍在进行的目录/Stepper 请求并重新寻址。Reader 与书签请求保留原有的请求复用语义。目录没有匹配消息时立即刷新当前列表，不按旧序号跳到其他消息。
+
+公式点击复制与 PNG/SVG/MathML 动作直接从被操作的公式 DOM 经 math parser Adapter 解析，不依赖 Repository 是否已收录所属消息。Toolbar 及当前消息 Copy/Reader/Export/词数可直接从仍挂载的对应消息 DOM 工作；跨消息 Reader/Export、Directory 与 Stepper 使用 Repository/Surface，书签保存继续要求 canonical identity 与 pool-proven position。协议版本保持 v1；书签请求的兼容扩展见下文。
 
 ## 6. Current Request Families
 
@@ -172,7 +176,7 @@ Repository 在当前标签页内维护 `Map<conversationKey, ConversationPool>`�
 - `readerSession:beforeSend` 是 detached Reader SendPort 的发送前准备桥：只在源 content runtime arm 发送后位置恢复，不写 composer、不触发发送
 - `readerSession:send` 在转发给源 content runtime 前会 best-effort 激活源 ChatGPT tab，让官方 composer 发送尽量匹配官网内 Reader 的可见/焦点条件；源 content runtime 随后调用 `sendText(adapter, text)`
 - `readerSession:locate` 在转发给源 content runtime 前会 best-effort 激活源 ChatGPT tab；定位成功或失败都不得关闭 detached Reader tab，只有用户显式关闭 Reader tab 或 Reader 内 close action 才清理该 session
-- detached Reader bookmark 不新增 reader-session 私有协议；它复用 `bookmarks:positions` 标记当前页保存状态，创建时复用 bookmark save dialog，再通过 `bookmarks:save` / `bookmarks:remove` 写入同一套 bookmarks storage/index
+- detached Reader bookmark 不新增 reader-session 私有协议；ChatGPT 会话从 `bookmarks:list` 按 assistant message ID 映射当前 Reader 序号，创建时复用 bookmark save dialog，再通过 `bookmarks:save` / `bookmarks:remove` 写入同一套 bookmarks storage/index。非规范旧页面仍可读取 `bookmarks:positions`。
 - session 状态只写入 `chrome.storage.session` / `browser.storage.session`，不 fallback 到 `storage.local`，不依赖 MV3 service worker 全局变量；service worker 休眠后，下一次用户动作可从 session storage 重新读取并继续路由；如果当前浏览器目标不提供 session storage，`readerSession:create` 必须稳定失败，不能把对话快照持久化到 local storage
 - v1 不做实时 tail sync、不强制保活、不设置 tab `autoDiscardable=false`；detached Reader 启动时拿一次 fresh snapshot，用户可手动 refresh
 - source tab 关闭时，background 监听 `tabs.onRemoved(sourceTabId)`，删除 session 并 best-effort 关闭对应 `readerTabId`
@@ -225,7 +229,7 @@ Repository 在当前标签页内维护 `Map<conversationKey, ConversationPool>`�
 关键语义：
 
 - Prompt Library 是私有、本地能力；v1 不做云同步、团队共享、公共市场、文件夹或 prompt chain
-- 当前 Google Drive backup 只处理书签，不读取或写入 `aimd:prompts:library:v1`；未来如增加手动导入/导出或 Drive 同步，应消费 portable JSON 模型，而不是直接暴露完整 local storage record
+- 当前本地资料库导出和 Google Drive backup 处理已保存的书签、高亮、注释及其文件夹，不读取或写入 `aimd:prompts:library:v1`；未来如增加 Prompt 导入/导出或 Drive 同步，应消费其 portable JSON 模型，而不是直接暴露完整 local storage record
 - Prompt 本身统一；ChatGPT 官方 composer 使用 Prompt 时只插入 Prompt 内容，Reader picker 与 Reader SendPopover 按需通过 `prompts:list({ context: "readerComment" })` 获取当前 enabled Prompt，再按 Reader comment template 与 `promptPosition` 拼接注释
 - triggerText 以纯文本保存和展示，用于 ChatGPT composer 与 Reader SendPopover textarea 的 `\` 联想匹配；没有 triggerText 的 Prompt 仍可在 Reader 中使用，也会出现在 Prompt manager 中；是否自动打开 `\` 联想由 settings 的 `chatgptBehavior.promptAutocomplete` 控制，不属于 Prompt Library record 或 `prompts:*` 协议状态
 - Prompt 内容里的 `{{cursor}}` 是 content runtime 本地插入标记，写入 ChatGPT composer 或 Reader SendPopover textarea 时会被移除并用于设置光标位置；Reader 导出会清理该标记；background 不解释该标记
@@ -279,10 +283,14 @@ Repository 在当前标签页内维护 `Map<conversationKey, ConversationPool>`�
 用途：
 
 - 书签数据读写、批量操作、folder 操作、storage usage 读取、UI state 持久化
+- ChatGPT 消息书签仍使用既有记录字段。新保存使用 `bookmark:message:v3:<conversationId>:<assistantMessageId>` 键；旧 URL+position 键留在原位，`bookmarksIndexV1` 与协议版本不变。后台按消息 ID 读取和去重，旧记录的管理操作按原键写入或删除；位置只作为显示提示，不作为当前消息身份。项目路径和普通 `/c/` 路径按 conversation ID 归属同一会话；页面书签继续按 URL 判断。
+- `bookmarks:remove` / 批量项可携带 `messageId`。消息 ID 唯一匹配才允许工具栏取消；同一消息有多条旧记录时工具栏返回 `CONFLICT`，管理面板使用记录保存时的 URL+position 选择具体旧键。缺少 ID 或当前分支找不到 ID 时不按旧位置标记或跳转。
+- 本地完整导出载荷为 4.0：原有书签字段、含空目录的书签文件夹路径、已持久化高亮/注释 bundle 与共享组织目录。云快照 v3 包装同一载荷。导入继续接受旧数组、2.0 和 3.0 书签文件，旧文件只影响书签；选中书签导出仍为 3.0。修复工具保留 `messageId` 并识别旧键与 v3 键。无启动迁移或双写，新增书签不保证旧扩展降级后可见。
+- 完整导出先核对实际存储键与书签/文件夹索引；索引缺项、记录不可读或标记数据损坏时返回错误，不生成缺项文件。旧格式导入也按实际存储键避让本地书签，不能因旧索引缺项覆盖记录。
 - folder/list 请求只有在成功返回空集合时才能进入真实 empty state；transport/protocol failure 必须进入 error state，保留 last-good tree，并根据 failure 提供 Retry 或 Refresh page
 - page/message 保存与删除只有在 payload decoder 验证 `warnings` / `removed` acknowledgement 后才能更新本地 bookmark state；用户意图通过显式 save/remove 表达，不允许在确认弹窗后再次读取并 toggle
 - changelog install/update notice 的本地读取与确认
-- Google Drive 书签备份/恢复；Settings/UI 只能发送协议请求，不能直接调用 Google Drive provider、Chrome identity 或 WebExtension identity
+- Google Drive 资料库备份/恢复；Settings/UI 只能发送协议请求，不能直接调用 Google Drive provider、Chrome identity 或 WebExtension identity
 - Google Drive Backup UI 使用 operation-specific RPC timeout：`status`/`diagnostics` 8s，`connect` 300s，`disconnect` 60s，`backupNow` 180s，`listSnapshots`/`deleteSnapshot` 60s，`previewRestore` 120s，`applyRestore` 180s。`connect` 必须覆盖用户完成 Google OAuth 测试/授权页的交互时间，不能复用通用 8s timeout。
 - Google Drive OAuth 的账号隔离边界：OAuth client ID 是 AI-MarkDone 的公开应用标识，不是开发者账号凭据；runtime 不请求 `identity.email`，不把 OAuth token 写入协议响应或 snapshot。连接成功后可返回/保存 Drive `about.get` 的账号摘要（邮箱、显示名、头像 URL）供用户确认，不能保存 refresh token、cookie 或 Google account id。Chromium build 以 manifest `oauth2` 作为 `getAuthToken` 的 SSOT，浏览器 identity cache 管理长期授权体验；WebAuth fallback 使用 Web application OAuth client 与 `identity.getRedirectURL()`；provider 只把短期 access token 缓存在 extension local storage，过期前用于抗 service worker 重启。用户安装后授权的是当前浏览器/profile 中自己的 Google 账号。
 
@@ -321,19 +329,20 @@ Repository 在当前标签页内维护 `Map<conversationKey, ConversationPool>`�
     - 修正相关 folder index 与 bookmarks UI state
 
 - `cloudBackup:backupNow`
-  - 在 `backgroundStorageQueue` 中捕获一致的本地书签集合
-  - 复用现有 `exportBookmarks(..., preserveStructure: true)` 生成 v2.0 export payload
-  - 包装为 `CloudBackupSnapshotV1`，上传到 Google Drive 可见文件夹 `AI-MarkDone/Backups/bookmarks`
+  - 在 `backgroundStorageQueue` 中捕获一致的 4.0 资料库载荷，与本地完整导出共用 `captureLibraryExport`；索引缺项、损坏的 bundle 或组织目录使备份失败，不能上传缺项快照
+  - 包装为 schemaVersion 3 snapshot，上传到 Google Drive 原有可见文件夹 `AI-MarkDone/Backups/bookmarks`；校验和恢复仍接受 schemaVersion 1/2 的书签专用快照
   - 使用 Drive resumable upload，上传成功后回读并校验 `snapshotId` 与 `payloadHash`
+- `cloudBackup:listSnapshots`
+  - 读取全部 Drive 分页；重复备份目录名或 snapshot ID 返回冲突，不能任选一个同名目录或文件用于恢复或删除
 - `cloudBackup:previewRestore`
   - 下载并校验 snapshot
-  - 复用 `parseImportData` 解析书签 payload
-  - 生成可驱动共享导入合并详情页的安全合并预览；不写本地 storage，不传播删除
+  - 新快照复用本地 4.0 资料库载荷验证与标记合并计划；旧快照复用 `parseImportData` 解析书签
+  - 返回 snapshot 的 `payloadHash` 与各类资料新增量及冲突量；不写本地 storage，不传播删除。旧快照同样按实际本地存储键判断占用
 - `cloudBackup:applyRestore`
-  - 仅支持 v1 `safeMerge`
-  - 必须由 UI 在 `previewRestore` 后经用户明确确认触发
-  - 写入前先创建本地 emergency export snapshot，并写入 extension local storage
-  - 通过 `backgroundStorageQueue` 写入 bookmarks storage/index；只新增云端独有书签，跳过重复项，本地独有项保留，冲突项保持本地版本不变，不传播删除
+  - 支持 `safeMerge` 和显式 `replaceLocal`；当前设置界面只提供安全合并入口
+  - 必须由 UI 在 `previewRestore` 后经用户明确确认触发，并携带预览返回的 `payloadHash`；下载内容的 ID 或 hash 改变时不写入
+  - 新快照与本地 4.0 导入共用 `applyLibraryExport`；显式替换先创建、读回并验证本地 emergency snapshot，预检容量后才写入 extension local storage
+  - 在 `backgroundStorageQueue` 中合并各域；书签按消息身份并检查实际存储键冲突，高亮/注释按会话与记录 ID 判重，文件夹按父级与名称映射，本地冲突保持不变。显式替换先核对旧索引与可读记录、持久化应急快照，再写新键、移除过期键。旧快照只恢复书签，不触碰标记与组织目录。
 - `cloudBackup:deleteSnapshot`
   - 将用户选中的云端 snapshot 移到 Google Drive 回收站，返回 `{ trashed: true }`；不会永久删除 Drive 文件夹，也不会修改本地书签
 
@@ -364,3 +373,22 @@ Repository 在当前标签页内维护 `Map<conversationKey, ConversationPool>`�
 - `docs/architecture/BLUEPRINT.md`
 - `docs/architecture/BROWSER_COMPATIBILITY.md`
 - `docs/testing/TESTING_BLUEPRINT.md`
+
+## Highlights and passive message time (2026-09-12)
+
+- `highlights:list` accepts an optional ChatGPT annotation document and returns `{ entries: [{ document, highlight }] }`.
+- `highlights:create` accepts `{ document, highlight }` and returns the canonical entry. A repeat for the same assistant identity and text selectors recolors the existing record; an identical-color retry is idempotent.
+- `highlights:update` requires `{ document, highlight, expectedRevision }`. The target/selectors cannot change; stale revisions return `CONFLICT`.
+- `highlights:remove` requires `{ document, highlightId, expectedRevision }` and acknowledges `{ deleted: true, highlightId }`. Missing entries return `NOT_FOUND` rather than successful removal.
+- The independent `aimd:highlights:document:v1:` bundle namespace uses the existing storage port and write queue. Invalid bundles return `SNAPSHOT_CORRUPTED` and are never replaced by empty bundles. Quota failures remain errors. Bookmark and annotation record schemas and migration behavior are unchanged; complete Library transfer now includes durable highlight bundles.
+- Highlight clients validate returned entries and deletion acknowledgements before view state changes. `storage.onChanged` drives cross-entry refresh; each view rejects obsolete asynchronous reads.
+- Message time is not a background RPC. `MessageMetadataSource` reads optional millisecond timestamps through the existing page bridge's `type: metadata` request. The bridge only indexes graphs already captured from website-owned responses. It converts website seconds to milliseconds and ignores non-displayable/non-assistant entries. No active request, polling, React inspection or snapshot mutation is introduced. The UI prefers update time, then creation time, and omits missing values.
+
+### Mark library organization (2026-09-14)
+
+- `markLibrary:get` returns `{ catalog }`; an absent namespace returns an empty schema-v1 catalog with revision 0 without writing storage.
+- `markLibrary:mutate` accepts `{ expectedRevision, operation }` and returns the acknowledged catalog. Operations are `folder-put` (explicit `create` for new stable IDs), `folder-remove`, `move` (whole conversation documents and target folder ID), and `rename` (document and nullable custom title).
+- `aimd:mark_library:catalog:v1` contains `schemaVersion`, `revision`, `folders` and `conversations`. Folder records hold stable `id`, `parentId`, `name` and timestamps. Conversation records hold the existing ChatGPT document identity/source metadata, `folderId`, `customTitle` and `updatedAt`.
+- The background writer uses the shared queue and reads the latest revision before validation. Reject stale revisions, duplicate siblings, missing parents, cycles, depth beyond four and deletion of occupied folders. Folder updates cannot recreate a concurrently deleted ID. A malformed catalog is preserved and reported as corrupted.
+- Moving a conversation changes both annotation and highlight organization; it never rewrites either source bundle or bookmark data. Source record deletion/recolor retains its existing per-record CRUD protocol. There is no cross-store transaction claim.
+- The UI reconciles unknown delivery through a fresh read before retrying. A matching acknowledged target is treated as complete; otherwise inputs and targets remain for correction. The UI never writes extension storage directly.

@@ -47,6 +47,15 @@ export class ChatGPTAdapter extends SiteAdapter {
     }
 
     private findOfficialActionAnchor(assistantMessageElement: HTMLElement): HTMLElement | null {
+        if (assistantMessageElement.matches('[data-chatgpt-search-unit-key$=":assistant"]')) {
+            const turn = assistantMessageElement.closest('[data-content-search-turn-key]');
+            let parent: HTMLElement | null = assistantMessageElement.parentElement;
+            while (parent && parent !== turn) {
+                const row = parent.querySelector(':scope > .turn-action-controls');
+                if (row instanceof HTMLElement) return row;
+                parent = parent.parentElement;
+            }
+        }
         const assistantArticle = assistantMessageElement.closest('article') || assistantMessageElement;
         const scopes: HTMLElement[] = [];
         const turnRoot = this.getTurnRootElement(assistantMessageElement);
@@ -152,13 +161,13 @@ export class ChatGPTAdapter extends SiteAdapter {
     }
 
     getMessageSelector(): string {
-        // Prefer the stable assistant message node; `article[data-turn]` has proven to be unstable across ChatGPT UI iterations.
-        // Deep Research is the only verified embedded surface that lacks this node and therefore supplies its iframe as the message surface.
-        return `[data-message-author-role="assistant"][data-message-id], ${DEEP_RESEARCH_IFRAME_SELECTOR}`;
+        // Prefer host-stable assistant identities across both observed ChatGPT DOM shapes.
+        // Deep Research also exposes an iframe surface without a normal message node.
+        return `[data-message-author-role="assistant"][data-message-id], [data-chatgpt-search-unit-key$=":assistant"][data-chatgpt-search-message-ids], ${DEEP_RESEARCH_IFRAME_SELECTOR}`;
     }
 
     getMessageContentSelector(): string {
-        return '.markdown.prose, .markdown.prose.dark\\:prose-invert';
+        return '.markdown.prose, .markdown.prose.dark\\:prose-invert, [data-markdown-text-style="assistant-message"]';
     }
 
     getActionBarSelector(): string {
@@ -208,6 +217,8 @@ export class ChatGPTAdapter extends SiteAdapter {
                 return true;
             }
 
+            toolbarHost.style.marginLeft = 'auto';
+
             if (actionBarAnchor instanceof HTMLElement && group && group.parentElement === targetRow) {
                 targetRow.insertBefore(toolbarHost, group.nextSibling);
             } else if (actionBarAnchor instanceof HTMLElement) {
@@ -235,6 +246,8 @@ export class ChatGPTAdapter extends SiteAdapter {
     }
 
     getMessageId(element: HTMLElement): string | null {
+        const searchIds = element.getAttribute('data-chatgpt-search-message-ids')?.trim().split(/\s+/).filter(Boolean);
+        if (searchIds?.length && searchIds.every((id) => id === searchIds[0])) return searchIds[0]!;
         if (this.findDeepResearchFrame(element)) {
             const turnRoot = this.getTurnRootElement(element);
             const turnId = turnRoot?.getAttribute('data-turn-id')
@@ -348,6 +361,9 @@ export class ChatGPTAdapter extends SiteAdapter {
 
     getComposerInputElement(): HTMLElement | HTMLTextAreaElement | HTMLInputElement | null {
         // Prefer the real ProseMirror editor root (textarea is often hidden and not the source of truth).
+        const currentEditable = document.querySelector('form [data-composer-markdown][contenteditable="true"]');
+        if (currentEditable instanceof HTMLElement) return currentEditable;
+
         const editable = document.querySelector('#prompt-textarea.ProseMirror[contenteditable="true"]');
         if (editable instanceof HTMLElement) return editable;
 

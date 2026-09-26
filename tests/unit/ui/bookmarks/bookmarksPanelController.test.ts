@@ -183,7 +183,7 @@ describe('BookmarksPanelController', () => {
             platform: 'ChatGPT',
             folderPath: 'Import',
             timestamp: 123456,
-            options: { saveContextOnly: false },
+            options: { saveContextOnly: false, updateExisting: true },
         });
     });
 
@@ -225,6 +225,49 @@ describe('BookmarksPanelController', () => {
         } finally {
             Object.defineProperty(window, 'location', { configurable: true, value: originalLocation });
         }
+    });
+
+    it('uses conversation identity across project routes and never jumps for an ID-less bookmark', async () => {
+        const { BookmarksPanelController } = await import('@/ui/content/bookmarks/BookmarksPanelController');
+        const id = '12345678-1234-1234-1234-123456789abc';
+        const savedUrl = `https://chatgpt.com/c/${id}`;
+        const assign = vi.fn();
+        const originalLocation = window.location;
+        Object.defineProperty(window, 'location', {
+            configurable: true,
+            value: { href: `https://chatgpt.com/g/project/c/${id}`, origin: 'https://chatgpt.com', assign },
+        });
+        try {
+            const controller = new BookmarksPanelController({ getPlatformId: () => 'chatgpt' } as any, { navigation: conversationNavigationMock });
+            const bookmark = { url: savedUrl, urlWithoutProtocol: savedUrl.slice(8), position: 1, messageId: 'assistant-1', userMessage: 'Prompt', timestamp: 1, title: 'Prompt', platform: 'ChatGPT', folderPath: 'Import' };
+            await controller.goToBookmark(bookmark);
+            expect(conversationNavigationMock.navigate).toHaveBeenCalledOnce();
+            expect(assign).not.toHaveBeenCalled();
+
+            conversationNavigationMock.navigate.mockClear();
+            await controller.goToBookmark({ ...bookmark, messageId: null });
+            expect(conversationNavigationMock.navigate).not.toHaveBeenCalled();
+            expect(assign).not.toHaveBeenCalled();
+            expect(controller.getSnapshot().status).toBeTruthy();
+        } finally {
+            Object.defineProperty(window, 'location', { configurable: true, value: originalLocation });
+        }
+    });
+
+    it('directs an ambiguous toolbar removal to the Library without changing local state', async () => {
+        const { BookmarksPanelController } = await import('@/ui/content/bookmarks/BookmarksPanelController');
+        const controller = new BookmarksPanelController({ getPlatformId: () => 'chatgpt' } as any);
+        removeMock.mockResolvedValueOnce({ ok: false, errorCode: 'CONFLICT', message: 'ambiguous', failure: { kind: 'protocol', code: 'CONFLICT', message: 'ambiguous' } } as any);
+
+        const result = await controller.setPositionBookmarkSaved({
+            url: 'https://chatgpt.com/c/12345678-1234-1234-1234-123456789abc',
+            position: 3,
+            messageId: 'assistant-3',
+            folderPath: 'Import', userMessage: 'Prompt', aiResponse: 'Answer', platform: 'ChatGPT', title: 'Prompt',
+        }, false);
+
+        expect(result.ok).toBe(false);
+        if (!result.ok) expect(result.message).not.toBe('ambiguous');
     });
 
     it('normalizes ChatGPT transport query flags before reading bookmark positions', async () => {
@@ -317,6 +360,40 @@ describe('BookmarksPanelController', () => {
             'https://chatgpt.com/c/123?mweb_fallback=1',
             [{ position: 2, assistantMessageId: 'assistant-2' }],
         )).toEqual(new Set([2]));
+        expect(saveMock).not.toHaveBeenCalled();
+        expect(removeMock).not.toHaveBeenCalled();
+    });
+
+    it('does not interpret a failed bookmark read as an unsaved message and overwrite its state', async () => {
+        const { BookmarksPanelController } = await import('@/ui/content/bookmarks/BookmarksPanelController');
+        const controller = new BookmarksPanelController({ getPlatformId: () => 'chatgpt' } as any, {
+            conversationContentSource: {
+                read: () => ({
+                    kind: 'ready',
+                    document: null,
+                    snapshot: { turns: [{ ordinal: 1, identity: { assistantMessageId: 'assistant-1' } }] },
+                }),
+            } as any,
+        });
+        listMock.mockResolvedValueOnce({
+            ok: false as const,
+            errorCode: 'TRANSPORT_FAILED',
+            message: 'storage unavailable',
+            failure: { kind: 'transport' as const, code: 'TRANSPORT_FAILED', message: 'storage unavailable', delivery: 'unknown' as const },
+        });
+
+        const result = await controller.toggleBookmarkFromToolbar({
+            url: 'https://chatgpt.com/c/123',
+            position: 1,
+            messageId: 'assistant-1',
+            folderPath: 'Work',
+            userMessage: 'Prompt',
+            aiResponse: 'Answer',
+            platform: 'ChatGPT',
+            title: 'Prompt',
+        });
+
+        expect(result.ok).toBe(false);
         expect(saveMock).not.toHaveBeenCalled();
         expect(removeMock).not.toHaveBeenCalled();
     });

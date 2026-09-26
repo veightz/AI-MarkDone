@@ -1,6 +1,6 @@
 (() => {
   const BRIDGE_KEY = '__AIMD_CHATGPT_CONVERSATION_BRIDGE__';
-  const BRIDGE_VERSION = 7;
+  const BRIDGE_VERSION = 9;
   const MAX_RESPONSE_BYTES = 8 * 1024 * 1024;
   const MAX_GRAPH_OBJECTS = 256;
   const MAX_GRAPH_DEPTH = 4;
@@ -234,8 +234,8 @@
       if (!candidate || seen.has(candidate)) continue;
       seen.add(candidate);
       inspected += 1;
-      const mapping = readRecord(candidate.mapping);
       const currentNodeId = getPayloadCurrentNodeId(candidate);
+      const mapping = readRecord(candidate.mapping);
       if (mapping && currentNodeId && readRecord(mapping[currentNodeId])) {
         matches.push(candidate);
         continue;
@@ -365,6 +365,47 @@
     };
   }
 
+  function cachedHostConversation(conversationId) {
+    if (getCurrentConversationId() !== conversationId) return null;
+    const main = document.querySelector('main');
+    if (!main) return null;
+    const fiberKey = Object.keys(main).find((key) => key.startsWith('__reactFiber$'));
+    let fiber = fiberKey ? main[fiberKey] : null;
+    for (let depth = 0; fiber && depth < 100; depth += 1, fiber = fiber.return) {
+      const scopes = fiber.memoizedProps?.value;
+      if (!(scopes instanceof Map)) continue;
+      for (const scope of scopes.values()) {
+        const queries = scope?.queryClient?.getQueryCache?.()?.getAll?.();
+        if (!Array.isArray(queries)) continue;
+        const query = queries.find((entry) => (
+          entry?.queryKey?.[0] === 'chatgpt-conversation'
+          && entry.queryKey[1] === conversationId
+        ));
+        const payload = query?.state?.data;
+        if (payload?.conversation_id === conversationId && readRecord(payload.mapping)) return payload;
+      }
+    }
+    return null;
+  }
+
+  function metadataFor(conversationId, messageId) {
+    if (typeof messageId !== 'string') return null;
+    // Read only ChatGPT's already-loaded page memory. Never fetch or expose
+    // the cached conversation body; a changed host cache shape fails closed.
+    const hostCache = cachedHostConversation(conversationId);
+    if (!hostCache) return null;
+    const direct = hostCache.mapping[messageId];
+    const node = direct?.message?.id === messageId
+      ? direct
+      : Object.values(hostCache.mapping).find((entry) => entry?.message?.id === messageId);
+    const message = node?.message;
+    if (!isDisplayableMessage(message, 'assistant')) return null;
+    const time = (value) => typeof value === 'number' && Number.isFinite(value) && value > 0 && value * 1000 <= 8.64e15 ? value * 1000 : undefined;
+    const createdAt = time(message.create_time);
+    const updatedAt = time(message.update_time);
+    return createdAt !== undefined || updatedAt !== undefined ? { createdAt, updatedAt } : null;
+  }
+
   function dispatchResponse(detail, asString) {
     window.dispatchEvent(new CustomEvent(RESPONSE_EVENT, { detail: encodeDetail(detail, asString) }));
   }
@@ -373,6 +414,10 @@
     const asString = typeof event.detail === 'string';
     const detail = decodeDetail(event.detail);
     if (!detail?.requestId || !detail?.conversationId) return;
+    if (detail.type === 'metadata') {
+      dispatchResponse({ requestId: detail.requestId, ok: true, metadata: metadataFor(detail.conversationId, detail.messageId) }, asString);
+      return;
+    }
     if (detail.type !== 'peek') {
       dispatchResponse({ requestId: detail.requestId, ok: false, error: { code: 'BRIDGE_UNAVAILABLE', retryable: true } }, asString);
       return;

@@ -36,7 +36,7 @@ describe('drivers/shared cloudBackupClient', () => {
         await cloudBackupClient.backupNow('googleDrive');
         await cloudBackupClient.listSnapshots('googleDrive');
         await cloudBackupClient.previewRestore({ provider: 'googleDrive', snapshotId: 's1', strategy: 'safeMerge' });
-        await cloudBackupClient.applyRestore({ provider: 'googleDrive', snapshotId: 's1', strategy: 'safeMerge' });
+        await cloudBackupClient.applyRestore({ provider: 'googleDrive', snapshotId: 's1', strategy: 'safeMerge', payloadHash: `sha256:${'a'.repeat(64)}` });
         await cloudBackupClient.deleteSnapshot({ provider: 'googleDrive', snapshotId: 's1' });
 
         expect(sendExtRequestMock.mock.calls.map(([req, options]) => [req.type, options?.timeoutMs])).toEqual([

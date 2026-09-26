@@ -104,7 +104,7 @@ Consumer-path performance rules:
 - `pure/domain service`
   - `src/services/settings/*`
   - `src/services/bookmarks/*`
-  - `src/services/cloudBackup/*`
+  - `src/core/cloudBackup/*`：资料库纯计划；存储编排留在 `src/runtimes/background/handlers/libraryTransfer.ts`
   - `src/services/semantic-content/SemanticContent.ts`
 - `content-facing feature service`
   - `src/services/copy/*`

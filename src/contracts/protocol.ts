@@ -1,3 +1,5 @@
+import { isMarkLibraryOperation, type MarkLibraryOperation } from './markLibrary';
+import { isHighlightRecord, type HighlightRecord } from './highlights';
 import {
     isReaderAnnotationDocument,
     isReaderAnnotationRecord,
@@ -63,10 +65,10 @@ export type BookmarksSavePayload = {
     platform?: string;
     timestamp?: number;
     folderPath?: string;
-    options?: { saveContextOnly?: boolean };
+    options?: { saveContextOnly?: boolean; updateExisting?: boolean };
 };
 
-export type BookmarksRemovePayload = { url: string; position: number };
+export type BookmarksRemovePayload = { url: string; position: number; messageId?: string | null };
 export type BookmarksPageSavePayload = {
     url: string;
     title: string;
@@ -89,7 +91,7 @@ export type BookmarksImportPayload = {
 export type BookmarksPositionsPayload = { url: string };
 
 export type BookmarksBulkItem =
-    | { kind?: 'message'; url: string; position: number }
+    | { kind?: 'message'; url: string; position: number; messageId?: string | null }
     | { kind: 'page'; url: string };
 export type BookmarksBulkRemovePayload = { items: BookmarksBulkItem[]; folderPaths?: string[] };
 export type BookmarksBulkMovePayload = { items: BookmarksBulkItem[]; targetFolderPath: string };
@@ -170,7 +172,8 @@ export type CloudBackupPreviewRestorePayload = {
 export type CloudBackupApplyRestorePayload = {
     provider: CloudBackupProviderId;
     snapshotId: string;
-    strategy: 'safeMerge';
+    strategy: 'safeMerge' | 'replaceLocal';
+    payloadHash: string;
 };
 export type CloudBackupDeleteSnapshotPayload = { provider: CloudBackupProviderId; snapshotId: string };
 
@@ -279,6 +282,12 @@ export type ExtRequest =
     | { v: ProtocolVersion; id: RequestId; type: 'readerSession:send'; payload: ReaderSessionSendPayload }
     | { v: ProtocolVersion; id: RequestId; type: 'readerSession:locate'; payload: ReaderSessionLocatePayload }
     | { v: ProtocolVersion; id: RequestId; type: 'readerSession:close'; payload: ReaderSessionByIdPayload }
+    | { v: ProtocolVersion; id: RequestId; type: 'markLibrary:get' }
+    | { v: ProtocolVersion; id: RequestId; type: 'markLibrary:mutate'; payload: { operation: MarkLibraryOperation; expectedRevision: number } }
+    | { v: ProtocolVersion; id: RequestId; type: 'highlights:list'; payload?: { document?: ReaderAnnotationDocument } }
+    | { v: ProtocolVersion; id: RequestId; type: 'highlights:create'; payload: { document: ReaderAnnotationDocument; highlight: HighlightRecord } }
+    | { v: ProtocolVersion; id: RequestId; type: 'highlights:update'; payload: { document: ReaderAnnotationDocument; highlight: HighlightRecord; expectedRevision: number } }
+    | { v: ProtocolVersion; id: RequestId; type: 'highlights:remove'; payload: { document: ReaderAnnotationDocument; highlightId: string; expectedRevision: number } }
     | { v: ProtocolVersion; id: RequestId; type: 'annotations:list'; payload?: ReaderAnnotationListPayload }
     | { v: ProtocolVersion; id: RequestId; type: 'annotations:create'; payload: ReaderAnnotationCreatePayload }
     | { v: ProtocolVersion; id: RequestId; type: 'annotations:update'; payload: ReaderAnnotationUpdatePayload }
@@ -410,6 +419,8 @@ export function isExtRequest(value: unknown): value is ExtRequest {
         'readerSession:send',
         'readerSession:locate',
         'readerSession:close',
+        'markLibrary:get', 'markLibrary:mutate',
+        'highlights:list', 'highlights:create', 'highlights:update', 'highlights:remove',
         'annotations:list',
         'annotations:create',
         'annotations:update',
@@ -461,6 +472,13 @@ export function isExtRequest(value: unknown): value is ExtRequest {
     ]);
 
     if (!allowedTypes.has(type)) return false;
+    if (type === 'cloudBackup:applyRestore') {
+        const payload = rec.payload as Record<string, unknown> | undefined;
+        return !!payload && payload.provider === 'googleDrive'
+            && typeof payload.snapshotId === 'string' && payload.snapshotId.trim().length > 0
+            && (payload.strategy === 'safeMerge' || payload.strategy === 'replaceLocal')
+            && typeof payload.payloadHash === 'string' && /^sha256:[0-9a-f]{64}$/.test(payload.payloadHash);
+    }
     if (type === 'content:ready') {
         const payload = rec.payload;
         if (typeof payload !== 'object' || payload === null) return false;
@@ -503,6 +521,18 @@ export function isExtRequest(value: unknown): value is ExtRequest {
         return true;
     }
 
+    if (type === 'markLibrary:get') return true;
+    if (type === 'markLibrary:mutate') {
+        const p = rec.payload as Record<string, unknown> | undefined;
+        return !!p && Number.isSafeInteger(p.expectedRevision) && (p.expectedRevision as number) >= 0 && isMarkLibraryOperation(p.operation);
+    }
+    if (type.startsWith('highlights:')) {
+        const p = (value as { payload?: Record<string, unknown> }).payload;
+        if (type === 'highlights:list') return p === undefined || (!!p && typeof p === 'object' && (p.document === undefined || isReaderAnnotationDocument(p.document)));
+        if (!p || !isReaderAnnotationDocument(p.document)) return false;
+        if (type !== 'highlights:create' && !(typeof p.expectedRevision === 'number' && Number.isInteger(p.expectedRevision) && p.expectedRevision > 0)) return false;
+        return type === 'highlights:remove' ? typeof p.highlightId === 'string' && p.highlightId.trim().length > 0 : isHighlightRecord(p.highlight);
+    }
     if (type.startsWith('annotations:')) {
         const payload = rec.payload;
         if (type === 'annotations:list') {

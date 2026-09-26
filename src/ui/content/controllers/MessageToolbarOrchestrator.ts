@@ -1,3 +1,4 @@
+import type { MessageMetadataSource } from '../../../contracts/messageMetadata';
 import {
     DEFAULT_EXPORT_SETTINGS,
     resolvePngExportPixelRatio,
@@ -46,7 +47,7 @@ import { createConversationReaderActions } from '../reader/conversationReaderAct
 import type { SendController } from '../sending/SendController';
 import { subscribeLocaleChange, t } from '../components/i18n';
 import { WordCounter } from '../../../core/text/wordCounter';
-import { bookmarkIcon, copyIcon, downloadIcon, bookOpenIcon, imageIcon } from '../../../assets/icons';
+import { bookmarkIcon, copyIcon, downloadIcon, bookOpenIcon, imageIcon } from '../../../assets/workspaceIcons';
 import type { BookmarkSaveDialogPort, SaveMessagesDialogPort } from '../ContentDialogPorts';
 import { resolveMessageKey, stripHash } from './messageToolbarKeys';
 import type {
@@ -140,6 +141,8 @@ export class MessageToolbarOrchestrator {
     private routeWatcher: RouteWatcher | null = null;
     private unsubscribeLocale: (() => void) | null = null;
     private unsubscribeConversationSurface: (() => void) | null = null;
+    private unsubscribeMessageMetadata: (() => void) | null = null;
+    private readonly messageMetadata: MessageMetadataSource | null;
     private observedContainer: HTMLElement | null = null;
     private readerPanel: ReaderPanelPort;
     private sendController: SendController | null = null;
@@ -809,6 +812,7 @@ export class MessageToolbarOrchestrator {
             conversationContentSource?: ConversationContentSourceV1 | null;
             conversationMaterialization?: ConversationMaterializationPortV1 | null;
             conversationSurface?: ConversationSurfacePortV1 | null;
+            messageMetadata?: MessageMetadataSource | null;
             conversationNavigation?: ConversationNavigationPortV1 | null;
             saveMessagesDialog?: SaveMessagesDialogPort;
             bookmarkSaveDialog?: BookmarkSaveDialogPort;
@@ -816,6 +820,7 @@ export class MessageToolbarOrchestrator {
         }
     ) {
         this.adapter = adapter;
+        this.messageMetadata = opts.messageMetadata ?? null;
         this.readerPanel = opts.readerPanel;
         this.sendController = opts.sendController ?? null;
         this.bookmarksController = opts.bookmarksController || null;
@@ -899,6 +904,13 @@ export class MessageToolbarOrchestrator {
             this.routeWatcher.start();
         }
 
+        if (this.messageMetadata && !this.unsubscribeMessageMetadata) {
+            try {
+                this.unsubscribeMessageMetadata = this.messageMetadata.subscribe(() => {
+                    for (const record of this.recordsByMessageKey.values()) this.syncMessageMetadata(record);
+                });
+            } catch { /* Time is optional; keep the toolbar lifecycle running. */ }
+        }
         this.unsubscribeLocale = subscribeLocaleChange(() => {
             this.refreshExistingToolbarsForLocale();
         });
@@ -910,6 +922,7 @@ export class MessageToolbarOrchestrator {
     }
 
     dispose(): void {
+        this.unsubscribeMessageMetadata?.(); this.unsubscribeMessageMetadata = null;
         this.scanScheduler?.dispose();
         this.scanScheduler = null;
         this.routeWatcher?.stop();
@@ -977,10 +990,8 @@ export class MessageToolbarOrchestrator {
             messageElement: entry.materialization?.messageElement ?? null,
             conversationTarget: entry.target,
         };
-        const actions = [this.createReaderAction(target)];
         const exportAction = this.createExportAction(target);
-        if (exportAction) actions.push(exportAction);
-        return actions;
+        return exportAction ? [exportAction] : [];
     }
 
     private getPositionForMessage(messageElement: HTMLElement): number {
@@ -1330,6 +1341,7 @@ export class MessageToolbarOrchestrator {
         const getToolbar = () => recordRef?.toolbar ?? null;
         const toolbar = new MessageToolbar(this.appearance.theme, this.getActionsForMessage(params.message, getToolbar), {
             showStats: this.behavior.showWordCount,
+            collapsible: this.adapter.getPlatformId() === 'chatgpt',
             themeOverrides: this.appearance.overrides,
         });
         const host = toolbar.getElement();
@@ -1361,10 +1373,21 @@ export class MessageToolbarOrchestrator {
             boundAtUrl: this.getBookmarkPageUrl(),
         };
         recordRef = record;
+        this.syncMessageMetadata(record);
 
         this.refreshBookmarkStateForToolbar(toolbar, params.message, params.position);
         this.refreshWordCountForToolbar(toolbar, params.message, params.pending);
         return record;
+    }
+
+    private syncMessageMetadata(record: ToolbarRecord): void {
+        if (!this.messageMetadata) return;
+        try {
+            const document = this.conversationSurface?.readFrame().document ?? this.conversationContentSource?.read().document;
+            const messageId = this.chatGptFrameIndex.read(record.message)?.turn.identity.assistantMessageId
+                || this.adapter.getMessageId?.(record.message);
+            record.toolbar.setMessageMetadata(document?.conversationId && messageId ? this.messageMetadata.read(document.conversationId, messageId) : null);
+        } catch { record.toolbar.setMessageMetadata(null); }
     }
 
     private rebuildToolbarRecord(record: ToolbarRecord): ToolbarRecord | null {
@@ -1645,6 +1668,7 @@ export class MessageToolbarOrchestrator {
             this.frameBookmarkUrl ?? '',
             this.frameBookmarkToken ?? '',
         ].join('|');
+        this.syncMessageMetadata(record);
         if (record.lastDerivedStateKey === key) return;
         record.lastDerivedStateKey = key;
         this.refreshBookmarkStateForToolbar(record.toolbar, messageElement, position);
@@ -1714,7 +1738,7 @@ export class MessageToolbarOrchestrator {
             const res = this.wordCounter.count(normalized);
             const formatted = this.wordCounter.format(res);
             const parts = formatted.split(' / ');
-            stats = parts.length >= 2
+            stats = this.usesChatGptToolbarLifecycle() ? [t('messageCharacterCount', String(res.chars))] : parts.length >= 2
                 ? [parts[0]!, parts.slice(1).join(' ')]
                 : [formatted];
             this.wordStatsByTurnKey.set(key, stats);

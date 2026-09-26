@@ -1,4 +1,4 @@
-import { chromium, type Page } from '@playwright/test';
+import { chromium, firefox, type Page } from '@playwright/test';
 import { existsSync, mkdirSync, realpathSync, writeFileSync } from 'node:fs';
 import { dirname, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -68,7 +68,6 @@ const MOCKS_ROOT = resolve(REPO_ROOT, 'mocks', 'components');
 const OUTPUT_ROOT = resolve(REPO_ROOT, 'output', 'ui-visual');
 
 const SMOKE_MOCK_ORDER = [
-    'mocks/components/input-enhancement/index.html',
     'mocks/components/formula-composer-assistant/index.html',
     'mocks/components/formula-asset-actions/index.html',
     'mocks/components/workflow-dialogs/index.html',
@@ -405,6 +404,7 @@ async function runCase(params: {
     mockPath: string;
     outputDir: string;
     variant: VisualVariant;
+    workspaceView?: 'library' | 'settings';
 }): Promise<CaseResult> {
     const locale = params.variant.locale === 'zh_CN' ? 'zh-CN' : 'en-US';
     const context = await params.browser.newContext({
@@ -421,7 +421,8 @@ async function runCase(params: {
     const screenshotName = `${slug(params.mockPath)}--${params.variant.name}.png`;
     const screenshotPath = resolve(params.outputDir, screenshotName);
     try {
-        const response = await page.goto(`${params.baseUrl}/${params.mockPath}`, { waitUntil: 'networkidle' });
+        const viewQuery = params.workspaceView ? `?view=${params.workspaceView}` : '';
+        const response = await page.goto(`${params.baseUrl}/${params.mockPath}${viewQuery}`, { waitUntil: 'networkidle' });
         if (!response?.ok()) errors.push(`navigation: HTTP ${response?.status() ?? 'no response'}`);
         await page.waitForFunction(() => document.readyState === 'complete');
         const appliedVariant = await applyVariant(page, params.variant);
@@ -543,10 +544,14 @@ async function auditOverlayPointerSafety(params: {
 async function main(): Promise<void> {
     const argv = process.argv.slice(2);
     const mode = parseMode(argv, process.env);
+    const browserName = argv.includes('--browser=firefox') ? 'firefox' : 'chromium';
+    const requestedView = argv.find(arg => arg.startsWith('--workspace-view='))?.split('=')[1];
+    if (requestedView && requestedView !== 'library' && requestedView !== 'settings') throw new Error('Unknown workspace view');
+    const workspaceView = requestedView as 'library' | 'settings' | undefined;
     const discovered = discoverManifestMocks();
     const mockPaths = selectRequestedMock(argv, discovered) ?? selectMocks(mode, discovered);
     const variants = createVariants(mode);
-    const runId = `${mode}-${new Date().toISOString().replace(/[:.]/g, '-')}`;
+    const runId = `${mode}-${browserName}-${new Date().toISOString().replace(/[:.]/g, '-')}`;
     const outputDir = resolve(OUTPUT_ROOT, runId);
     mkdirSync(outputDir, { recursive: true });
 
@@ -565,12 +570,12 @@ async function main(): Promise<void> {
         const address = server.httpServer?.address();
         if (!address || typeof address === 'string') throw new Error('Vite did not expose a local TCP port.');
         const baseUrl = `http://127.0.0.1:${address.port}`;
-        browser = await chromium.launch({ headless: process.env.AIMD_UI_VISUAL_HEADED !== '1' });
+        browser = await (browserName === 'firefox' ? firefox : chromium).launch({ headless: process.env.AIMD_UI_VISUAL_HEADED !== '1' });
         await auditOverlayPointerSafety({ baseUrl, browser });
 
         for (const mockPath of mockPaths) {
             for (const variant of variants) {
-                const result = await runCase({ baseUrl, browser, mockPath, outputDir, variant });
+                const result = await runCase({ baseUrl, browser, mockPath, outputDir, variant, workspaceView });
                 results.push(result);
                 const status = result.errors.length === 0 ? 'PASS' : 'FAIL';
                 process.stdout.write(`${status} ${mockPath} ${variant.name}\n`);
@@ -583,7 +588,7 @@ async function main(): Promise<void> {
 
     const failures = results.filter((result) => result.errors.length > 0);
     const summaryPath = resolve(outputDir, 'summary.json');
-    writeFileSync(summaryPath, `${JSON.stringify({ mode, mockPaths, variants, results }, null, 2)}\n`, 'utf8');
+    writeFileSync(summaryPath, `${JSON.stringify({ mode, browserName, workspaceView, mockPaths, variants, results }, null, 2)}\n`, 'utf8');
     process.stdout.write(`UI visual evidence: ${relative(REPO_ROOT, outputDir)}\n`);
     process.stdout.write(`Cases: ${results.length}; failures: ${failures.length}\n`);
     if (failures.length > 0) process.exitCode = 1;

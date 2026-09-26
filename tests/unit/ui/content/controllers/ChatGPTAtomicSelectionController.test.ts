@@ -437,6 +437,34 @@ describe('ChatGPTAtomicSelectionController', () => {
         expect(code.hasAttribute('data-aimd-page-atomic-state')).toBe(false);
     });
 
+    it('recognizes and visibly marks inline and block code in the current ChatGPT DOM', async () => {
+        const message = document.createElement('div');
+        message.setAttribute('data-chatgpt-search-unit-key', 'turn-1:assistant');
+        message.setAttribute('data-chatgpt-search-message-ids', '["assistant-1"]');
+        message.innerHTML = `<div data-markdown-text-style="assistant-message">
+            <p>Before <span data-markdown-copy="inline-code">inline</span> after</p>
+            <div data-markdown-copy="code-block"><div data-markdown-copy="exclude">Copy code</div><div><code>block code</code></div></div>
+        </div>`;
+        document.body.appendChild(message);
+        const controller = createController();
+        controller.init();
+        try {
+            const inline = message.querySelector<HTMLElement>('[data-markdown-copy="inline-code"]')!;
+            const inlineRange = document.createRange(); inlineRange.selectNodeContents(inline); selectRange(inlineRange);
+            document.dispatchEvent(new Event('selectionchange')); await flushSelectionFrame();
+            expect(inline.getAttribute('data-aimd-page-atomic-state')).toBe('selected');
+            expect(document.getElementById('aimd-chatgpt-atomic-selection-style')?.textContent)
+                .toContain('[data-markdown-text-style="assistant-message"]');
+
+            const block = message.querySelector<HTMLElement>('[data-markdown-copy="code-block"]')!;
+            const code = block.querySelector('code')!;
+            const blockRange = document.createRange(); blockRange.selectNodeContents(code); selectRange(blockRange);
+            document.dispatchEvent(new Event('selectionchange')); await flushSelectionFrame();
+            expect(block.getAttribute('data-aimd-page-atomic-state')).toBe('selected');
+            expect(code.hasAttribute('data-aimd-page-atomic-state')).toBe(false);
+        } finally { controller.dispose(); }
+    });
+
     it('uses the Reader unit range for formulas and structural blocks on the official page', async () => {
         const message = mountMessage('<h2>Heading</h2><p>Result <span class="katex"><span class="katex-html">x+y</span></span></p>');
         const controller = createController();

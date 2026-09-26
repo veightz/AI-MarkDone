@@ -38,7 +38,7 @@ export function buildPageAtomicSelectionSnapshot(
     } = params;
     const startedAt = performance.now();
     const selection = resolveStrictRenderedAtomicSelection(range, root);
-    if (!selection.isValid) return null;
+    if (selection.hasPartialUnit || (selection.units.length === 0 && !range.toString().trim())) return null;
     const fragmentRoot = cloneClosedSelectionFragment(adapter, range, root);
     if (!fragmentRoot) return null;
     const remainingTime = maxProcessingTimeMs - (performance.now() - startedAt);

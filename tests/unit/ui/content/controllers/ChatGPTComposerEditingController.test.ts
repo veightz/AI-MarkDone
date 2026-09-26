@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ChatGPTComposerEditingController } from '@/ui/content/controllers/ChatGPTComposerEditingController';
+import { ChatGPTAdapter } from '@/drivers/content/adapters/sites/chatgpt';
 import { armChatGPTSendPositionRestore } from '@/drivers/content/chatgpt/sendPositionRestoreEvents';
 import {
     parseContenteditableToPlainText,
@@ -111,6 +112,53 @@ describe('ChatGPTComposerEditingController behavior', () => {
         composer.dispatchEvent(event);
 
         expect(event.defaultPrevented).toBe(false);
+    });
+
+    it('prevents a host capture handler from sending plain Enter when newline is enabled', () => {
+        const form = document.createElement('form');
+        const composer = document.createElement('div');
+        composer.id = 'prompt-textarea';
+        composer.setAttribute('contenteditable', 'true');
+        form.appendChild(composer);
+        document.body.appendChild(form);
+        const hostSend = vi.fn();
+        form.addEventListener('keydown', (event) => {
+            if (event.key === 'Enter' && !event.shiftKey && !event.defaultPrevented) hostSend();
+        }, { capture: true });
+        const controller = new ChatGPTComposerEditingController(createAdapter({ current: composer }));
+        controller.init();
+
+        const enter = new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true });
+        composer.dispatchEvent(enter);
+
+        expect(enter.defaultPrevented).toBe(true);
+        expect(hostSend).not.toHaveBeenCalled();
+        controller.dispose();
+    });
+
+    it('binds the current data-composer-markdown editor instead of another ProseMirror', () => {
+        document.body.innerHTML = `<div class="ProseMirror" contenteditable="true"></div>
+            <form><div class="ProseMirror" contenteditable="true" data-composer-markdown="" role="textbox"></div></form>`;
+        const composer = document.querySelector<HTMLElement>('[data-composer-markdown]')!;
+        const adapter = new ChatGPTAdapter();
+        const hostSend = vi.fn();
+        const onHostKeydown = (event: KeyboardEvent) => {
+            if (event.key === 'Enter' && !event.shiftKey && !event.defaultPrevented) hostSend();
+        };
+        document.addEventListener('keydown', onHostKeydown);
+        const controller = new ChatGPTComposerEditingController(adapter);
+        controller.init();
+        try {
+            expect(adapter.getComposerInputElement()).toBe(composer);
+            const enter = new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true });
+            composer.dispatchEvent(enter);
+            expect(enter.defaultPrevented).toBe(true);
+            expect(hostSend).not.toHaveBeenCalled();
+        } finally {
+            controller.dispose();
+            adapter.dispose();
+            document.removeEventListener('keydown', onHostKeydown);
+        }
     });
 
     it('does not convert plain Enter merely because list and bold authoring are enabled', () => {
@@ -359,177 +407,6 @@ describe('ChatGPTComposerEditingController behavior', () => {
         }
     });
 
-    it('opens input enhancement settings beside the official plus button and persists the runtime master', async () => {
-        const form = document.createElement('form');
-        const leadingContainer = document.createElement('div');
-        const buttonRow = document.createElement('span');
-        const plus = document.createElement('button');
-        const composer = document.createElement('div');
-        plus.id = 'composer-plus-btn';
-        plus.dataset.testid = 'composer-plus-btn';
-        composer.id = 'prompt-textarea';
-        composer.setAttribute('contenteditable', 'true');
-        buttonRow.appendChild(plus);
-        leadingContainer.appendChild(buttonRow);
-        form.append(leadingContainer, composer);
-        document.body.appendChild(form);
-        const persist = vi.fn(async () => true);
-        const controller = new ChatGPTComposerEditingController(
-            createAdapter({ current: composer }),
-            { onInputEnhancementChange: persist },
-        );
-
-        controller.setInputEnhancementSettings({
-            ...DEFAULT_CHATGPT_INPUT_ENHANCEMENT_SETTINGS,
-            enabled: false,
-        });
-        controller.init();
-        const host = leadingContainer.querySelector<HTMLElement>('[data-aimd-role="input-enhancement-button"]');
-        const button = host?.shadowRoot?.querySelector<HTMLButtonElement>('button');
-        const officialHover = vi.fn();
-        buttonRow.addEventListener('pointerover', officialHover);
-
-        expect(buttonRow.contains(host)).toBe(false);
-        expect(buttonRow.nextElementSibling).toBe(host);
-        expect(leadingContainer.dataset.aimdInputEnhancementMount).toBe('1');
-        expect(button?.getAttribute('aria-expanded')).toBe('false');
-        button?.dispatchEvent(new Event('pointerover', { bubbles: true, composed: true }));
-        expect(officialHover).not.toHaveBeenCalled();
-        button?.click();
-        expect(button?.getAttribute('aria-expanded')).toBe('true');
-        expect(persist).not.toHaveBeenCalled();
-
-        const master = document.querySelector<HTMLElement>('[data-aimd-role="input-enhancement-popover"]')
-            ?.shadowRoot?.querySelector<HTMLInputElement>('[data-role="input-enhancement-enabled"]');
-        master!.checked = true;
-        master!.dispatchEvent(new Event('change', { bubbles: true }));
-        expect(button?.dataset.active).toBe('1');
-        await Promise.resolve();
-        expect(persist).toHaveBeenCalledWith({
-            ...DEFAULT_CHATGPT_INPUT_ENHANCEMENT_SETTINGS,
-            enabled: true,
-        });
-
-        const popoverHost = document.querySelector<HTMLElement>('[data-aimd-role="input-enhancement-popover"]');
-        popoverHost?.shadowRoot?.querySelector<HTMLButtonElement>('[data-role="input-enhancement-close"]')?.click();
-        expect(button?.getAttribute('aria-expanded')).toBe('false');
-        popoverHost?.shadowRoot?.querySelector<HTMLElement>('.input-enhancement-popover')
-            ?.dispatchEvent(new Event('animationend'));
-        expect(host?.shadowRoot?.activeElement).toBe(button);
-
-        controller.dispose();
-        expect(leadingContainer.dataset.aimdInputEnhancementMount).toBeUndefined();
-        expect(document.getElementById('aimd-chatgpt-input-enhancement-mount-style')).toBeNull();
-    });
-
-    it('opens the syntax guide modal through the real composer button and popover trigger path', () => {
-        const form = document.createElement('form');
-        const buttonRow = document.createElement('span');
-        const plus = document.createElement('button');
-        const composer = document.createElement('div');
-        plus.dataset.testid = 'composer-plus-btn';
-        composer.setAttribute('contenteditable', 'true');
-        buttonRow.appendChild(plus);
-        form.append(buttonRow, composer);
-        document.body.appendChild(form);
-        const controller = new ChatGPTComposerEditingController(createAdapter({ current: composer }));
-        controller.setInputEnhancementSettings(DEFAULT_CHATGPT_INPUT_ENHANCEMENT_SETTINGS);
-        controller.init();
-
-        buttonRow.querySelector<HTMLElement>('[data-aimd-role="input-enhancement-button"]')
-            ?.shadowRoot?.querySelector<HTMLButtonElement>('button')?.click();
-        document.querySelector<HTMLElement>('[data-aimd-role="input-enhancement-popover"]')
-            ?.shadowRoot?.querySelector<HTMLButtonElement>('[data-role="input-enhancement-guide"]')?.click();
-
-        const guideHost = document.getElementById('aimd-input-enhancement-guide');
-        expect(guideHost?.shadowRoot?.querySelector('[role="dialog"]')).not.toBeNull();
-        expect(guideHost?.shadowRoot?.textContent).toContain('chatgptInputEnhancementGuideBoldSyntax');
-        controller.dispose();
-        expect(document.getElementById('aimd-input-enhancement-guide')).toBeNull();
-    });
-
-    it('unmounts the syntax guide host and releases page interaction locks when the user closes it', () => {
-        document.documentElement.style.overflow = 'auto';
-        document.body.style.overflow = 'scroll';
-        const form = document.createElement('form');
-        const buttonRow = document.createElement('span');
-        const plus = document.createElement('button');
-        const composer = document.createElement('div');
-        plus.dataset.testid = 'composer-plus-btn';
-        composer.setAttribute('contenteditable', 'true');
-        buttonRow.appendChild(plus);
-        form.append(buttonRow, composer);
-        document.body.appendChild(form);
-        const controller = new ChatGPTComposerEditingController(createAdapter({ current: composer }));
-        controller.setInputEnhancementSettings(DEFAULT_CHATGPT_INPUT_ENHANCEMENT_SETTINGS);
-        controller.init();
-
-        try {
-            for (let cycle = 0; cycle < 3; cycle += 1) {
-                const inputEnhancementButton = buttonRow
-                    .querySelector<HTMLElement>('[data-aimd-role="input-enhancement-button"]')
-                    ?.shadowRoot?.querySelector<HTMLButtonElement>('button');
-                inputEnhancementButton?.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true, composed: true }));
-                inputEnhancementButton?.dispatchEvent(new MouseEvent('click', { bubbles: true, composed: true }));
-
-                const guideButton = document
-                    .querySelector<HTMLElement>('[data-aimd-role="input-enhancement-popover"]')
-                    ?.shadowRoot?.querySelector<HTMLButtonElement>('[data-role="input-enhancement-guide"]');
-                guideButton?.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true, composed: true }));
-                guideButton?.dispatchEvent(new MouseEvent('click', { bubbles: true, composed: true }));
-
-                const guideHost = document.getElementById('aimd-input-enhancement-guide');
-                const closeButton = guideHost?.shadowRoot?.querySelector<HTMLButtonElement>('[data-action="modal-cancel"]');
-                closeButton?.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true, composed: true }));
-                closeButton?.dispatchEvent(new MouseEvent('click', { bubbles: true, composed: true }));
-                guideHost?.shadowRoot?.querySelector<HTMLElement>('[role="dialog"]')
-                    ?.dispatchEvent(new Event('animationend'));
-
-                expect(document.getElementById('aimd-input-enhancement-guide')).toBeNull();
-                expect(document.documentElement.style.overflow).toBe('auto');
-                expect(document.body.style.overflow).toBe('scroll');
-            }
-        } finally {
-            controller.dispose();
-        }
-    });
-
-    it('rolls input enhancement settings back when persistence fails', async () => {
-        const form = document.createElement('form');
-        const buttonRow = document.createElement('span');
-        const plus = document.createElement('button');
-        const composer = document.createElement('div');
-        plus.dataset.testid = 'composer-plus-btn';
-        composer.setAttribute('contenteditable', 'true');
-        buttonRow.appendChild(plus);
-        form.append(buttonRow, composer);
-        document.body.appendChild(form);
-        const controller = new ChatGPTComposerEditingController(
-            createAdapter({ current: composer }),
-            { onInputEnhancementChange: async () => false },
-        );
-        controller.setInputEnhancementSettings({
-            ...DEFAULT_CHATGPT_INPUT_ENHANCEMENT_SETTINGS,
-            enabled: false,
-        });
-        controller.init();
-        const button = buttonRow
-            .querySelector<HTMLElement>('[data-aimd-role="input-enhancement-button"]')
-            ?.shadowRoot?.querySelector<HTMLButtonElement>('button');
-
-        button?.click();
-        const master = document.querySelector<HTMLElement>('[data-aimd-role="input-enhancement-popover"]')
-            ?.shadowRoot?.querySelector<HTMLInputElement>('[data-role="input-enhancement-enabled"]');
-        master!.checked = true;
-        master!.dispatchEvent(new Event('change', { bubbles: true }));
-        expect(button?.dataset.active).toBe('1');
-        await Promise.resolve();
-        await Promise.resolve();
-
-        expect(button?.dataset.active).toBe('0');
-        expect(button?.disabled).toBe(false);
-    });
-
     it('removes the entry and pauses every capability when availability is disabled', () => {
         const form = document.createElement('form');
         const buttonRow = document.createElement('span');
@@ -554,40 +431,14 @@ describe('ChatGPTComposerEditingController behavior', () => {
         expect(disabledEnter.defaultPrevented).toBe(false);
 
         controller.setInputEnhancementSettings(DEFAULT_CHATGPT_INPUT_ENHANCEMENT_SETTINGS);
-        expect(buttonRow.querySelectorAll('[data-aimd-role="input-enhancement-button"]')).toHaveLength(1);
+        expect(buttonRow.querySelectorAll('[data-aimd-role="input-enhancement-button"]')).toHaveLength(0);
         const enabledEnter = new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true });
         composer.dispatchEvent(enabledEnter);
         expect(enabledEnter.defaultPrevented).toBe(true);
         expect(composer.value).toBe('1. first\n2. ');
     });
 
-    it('reconciles a removed input enhancement button without creating duplicates', async () => {
-        const form = document.createElement('form');
-        const buttonRow = document.createElement('span');
-        const plus = document.createElement('button');
-        const composer = document.createElement('div');
-        plus.id = 'composer-plus-btn';
-        composer.setAttribute('contenteditable', 'true');
-        buttonRow.appendChild(plus);
-        form.append(buttonRow, composer);
-        document.body.appendChild(form);
-        const controller = new ChatGPTComposerEditingController(createAdapter({ current: composer }));
-        controller.init();
-
-        const selector = '[data-aimd-role="input-enhancement-button"]';
-        expect(buttonRow.querySelectorAll(selector)).toHaveLength(1);
-        FakeMutationObserver.instances[0]!.trigger();
-        await vi.advanceTimersByTimeAsync(200);
-        expect(buttonRow.querySelectorAll(selector)).toHaveLength(1);
-
-        buttonRow.querySelector(selector)?.remove();
-        FakeMutationObserver.instances[0]!.trigger();
-        await vi.advanceTimersByTimeAsync(200);
-        expect(buttonRow.querySelectorAll(selector)).toHaveLength(1);
-        expect(plus.nextElementSibling?.matches(selector)).toBe(true);
-    });
-
-    it('rebinds Enter and the input enhancement button when ChatGPT replaces the observed hydration shell', async () => {
+    it('rebinds Enter without mounting a configuration button when ChatGPT replaces the observed hydration shell', async () => {
         const firstShell = document.createElement('section');
         const secondShell = document.createElement('section');
         const firstRoot = document.createElement('div');
@@ -627,7 +478,7 @@ describe('ChatGPTComposerEditingController behavior', () => {
 
         const observer = FakeMutationObserver.instances[0]!;
         const selector = '[data-aimd-role="input-enhancement-button"]';
-        expect(firstButtonRow.querySelectorAll(selector)).toHaveLength(1);
+        expect(firstButtonRow.querySelectorAll(selector)).toHaveLength(0);
         controller.setInputEnhancementSettings(DEFAULT_CHATGPT_INPUT_ENHANCEMENT_SETTINGS);
 
         observerRoot = secondRoot;
@@ -645,8 +496,8 @@ describe('ChatGPTComposerEditingController behavior', () => {
 
         expect(enter.defaultPrevented).toBe(true);
         expect(firstButtonRow.querySelectorAll(selector)).toHaveLength(0);
-        expect(secondButtonRow.querySelectorAll(selector)).toHaveLength(1);
-        expect(secondPlus.nextElementSibling?.matches(selector)).toBe(true);
+        expect(secondButtonRow.querySelectorAll(selector)).toHaveLength(0);
+        expect(secondPlus.nextElementSibling).toBeNull();
     });
 
     it('converts plain Enter in contenteditable composer into native Shift+Enter events', () => {
@@ -797,8 +648,8 @@ describe('ChatGPTComposerEditingController behavior', () => {
 
         expect(event.defaultPrevented).toBe(true);
         expect(firstRow.querySelectorAll('[data-aimd-role="input-enhancement-button"]')).toHaveLength(0);
-        expect(secondRow.querySelectorAll('[data-aimd-role="input-enhancement-button"]')).toHaveLength(1);
-        expect(secondPlus.nextElementSibling?.matches('[data-aimd-role="input-enhancement-button"]')).toBe(true);
+        expect(secondRow.querySelectorAll('[data-aimd-role="input-enhancement-button"]')).toHaveLength(0);
+        expect(secondPlus.nextElementSibling).toBeNull();
     });
 
     it('removes a list marker as one unit on Backspace at the item body', () => {

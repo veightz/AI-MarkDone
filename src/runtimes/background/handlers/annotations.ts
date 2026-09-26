@@ -1,6 +1,7 @@
 import { PROTOCOL_VERSION, type ExtRequest, type ExtResponse, type ProtocolErrorCode, type ReaderAnnotationNavigatePayload } from '../../../contracts/protocol';
 import {
     createReaderAnnotationBundle,
+    mergeReaderAnnotationDocument,
     decodeReaderAnnotationBundle,
     isReaderAnnotationDocument,
     readerAnnotationStorageKey,
@@ -139,7 +140,7 @@ export async function handleReaderAnnotationRequest(request: ExtRequest): Promis
                     createdAt: Number.isFinite(annotation.createdAt) ? annotation.createdAt : Date.now(),
                     updatedAt: Date.now(),
                 };
-                const next = { ...bundle, annotations: [...bundle.annotations, canonical] };
+                const next = { ...bundle, document: mergeReaderAnnotationDocument(bundle.document, document), annotations: [...bundle.annotations, canonical] };
                 try {
                     await localStoragePort.set({ [readerAnnotationStorageKey(document)]: next });
                 } catch (error) {
@@ -164,6 +165,7 @@ export async function handleReaderAnnotationRequest(request: ExtRequest): Promis
                     createdAt: current.createdAt,
                     updatedAt: Date.now(),
                 };
+                bundle.document = mergeReaderAnnotationDocument(bundle.document, document);
                 const annotations = bundle.annotations.map((entry, itemIndex) => itemIndex === index ? canonical : entry);
                 try {
                     await localStoragePort.set({ [readerAnnotationStorageKey(document)]: { ...bundle, annotations } });
@@ -204,7 +206,8 @@ export async function handleReaderAnnotationRequest(request: ExtRequest): Promis
             try {
                 const tabId = await createTab(lastKnownUrl);
                 if (tabId === null) return { response: err(request.id, request.type, 'SOURCE_UNAVAILABLE', 'Could not open the conversation tab') };
-                await savePendingIntent(tabId, { document, annotationId });
+                // Opening the source succeeded; focus persistence is best-effort.
+                try { await savePendingIntent(tabId, { document, annotationId }); } catch { /* Keep the opened tab. */ }
                 return { response: ok(request.id, request.type, { tabId }) };
             } catch (error) {
                 return { response: err(request.id, request.type, 'SOURCE_UNAVAILABLE', error instanceof Error ? error.message : 'Could not open the conversation tab') };

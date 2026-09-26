@@ -1,5 +1,8 @@
 import { createIcon } from '../../components/Icon';
 import { createIconButton } from '../../components/IconButton';
+import { t } from '../../components/i18n';
+import { createBrandIcon } from '../../../../assets/icons';
+import { bookMarkedIcon, settingsIcon, chevronDownIcon } from '../../../../assets/workspaceIcons';
 
 export type BookmarksPanelTabSpec = {
     id: string;
@@ -7,6 +10,7 @@ export type BookmarksPanelTabSpec = {
     icon: string;
     content: HTMLElement;
     panelClassName?: string;
+    navigation?: HTMLElement;
 };
 
 export type BookmarksPanelTabs = {
@@ -73,6 +77,27 @@ export function createBookmarksPanelShell(params: {
     const sidebar = document.createElement('nav');
     sidebar.className = 'bookmarks-sidebar';
     sidebar.setAttribute('aria-label', params.titleText);
+    const brand = document.createElement('div'); brand.className = 'workspace-brand';
+    const brandLogo = createBrandIcon();
+    brandLogo.className = 'workspace-brand__logo';
+    brandLogo.alt = '';
+    brandLogo.setAttribute('aria-hidden', 'true');
+    const brandName = document.createElement('span');
+    brandName.className = 'workspace-brand__name';
+    brandName.textContent = 'AI-MarkDone';
+    brand.append(brandLogo, brandName);
+    sidebar.append(brand);
+    const modules = document.createElement('div');
+    modules.className = 'library-sidebar-modules';
+    const libraryNav = document.createElement('div');
+    libraryNav.className = 'library-module-content';
+    libraryNav.id = 'aimd-library-navigation';
+    const settingsNav = document.createElement('div');
+    settingsNav.className = 'library-module-content';
+    settingsNav.id = 'aimd-settings-navigation';
+    const infoNav = document.createElement('div');
+    infoNav.className = 'library-info-links';
+    settingsNav.append(infoNav);
 
     const body = document.createElement('div');
     body.className = 'bookmarks-body';
@@ -88,14 +113,30 @@ export function createBookmarksPanelShell(params: {
         btn.dataset.action = 'set-bookmarks-tab';
         btn.dataset.tabId = tab.id;
         btn.dataset.tab = tab.id;
-        btn.setAttribute('aria-label', tab.label);
-        btn.append(createIcon(tab.icon), document.createElement('span'));
-        btn.lastElementChild!.textContent = tab.label;
+        btn.setAttribute('aria-label', tab.id === 'bookmarks' ? t('libraryTitle') : tab.label);
+        const isModule = tab.id === 'bookmarks' || tab.id === 'settings';
+        btn.append(createIcon(tab.id === 'bookmarks' ? bookMarkedIcon : tab.id === 'settings' ? settingsIcon : tab.icon), document.createElement('span'));
+        btn.lastElementChild!.textContent = tab.id === 'bookmarks' ? t('libraryTitle') : tab.label;
+        if (isModule) {
+            btn.classList.add('library-module-button');
+            btn.append(createIcon(chevronDownIcon));
+            btn.setAttribute('aria-controls', tab.id === 'bookmarks' ? libraryNav.id : settingsNav.id);
+        }
         btn.addEventListener('click', () => {
             setActive(tab.id);
             btn.focus({ preventScroll: true } as FocusOptions);
         });
-        sidebar.appendChild(btn);
+        if (tab.id === 'bookmarks') {
+            modules.append(btn, libraryNav);
+            if (tab.navigation) libraryNav.append(tab.navigation);
+        } else if (tab.id === 'settings') {
+            modules.append(btn, settingsNav);
+            if (tab.navigation) settingsNav.prepend(tab.navigation);
+        } else {
+            if (tab.id === 'mappamory' || tab.id === 'sponsor') btn.classList.add('library-info-featured');
+            if (btn.classList.contains('library-info-featured')) infoNav.append(btn);
+            else infoNav.insertBefore(btn, infoNav.querySelector('.library-info-featured'));
+        }
         buttons.set(tab.id, btn);
 
         const panelWrap = document.createElement('section');
@@ -111,14 +152,29 @@ export function createBookmarksPanelShell(params: {
 
     const setActive = (id: string): void => {
         active = id;
+        const label = id === 'bookmarks' ? t('libraryTitle') : params.tabs.find(tab => tab.id === id)?.label ?? params.titleText;
+        panel.setAttribute('aria-label', label); sidebar.setAttribute('aria-label', label);
+        settingsNav.querySelectorAll<HTMLElement>('[data-category]').forEach(button => {
+            if (id !== 'settings') { button.dataset.active = 'false'; button.setAttribute('aria-pressed', 'false'); }
+        });
+        if(id === 'settings') settingsNav.querySelector('.settings-category-navigation')?.dispatchEvent(new Event('aimd:settings-active'));
+        const settingsActive = id !== 'bookmarks';
+        modules.dataset.active = settingsActive ? 'settings' : 'bookmarks';
+        libraryNav.toggleAttribute('inert', settingsActive);
+        libraryNav.setAttribute('aria-hidden', String(settingsActive));
+        settingsNav.toggleAttribute('inert', !settingsActive);
+        settingsNav.setAttribute('aria-hidden', String(!settingsActive));
         buttons.forEach((btn, tabId) => {
-            const isActive = tabId === id;
+            const isActive = tabId === 'settings' ? id !== 'bookmarks' : tabId === id;
+            if (tabId === 'bookmarks' || tabId === 'settings') btn.setAttribute('aria-expanded', String(isActive));
             btn.dataset.active = isActive ? '1' : '0';
             btn.setAttribute('aria-pressed', isActive ? 'true' : 'false');
         });
         panels.forEach((tabPanel, tabId) => {
             const isActive = tabId === id;
             tabPanel.dataset.active = isActive ? '1' : '0';
+            tabPanel.hidden = !isActive;
+            tabPanel.toggleAttribute('inert', !isActive);
             const content = tabPanel.firstElementChild as HTMLElement | null;
             if (content) {
                 content.dataset.active = isActive ? '1' : '0';
@@ -127,8 +183,11 @@ export function createBookmarksPanelShell(params: {
         shell.dispatchEvent(new CustomEvent('aimd:tabs-change', { detail: { id } }));
     };
 
+    settingsNav.addEventListener('aimd:settings-request', () => setActive('settings'));
+    sidebar.append(modules);
     shell.append(sidebar, body);
-    panel.append(header, shell);
+    body.prepend(header);
+    panel.append(shell);
     setActive(params.defaultTabId);
 
     return {

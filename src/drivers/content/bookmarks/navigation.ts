@@ -5,6 +5,7 @@ import {
 } from '../conversation/navigation';
 import { highlightNavigationTarget } from '../conversation/highlight';
 import { isChatGPTPageHostname } from '../../../contracts/chatgptHosts';
+import { getChatGPTConversationId } from '../../../contracts/chatgptConversationId';
 
 const NAV_KEY = 'aimd:bookmarkNavigate:v1';
 export const PENDING_NAVIGATION_EVENT = 'aimd:pending-navigation';
@@ -51,6 +52,11 @@ function normalizeUrlForStorage(url: string, canonicalizeChatGPTHost: boolean): 
  */
 export function isSamePageUrl(a: string, b: string): boolean {
     return normalizeUrlForComparison(a, true) === normalizeUrlForComparison(b, true);
+}
+
+export function isSameChatGPTConversationUrl(a: string, b: string): boolean {
+    const left = getChatGPTConversationId(a);
+    return Boolean(left && left === getChatGPTConversationId(b));
 }
 
 /** Return canonical and legacy URL forms used for read/remove compatibility. */

@@ -8,7 +8,7 @@
     <a href="./LICENSE">
       <img src="https://img.shields.io/github/license/zhaoliangbin42/AI-MarkDone?label=License" alt="License">
     </a>
-    <img src="https://img.shields.io/badge/Version-5.4.1-10A37F" alt="Version 5.4.1">
+    <img src="https://img.shields.io/badge/Version-6.0.0-10A37F" alt="Version 6.0.0">
     </br>
     <img src="https://img.shields.io/badge/Browsers-Chrome%20%7C%20Firefox-10A37F" alt="Browsers">
     <img src="https://img.shields.io/badge/Primary%20Platform-ChatGPT-10A37F" alt="Primary Platform">
@@ -17,7 +17,7 @@
     </a>
   </p>
   <p><strong>Read, save, export. Stay in flow.</strong></p>
-  <p><em>ChatGPT message navigation, Reader source copy, Dynamic Annotation, bookmarks, Google Drive backup, PNG export, and beautiful PDF export.</em></p>
+  <p><em>ChatGPT message navigation, Reader, bookmarks, persistent highlights and annotations, full Library backup, and Markdown, PDF, and PNG export.</em></p>
   <p><strong>The full conversation, without the endless scroll.</strong></p>
   <p>Open a long conversation and click “Refresh message navigation” in the lower-right corner to load the full conversation history, show the complete message directory, and use Reader and export with the entire conversation.</p>
 
@@ -120,10 +120,10 @@ If any of these sound familiar, **AI-MarkDone** is built exactly for you.
 - **Built-in info pages**: Check Changelog, FAQ, and About directly inside the bookmarks panel.
 
 ### ☁️ Google Drive Backup (Experimental)
-- **Optional cloud backup**: Save a verified bookmark snapshot to your own Google Drive.
-- **Safe restore**: Preview a safe merge first, then apply only remote-only additions after confirmation.
-- **Local-first warning**: Because the feature is experimental, AI-MarkDone recommends exporting a local backup before using Google Drive backup.
-- **User-owned data**: AI-MarkDone does not collect your Google account, token, password, or bookmarks.
+- **Optional cloud backup**: Save your bookmarks, persistent highlights, annotations, and folders to your own Google Drive.
+- **Safe restore**: Preview a safe merge first; local conflicts stay unchanged. Older bookmark-only backups remain readable.
+- **Local copy**: Export and import the same Library data as a local file. Older bookmark files still import.
+- **User-owned data**: AI-MarkDone does not collect your Google account, token, or password on its own server.
 
 ### 🧮 One-Click LaTeX Copy
 - **Click-to-copy**: Copy LaTeX from inline (`$...$`) and block (`$$...$$`) formulas.
@@ -208,10 +208,13 @@ npm run build
 
 ## 📅 Changelog (Latest)
 
-### 5.4.1
-- Added an on-demand full-message loading action in the lower-right corner of ChatGPT pages.
-- Directory, Reader, and export now share the same complete message pool after loading is triggered.
-- Fixed incomplete multi-message exports. Thanks to Xiaohongshu users @Elina and @忧郁的鳖老仔.
+### 6.0.0
+- Refreshed the Library, Settings, message toolbar, page controls, and AI-MarkDone logo.
+- Organized Settings into searchable categories and moved Input Enhancement options there.
+- Added persistent color highlights and page annotations, managed together across the ChatGPT page and Reader.
+- Expanded local Library import/export and Google Drive backup to include bookmarks, highlights, annotations, and folders.
+- Improved Directory navigation and previews, and added timestamps beside message character counts.
+- This is a broad update; some details will continue to improve. Feedback on Settings categories and everyday use is welcome.
 
 [Full Changelog](./CHANGELOG.md)
 [Release Notes](./RELEASE_NOTES.md)

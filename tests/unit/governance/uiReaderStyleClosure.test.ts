@@ -8,6 +8,9 @@ const READER_STYLE_SOURCES = new Set([
     'src/services/renderer/markdownTheme.ts',
     'src/ui/content/reader/ReaderCommentPopover.ts',
     'src/ui/content/reader/readerPanelTemplate.ts',
+    'src/ui/content/reader/readerPanelBase.css',
+    'src/ui/content/reader/readerPanelLayout.css',
+    'src/ui/content/reader/readerPanelContent.css',
 ]);
 
 describe('Reader style-value closure', () => {

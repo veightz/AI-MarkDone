@@ -1,5 +1,5 @@
 import { validateCloudBackupSnapshot } from '../../../core/cloudBackup/snapshot';
-import type { CloudBackupSnapshotV1 } from '../../../core/cloudBackup/types';
+import type { CloudBackupSnapshot } from '../../../core/cloudBackup/types';
 import { CloudBackupProviderError, type CloudBackupProvider } from './provider';
 import type { CloudBackupAccountSummary, CloudBackupAuthStrategy, CloudBackupBrowserFamily, CloudBackupDiagnostics } from '../../../contracts/protocol';
 import {
@@ -727,9 +727,9 @@ function escapeDriveQuery(value: string): string {
     return value.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
 }
 
-function snapshotFileName(snapshot: CloudBackupSnapshotV1): string {
+function snapshotFileName(snapshot: CloudBackupSnapshot): string {
     const safeTime = snapshot.createdAt.replace(/[:.]/g, '-');
-    return `aimd-bookmarks-${safeTime}-${snapshot.snapshotId}.json`;
+    return `aimd-${snapshot.schemaVersion === 3 ? 'library' : 'bookmarks'}-${safeTime}-${snapshot.snapshotId}.json`;
 }
 
 export function idFromGoogleDriveSnapshotFileName(name: string): string {
@@ -758,8 +758,11 @@ export function createGoogleDriveProvider(options: GoogleDriveProviderOptions = 
     async function findFolder(name: string, parentId: string | null, token: string): Promise<string | null> {
         const parent = parentId ? ` and '${escapeDriveQuery(parentId)}' in parents` : '';
         const q = `name='${escapeDriveQuery(name)}' and mimeType='${FOLDER_MIME}' and trashed=false${parent}`;
-        const url = `${DRIVE_API}/files?q=${encodeURIComponent(q)}&fields=files(id,name)&pageSize=1`;
+        const url = `${DRIVE_API}/files?q=${encodeURIComponent(q)}&fields=nextPageToken,files(id,name)&pageSize=2`;
         const json = await (await driveFetch(url, { method: 'GET' }, token)).json();
+        if ((json.files?.length ?? 0) > 1 || json.nextPageToken) {
+            throw new CloudBackupProviderError('CONFLICT', 'Google Drive contains duplicate AI-MarkDone backup folders');
+        }
         return json.files?.[0]?.id ?? null;
     }
 
@@ -792,7 +795,7 @@ export function createGoogleDriveProvider(options: GoogleDriveProviderOptions = 
         return findFolder('bookmarks', backups, token);
     }
 
-    async function downloadByFileId(fileId: string, token: string): Promise<CloudBackupSnapshotV1> {
+    async function downloadByFileId(fileId: string, token: string): Promise<CloudBackupSnapshot> {
         const response = await driveFetch(`${DRIVE_API}/files/${encodeURIComponent(fileId)}?alt=media`, { method: 'GET' }, token);
         return validateCloudBackupSnapshot(await response.json());
     }
@@ -862,7 +865,7 @@ export function createGoogleDriveProvider(options: GoogleDriveProviderOptions = 
                     parents: [folderId],
                 };
                 const created = await uploadSnapshotViaResumableSession(snapshotJson, metadata, token);
-                let downloaded: CloudBackupSnapshotV1 | null = null;
+                let downloaded: CloudBackupSnapshot | null = null;
                 try {
                     downloaded = await downloadByFileId(created.id, token);
                 } catch {
@@ -882,21 +885,38 @@ export function createGoogleDriveProvider(options: GoogleDriveProviderOptions = 
         },
         async listSnapshots() {
             return runDriveOperation(async (token) => {
+                fileBySnapshotId.clear();
                 const folderId = await findBackupFolder(token);
                 if (!folderId) return [];
-                const q = `'${escapeDriveQuery(folderId)}' in parents and trashed=false and name contains 'aimd-bookmarks-'`;
-                const url = `${DRIVE_API}/files?q=${encodeURIComponent(q)}&fields=files(id,name,size,createdTime)&orderBy=createdTime desc&pageSize=50`;
-                const json = await (await driveFetch(url, { method: 'GET' }, token)).json();
-                return (json.files ?? []).map((file: any) => {
+                const q = `'${escapeDriveQuery(folderId)}' in parents and trashed=false and (name contains 'aimd-bookmarks-' or name contains 'aimd-library-')`;
+                const files: any[] = [];
+                const seenPageTokens = new Set<string>();
+                let pageToken: string | null = null;
+                do {
+                    const query = new URLSearchParams({ q, fields: 'nextPageToken,files(id,name,size,createdTime)', orderBy: 'createdTime desc', pageSize: '50' });
+                    if (pageToken) query.set('pageToken', pageToken);
+                    const json = await (await driveFetch(`${DRIVE_API}/files?${query}`, { method: 'GET' }, token)).json();
+                    files.push(...(Array.isArray(json.files) ? json.files : []));
+                    const next = typeof json.nextPageToken === 'string' && json.nextPageToken ? json.nextPageToken : null;
+                    if (next && seenPageTokens.has(next)) throw new CloudBackupProviderError('INTERNAL_ERROR', 'Google Drive returned a repeated backup page');
+                    if (next) seenPageTokens.add(next);
+                    pageToken = next;
+                } while (pageToken);
+                const snapshotIds = new Set<string>();
+                const resolved = files.filter((file: any) => /^aimd-(?:bookmarks|library)-.*\.json$/i.test(String(file.name ?? ''))).map((file: any) => {
                     const snapshotId = idFromGoogleDriveSnapshotFileName(String(file.name ?? ''));
-                    fileBySnapshotId.set(snapshotId, file.id);
+                    if (snapshotIds.has(snapshotId)) throw new CloudBackupProviderError('CONFLICT', 'Google Drive contains duplicate backup IDs; remove one copy before restoring');
+                    snapshotIds.add(snapshotId);
                     return {
                         snapshotId,
                         name: String(file.name ?? ''),
                         createdAt: String(file.createdTime ?? ''),
                         size: Number(file.size ?? 0),
+                        fileId: file.id,
                     };
                 });
+                for (const item of resolved) fileBySnapshotId.set(item.snapshotId, item.fileId);
+                return resolved.map(({ fileId: _fileId, ...summary }) => summary);
             });
         },
         async downloadSnapshot(snapshotId) {

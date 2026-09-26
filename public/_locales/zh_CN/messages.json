@@ -263,6 +263,10 @@
         "message": "取消全选",
         "description": "Message for deselectAll"
     },
+    "invertSelection": {
+        "message": "反选",
+        "description": "Invert the current selection"
+    },
     "readerMode": {
         "message": "阅读模式",
         "description": "Message for readerMode"
@@ -274,6 +278,14 @@
     "bookmarkUnavailable": {
         "message": "当前消息还不能保存书签",
         "description": "当前消息缺少稳定书签数据时显示的提示"
+    },
+    "bookmarkUnreliableLocation": {
+        "message": "无法可靠定位原消息",
+        "description": "旧书签缺少消息身份或当前分支没有原消息时显示"
+    },
+    "bookmarkDuplicateManagedInLibrary": {
+        "message": "这条消息对应多份书签，请到资料库逐条管理。",
+        "description": "工具栏无法确定要取消哪一条旧书签时显示"
     },
     "copyFailed": {
         "message": "复制失败",
@@ -375,6 +387,10 @@
         "message": "注释已保存",
         "description": "Message for readerCommentSaved"
     },
+    "readerCommentSessionOnly": {
+        "message": "仅在当前会话中保留。",
+        "description": "Reader annotation confirmation when persistence is disabled or unavailable"
+    },
     "readerCommentDeleted": {
         "message": "注释已删除",
         "description": "Message for readerCommentDeleted"
@@ -424,15 +440,15 @@
         "description": "Reader annotation manager timeline view"
     },
     "readerCommentBulkEdit": {
-        "message": "批量编辑",
-        "description": "Reader annotation manager bulk edit action"
+        "message": "管理选择",
+        "description": "Enter multi-selection mode in the Reader annotation manager"
     },
     "readerCommentBulkCancel": {
-        "message": "退出批量编辑",
-        "description": "Reader annotation manager exit bulk edit action"
+        "message": "完成",
+        "description": "Finish multi-selection in the Reader annotation manager"
     },
     "readerCommentSelectAll": {
-        "message": "全选",
+        "message": "全选当前结果",
         "description": "Reader annotation manager select all"
     },
     "readerCommentDeleteSelected": {
@@ -488,7 +504,7 @@
         "description": "Reader annotation persistence setting description"
     },
     "readerAnnotationPersistenceTooltip": {
-        "message": "开启后，新注释会持久化保存，关闭浏览器也不会消失，但建议定期清理。",
+        "message": "刷新或关闭浏览器后仍保留新建注释。",
         "description": "Reader annotation persistence tooltip"
     },
     "readerCommentCopyEmpty": {
@@ -504,7 +520,7 @@
         "description": "Message for readerCommentTemplate"
     },
     "readerCommentTemplateHint": {
-        "message": "使用上方按钮插入占位标签。标签文案可本地化，导出时会使用稳定的内部占位符。",
+        "message": "占位符会替换成选中文字和注释。",
         "description": "Message for readerCommentTemplateHint"
     },
     "readerCommentTemplatePlaceholder": {
@@ -548,7 +564,7 @@
         "description": "Message for readerDefaultOpenModeLabel"
     },
     "readerDefaultOpenModeDesc": {
-        "message": "选择阅读器默认以全屏还是居中面板打开。",
+        "message": "全屏或居中面板。",
         "description": "Message for readerDefaultOpenModeDesc"
     },
     "readerOpenModeFullscreen": {
@@ -644,7 +660,7 @@
         "description": "Message for readerCommentPromptListLabel"
     },
     "readerCommentPromptListDesc": {
-        "message": "打开统一的 Prompt 管理器，同一套提示词用于 ChatGPT 输入和 Reader 注释。",
+        "message": "管理 ChatGPT 和 Reader 使用的提示词。",
         "description": "Message for readerCommentPromptListDesc"
     },
     "readerCommentPromptPositionBottomLabel": {
@@ -976,11 +992,11 @@
         "description": "Message for createFolder"
     },
     "importBookmarks": {
-        "message": "导入书签",
+        "message": "导入资料库",
         "description": "Message for importBookmarks"
     },
     "exportBookmarks": {
-        "message": "导出书签",
+        "message": "导出资料库",
         "description": "Message for exportBookmarks"
     },
     "toggleFolder": {
@@ -1024,7 +1040,7 @@
         "description": "Message for deleteFolder"
     },
     "deleteFolderConfirm": {
-        "message": "删除“$1”及其子文件夹？",
+        "message": "删除空文件夹“$1”？",
         "description": "Message for deleteFolderConfirm"
     },
     "openConversation": {
@@ -1128,7 +1144,7 @@
         "description": "Message for buttonsEntrypointsSettingsLabel"
     },
     "buttonsEntrypointsSettingsDesc": {
-        "message": "集中管理 AI-MarkDone 所有可见按钮。",
+        "message": "选择显示哪些按钮。",
         "description": "Message for buttonsEntrypointsSettingsDesc"
     },
     "chatgptReadingInputSettingsLabel": {
@@ -1360,7 +1376,7 @@
         "description": "Prompt 联想触发行为"
     },
     "promptAutocompleteKeyboardHint": {
-        "message": "输入 \\ + 触发词；↑ ↓ 选择，Enter/Tab 插入 Prompt，→ 插入 Prompt + 当前会话注释（有注释时），Esc 关闭。",
+        "message": "↑/↓ 选择 · Enter/Tab 插入 · → 连同注释插入 · Esc 关闭",
         "description": "Prompt 联想下方显示的触发方式和键盘提示"
     },
     "chatgptFormulaPreviewTitle": {
@@ -1396,7 +1412,7 @@
         "description": "Message for chatgptShowMessageStepperLabel"
     },
     "chatgptShowMessageStepperDesc": {
-        "message": "在 ChatGPT 对话页显示小型上一条 / 下一条消息按钮。",
+        "message": "快速跳到上一条或下一条消息。",
         "description": "Message for chatgptShowMessageStepperDesc"
     },
     "chatgptShowPageBookmarkControlLabel": {
@@ -1464,7 +1480,7 @@
         "description": "Message for chatgptDirectoryRetiredNotice"
     },
     "chatgptDirectoryEnabledDesc": {
-        "message": "在 ChatGPT 对话页显示 AI-MarkDone 右侧目录，并自动隐藏 ChatGPT 官方对话导航。",
+        "message": "在右侧显示对话目录，并隐藏官网导航。",
         "description": "Message for chatgptDirectoryEnabledDesc"
     },
     "chatgptDirectoryModeLabel": {
@@ -1472,7 +1488,7 @@
         "description": "Message for chatgptDirectoryModeLabel"
     },
     "chatgptDirectoryModeDesc": {
-        "message": "选择右侧目录在对话页中的显示方式。",
+        "message": "预览摘要或展开目录。",
         "description": "Message for chatgptDirectoryModeDesc"
     },
     "chatgptDirectoryModePreview": {
@@ -1504,7 +1520,7 @@
         "description": "Message for chatgptDirectoryPreviewMaxCharsLabel"
     },
     "chatgptDirectoryPreviewMaxCharsDesc": {
-        "message": "设置 hover 预览框最多显示多少字。",
+        "message": "悬停预览的字符上限。",
         "description": "Message for chatgptDirectoryPreviewMaxCharsDesc"
     },
     "reader": {
@@ -1808,11 +1824,11 @@
         "description": "Message for saveMessagesDesc"
     },
     "wordCountLabel": {
-        "message": "工具栏 > 字数统计",
-        "description": "Message for wordCountLabel"
+        "message": "字符统计",
+        "description": "Settings order or statistics label."
     },
     "wordCountDesc": {
-        "message": "在工具栏中显示字数统计",
+        "message": "显示回复的字符统计。",
         "description": "Message for wordCountDesc"
     },
     "clickToCopyLabel": {
@@ -1908,23 +1924,23 @@
         "description": "Message for contextOnlySaveLabel"
     },
     "contextOnlySaveDesc": {
-        "message": "保存书签时仅保留 500 字符以节省空间。（书签预览时内容将不完整，但不影响跳转原页面查看）",
+        "message": "书签只保存前 500 个字符；完整内容可在原页查看。",
         "description": "Message for contextOnlySaveDesc"
     },
     "renderCodeBlocksLabel": {
-        "message": "阅读器 > 渲染代码块",
+        "message": "Reader 代码块",
         "description": "Message for renderCodeBlocksLabel"
     },
     "renderCodeBlocksDesc": {
-        "message": "在阅读器模式下显示代码块，否则显示占位符。",
+        "message": "关闭后仅显示代码占位符。",
         "description": "Message for renderCodeBlocksDesc"
     },
     "readerOutlineToggleLabel": {
-        "message": "阅读器 > 显示标题大纲",
+        "message": "Reader 标题大纲",
         "description": "Message for readerOutlineToggleLabel"
     },
     "readerOutlineToggleDesc": {
-        "message": "当当前阅读器页面包含多个 Markdown 标题时，在右侧显示标题导航大纲。",
+        "message": "在右侧列出正文标题。",
         "description": "Message for readerOutlineToggleDesc"
     },
     "supportDevDesc": {
@@ -2084,7 +2100,7 @@
         "description": "Message for supportContactTitle"
     },
     "supportContactDesc": {
-        "message": "欢迎通过邮件发送问题、使用场景和功能建议。除非排查问题确实需要，请尽量不要发送私人对话内容。",
+        "message": "通过邮件反馈问题或建议。",
         "description": "Message for supportContactDesc"
     },
     "supportContactEmail": {
@@ -2116,7 +2132,7 @@
         "description": "Title shown above the community group cards"
     },
     "communityCardDesc": {
-        "message": "欢迎进群交流使用体验、反馈问题、提出功能建议，也可以和其他用户分享自己的工作流。",
+        "message": "交流使用体验、工作流与建议。",
         "description": "Description shown above the community group cards"
     },
     "communityQQTitle": {
@@ -2380,7 +2396,7 @@
         "description": "Message for backupTitle"
     },
     "backupWarning": {
-        "message": "⚠️ 卸载扩展将清空所有书签。",
+        "message": "卸载扩展会删除本地资料库数据，建议先导出一份副本。",
         "description": "Message for backupWarning"
     },
     "exportAllBtn": {
@@ -2408,7 +2424,7 @@
         "description": "Settings data backup card label for local export"
     },
     "cloudBackupGoogleDriveDesc": {
-        "message": "将经过校验的书签快照保存到你自己的 Google Drive。",
+        "message": "将已保存的书签、高亮、注释和文件夹备份到你的 Google Drive。",
         "description": "Google Drive cloud backup row description"
     },
     "cloudBackupDisconnected": {
@@ -2444,7 +2460,7 @@
         "description": "Confirmation title before starting Google Drive authorization"
     },
     "cloudBackupConnectConfirmDesc": {
-        "message": "AI-MarkDone 会打开 Google 授权，让你选择自己的 Drive。这个功能仍在实验阶段；备份到 Google Drive 前，建议先导出一份本地副本。AI-MarkDone 不会收集你的信息。",
+        "message": "连接 Google Drive 后，可备份已保存的书签、高亮、注释和文件夹。只有点击“立即备份”才会上传。",
         "description": "Confirmation message before starting Google Drive authorization"
     },
     "cloudBackupConnectConfirmAction": {
@@ -2468,7 +2484,7 @@
         "description": "Preview restoring from cloud backup"
     },
     "cloudBackupApplyRestore": {
-        "message": "应用安全合并",
+        "message": "合并到本地资料库",
         "description": "Confirm applying a safe-merge restore from Google Drive backup"
     },
     "cloudBackupCompleteTitle": {
@@ -2476,7 +2492,7 @@
         "description": "Cloud backup completion title"
     },
     "cloudBackupCompleteDesc": {
-        "message": "已将经过校验的书签快照保存到你的 Google Drive。",
+        "message": "已将经过校验的资料库备份保存到你的 Google Drive。",
         "description": "Cloud backup completion message"
     },
     "cloudBackupErrorTitle": {
@@ -2488,7 +2504,7 @@
         "description": "No cloud backups found title"
     },
     "cloudBackupNoSnapshotsDesc": {
-        "message": "Google Drive 中还没有 AI-MarkDone 书签备份。",
+        "message": "Google Drive 中还没有 AI-MarkDone 备份。",
         "description": "No cloud backups found message"
     },
     "cloudBackupRestorePreviewTitle": {
@@ -2503,12 +2519,40 @@
         "message": "已新增 $1 个书签，保留 $2 个仅本地项目，跳过 $3 个重复项，并保持 $4 个冲突项不变。",
         "description": "Cloud restore completion summary"
     },
+    "cloudBackupLibraryRestoreCompleteDesc": {
+        "message": "已新增 $1 个书签、$2 条高亮、$3 条注释和 $4 个文件夹；本地冲突项保持不变。",
+        "description": "Complete Library restore summary"
+    },
+    "cloudBackupBookmarkFolders": {
+        "message": "书签文件夹",
+        "description": "Library transfer preview count"
+    },
+    "cloudBackupMarkFolders": {
+        "message": "高亮与注释文件夹",
+        "description": "Library transfer preview count"
+    },
+    "cloudBackupConversationNames": {
+        "message": "已归档对话",
+        "description": "Library transfer preview count"
+    },
+    "cloudBackupLibraryConflicts": {
+        "message": "$1 个资料库冲突项会保留本地版本。",
+        "description": "Library transfer conflict note"
+    },
+    "libraryImportBookmarkConflicts": {
+        "message": "$1 个书签冲突项已保留本地版本。",
+        "description": "Local Library import result"
+    },
+    "cloudBackupLegacyScope": {
+        "message": "这份旧备份只包含书签；高亮、注释及其文件夹保持不变。",
+        "description": "Scope note for old cloud snapshots"
+    },
     "cloudBackupStatusChecking": {
         "message": "正在检查 Google Drive 状态...",
         "description": "Cloud backup status check message"
     },
     "cloudBackupPrivacyNote": {
-        "message": "AI-MarkDone 不会收集你的信息。",
+        "message": "已保存的书签、高亮、注释和文件夹会存入你授权的 Google Drive。",
         "description": "Cloud backup privacy note"
     },
     "cloudBackupStatusLabel": {
@@ -2532,7 +2576,7 @@
         "description": "Title for the Google Drive restore snapshot picker"
     },
     "cloudBackupChooseSnapshotDesc": {
-        "message": "选择要检查的 Google Drive 备份。此步骤只预览安全合并，不会修改本地书签。",
+        "message": "选择一份备份，预览合并结果。",
         "description": "Description for the Google Drive restore snapshot picker"
     },
     "cloudBackupProgressConfirmingAccess": {
@@ -2540,7 +2584,7 @@
         "description": "Google Drive backup progress step for confirming short-lived access"
     },
     "cloudBackupProgressPreparingBookmarks": {
-        "message": "正在准备本地书签...",
+        "message": "正在准备资料库...",
         "description": "Google Drive backup progress step"
     },
     "cloudBackupProgressCreatingSnapshot": {
@@ -2568,7 +2612,7 @@
         "description": "Google Drive restore progress step"
     },
     "cloudBackupProgressBuildingPreview": {
-        "message": "正在生成安全合并预览...",
+        "message": "正在生成合并预览…",
         "description": "Google Drive restore progress step"
     },
     "cloudBackupProgressWaitingConfirmation": {
@@ -2576,7 +2620,7 @@
         "description": "Google Drive restore progress step"
     },
     "cloudBackupProgressApplyingMerge": {
-        "message": "正在应用安全合并...",
+        "message": "正在合并…",
         "description": "Google Drive restore progress step"
     },
     "cloudBackupProgressWorking": {
@@ -2592,7 +2636,7 @@
         "description": "Fallback file size label for Google Drive backup snapshots"
     },
     "cloudBackupRestorePreviewKind": {
-        "message": "安全合并预览",
+        "message": "合并预览",
         "description": "Title for the Google Drive restore safe-merge preview"
     },
     "cloudBackupRestoreLocalOnlyWarning": {
@@ -2608,7 +2652,7 @@
         "description": "Button and title for managing Google Drive backup files"
     },
     "cloudBackupManageBackupsDesc": {
-        "message": "这里列出的是 AI-MarkDone 在你的 Google Drive 中创建的备份文件。把某个备份移到回收站，不会修改本地书签。",
+        "message": "管理保存在 Google Drive 中的资料库备份。",
         "description": "Description for the Google Drive backup manager"
     },
     "cloudBackupManageEmpty": {
@@ -2624,7 +2668,7 @@
         "description": "Confirmation title for moving a Google Drive backup file to trash"
     },
     "cloudBackupMoveToTrashConfirmDesc": {
-        "message": "这会把“$1”移到 Google Drive 回收站。本地书签不会被修改。",
+        "message": "将“$1”移到 Google Drive 回收站？本地资料库保持不变。",
         "description": "Confirmation message for moving a Google Drive backup file to trash"
     },
     "selectMessagesLabel": {
@@ -2968,7 +3012,7 @@
         "description": "Message for settingsInterfaceLanguageDesc"
     },
     "backupBookmarksHint": {
-        "message": "在大改动或重装浏览器前，建议先导出全部书签做备份。",
+        "message": "更换浏览器或重装扩展前，建议先导出资料库。",
         "description": "Message for backupBookmarksHint"
     },
     "sponsorOpenSourceTitle": {
@@ -3024,7 +3068,7 @@
         "description": "Message for sponsorThanksAriaLabel"
     },
     "exportAllBookmarksLabel": {
-        "message": "导出全部书签",
+        "message": "导出资料库",
         "description": "Message for exportAllBookmarksLabel"
     },
     "moveBookmarkLabel": {
@@ -3164,7 +3208,7 @@
         "description": "Message for detachedReaderExperimentalTitle"
     },
     "detachedReaderExperimentalMessage": {
-        "message": "独立阅读器是实验性功能，用来尽量避开 ChatGPT 官网页面的卡顿。确定后，当前对话会在新的扩展页中显示。它不会收集或上传你的任何信息；内容来自原 ChatGPT 标签页的阅读器快照，刷新、发送和定位仍会回到原标签页执行。若原标签页关闭或不可达，独立页会保留已打开的内容，但无法刷新、发送或定位。当前版本不做实时同步，需要手动刷新。",
+        "message": "在独立页面阅读当前对话。内容需要手动刷新；发送和定位需要原 ChatGPT 标签页保持打开。",
         "description": "Message for detachedReaderExperimentalMessage"
     },
     "detachedReaderExperimentalConfirm": {
@@ -3252,7 +3296,7 @@
         "description": "Tab label for all annotations"
     },
     "pageAnnotationManagerAllHint": {
-        "message": "“全部”仅用于查找和管理；如需插入，请切换到“当前会话”。",
+        "message": "插入请切回“当前会话”。",
         "description": "说明全部注释不能直接插入的提示"
     },
     "pageAnnotationManagerSearch": {
@@ -3394,5 +3438,437 @@
     "pageAnnotationChipAction": {
         "message": "打开当前会话注释",
         "description": "从输入框打开当前会话注释管理器的无障碍标签"
+    },
+    "highlightColorBlue": {
+        "message": "雾蓝",
+        "description": "Label for a highlight color choice"
+    },
+    "highlightColorYellow": {
+        "message": "奶油黄",
+        "description": "Label for a highlight color choice"
+    },
+    "highlightColorRed": {
+        "message": "浅珊瑚红",
+        "description": "Label for a highlight color choice"
+    },
+    "libraryTitle": {
+        "message": "资料库",
+        "description": "Library interface label for libraryTitle"
+    },
+    "libraryFolders": {
+        "message": "书签文件夹",
+        "description": "Library interface label for libraryFolders"
+    },
+    "libraryHighlightFolders": {
+        "message": "高亮文件夹",
+        "description": "Folder navigation heading in the highlights library"
+    },
+    "libraryAnnotationFolders": {
+        "message": "注释文件夹",
+        "description": "Folder navigation heading in the annotations library"
+    },
+    "libraryMore": {
+        "message": "更多",
+        "description": "Library interface label for libraryMore"
+    },
+    "libraryManage": {
+        "message": "批量管理",
+        "description": "Library interface label for libraryManage"
+    },
+    "libraryManageDone": {
+        "message": "完成管理",
+        "description": "Library interface label for libraryManageDone"
+    },
+    "librarySelectPage": {
+        "message": "选择本页",
+        "description": "Library interface label for librarySelectPage"
+    },
+    "librarySelectAllBookmarks": {
+        "message": "全选书签",
+        "description": "Select all bookmark results matching the current filters"
+    },
+    "libraryInvertBookmarks": {
+        "message": "反选书签",
+        "description": "Invert bookmark selection within the current results"
+    },
+    "librarySelectAllResults": {
+        "message": "全选当前结果",
+        "description": "Select all items or conversations matching the current Library filters"
+    },
+    "libraryInvertResults": {
+        "message": "反选当前结果",
+        "description": "Invert item or conversation selection within the current Library results"
+    },
+    "librarySwitchToItems": {
+        "message": "切换到条目",
+        "description": "Change the Library batch selection scope to individual items"
+    },
+    "librarySwitchToConversations": {
+        "message": "切换到对话",
+        "description": "Change the Library batch selection scope to conversations"
+    },
+    "libraryLoadFailed": {
+        "message": "资料读取失败",
+        "description": "Library interface label for libraryLoadFailed"
+    },
+    "libraryNoMatches": {
+        "message": "没有匹配的资料",
+        "description": "Library interface label for libraryNoMatches"
+    },
+    "libraryEmpty": {
+        "message": "暂无资料",
+        "description": "Library interface label for libraryEmpty"
+    },
+    "libraryRetry": {
+        "message": "重试",
+        "description": "Library interface label for libraryRetry"
+    },
+    "libraryRecordCount": {
+        "message": "$1 条",
+        "description": "Library interface label for libraryRecordCount"
+    },
+    "libraryPreviousPage": {
+        "message": "上一页",
+        "description": "Library interface label for libraryPreviousPage"
+    },
+    "libraryNextPage": {
+        "message": "下一页",
+        "description": "Library interface label for libraryNextPage"
+    },
+    "libraryExpandFolder": {
+        "message": "展开或收起文件夹",
+        "description": "Library interface label for libraryExpandFolder"
+    },
+    "librarySelectFolder": {
+        "message": "选择文件夹 $1 及其内容",
+        "description": "Library interface label for librarySelectFolder"
+    },
+    "librarySelectRecord": {
+        "message": "选择 $1",
+        "description": "Library interface label for librarySelectRecord"
+    },
+    "libraryPreview": {
+        "message": "阅读预览",
+        "description": "Library interface label for libraryPreview"
+    },
+    "libraryMovedTo": {
+        "message": "已移至 $1",
+        "description": "Library interface label for libraryMovedTo"
+    },
+    "libraryCurrentFolder": {
+        "message": "当前位置",
+        "description": "Library action label for libraryCurrentFolder"
+    },
+    "libraryTargetFolder": {
+        "message": "目标位置",
+        "description": "Library action label for libraryTargetFolder"
+    },
+    "libraryRootFolder": {
+        "message": "顶层",
+        "description": "Library action label for libraryRootFolder"
+    },
+    "libraryPartialMove": {
+        "message": "已移动 $1 条，另有 $2 条已不存在。",
+        "description": "Library action label for libraryPartialMove"
+    },
+    "libraryFolderNotEmpty": {
+        "message": "请先移出其中的对话和子文件夹。",
+        "description": "Library folder and conversation management"
+    },
+    "libraryDeleteSelectionConfirm": {
+        "message": "删除所选 $1 条书签和 $2 个文件夹？所选文件夹中的内容也会删除。",
+        "description": "Library action label for libraryDeleteSelectionConfirm"
+    },
+    "operationFailed": {
+        "message": "操作失败，请重试。",
+        "description": "Fallback operation error."
+    },
+    "librarySavedRefreshFailed": {
+        "message": "已保存，但列表刷新失败。重试以重新读取。",
+        "description": "Write succeeded but the library projection could not be refreshed."
+    },
+    "librarySavedValueChanged": {
+        "message": "已保存。请恢复原值后重试，或关闭再重新编辑。",
+        "description": "The saved mutation cannot be replayed with a different value after refresh failure."
+    },
+    "libraryMoveTo": {
+        "message": "移动到",
+        "description": "Library operation label."
+    },
+    "librarySelectionSummary": {
+        "message": "$1 个书签 · $2 个文件夹",
+        "description": "Library operation label."
+    },
+    "libraryDeletedSummary": {
+        "message": "已移除 $1 个书签、$2 个文件夹。",
+        "description": "Library operation label."
+    },
+    "settingsCategoryAppearance": {
+        "message": "外观与布局",
+        "description": "Settings center label."
+    },
+    "settingsCategoryReading": {
+        "message": "阅读与导航",
+        "description": "Settings center label."
+    },
+    "settingsCategoryInput": {
+        "message": "输入与 Prompt",
+        "description": "Settings center label."
+    },
+    "settingsCategoryMarks": {
+        "message": "标记与注释",
+        "description": "Settings center label."
+    },
+    "settingsCategoryExport": {
+        "message": "复制与导出",
+        "description": "Settings center label."
+    },
+    "settingsCategoryControls": {
+        "message": "按钮与快捷键",
+        "description": "Settings center label."
+    },
+    "settingsCategoryData": {
+        "message": "数据与备份",
+        "description": "Settings center label."
+    },
+    "settingsCategoryAdvanced": {
+        "message": "高级与诊断",
+        "description": "Settings center label."
+    },
+    "settingsSearch": {
+        "message": "搜索设置",
+        "description": "Settings center label."
+    },
+    "settingsSearchResults": {
+        "message": "搜索结果",
+        "description": "Settings center label."
+    },
+    "settingsThemeMode": {
+        "message": "主题",
+        "description": "Settings center label."
+    },
+    "settingsThemeAuto": {
+        "message": "跟随页面",
+        "description": "Settings center label."
+    },
+    "settingsThemeLight": {
+        "message": "浅色",
+        "description": "Settings center label."
+    },
+    "settingsThemeDark": {
+        "message": "深色",
+        "description": "Settings center label."
+    },
+    "settingsHideOfficialNavigation": {
+        "message": "隐藏 ChatGPT 官方导航",
+        "description": "Settings center label."
+    },
+    "settingsReaderBodyFont": {
+        "message": "Reader 正文字号",
+        "description": "Settings center label."
+    },
+    "settingsReaderBodyWidth": {
+        "message": "Reader 正文宽度",
+        "description": "Settings center label."
+    },
+    "settingsCommentSort": {
+        "message": "注释输出顺序",
+        "description": "Settings center label."
+    },
+    "settingsSortCreated": {
+        "message": "创建时间",
+        "description": "Settings center label."
+    },
+    "settingsSortPosition": {
+        "message": "消息位置",
+        "description": "Settings center label."
+    },
+    "settingsDefaultBookmarkSort": {
+        "message": "默认书签排序",
+        "description": "Settings center label."
+    },
+    "settingsResetReaderNotice": {
+        "message": "再次显示 Reader 提示",
+        "description": "Settings center label."
+    },
+    "settingsReaderNoticeReset": {
+        "message": "Reader 提示已重置",
+        "description": "Settings center label."
+    },
+    "sortTimeDesc": {
+        "message": "从新到旧",
+        "description": "Settings order or statistics label."
+    },
+    "sortTimeAsc": {
+        "message": "从旧到新",
+        "description": "Settings order or statistics label."
+    },
+    "sortAlphaAsc": {
+        "message": "标题正序",
+        "description": "Settings order or statistics label."
+    },
+    "sortAlphaDesc": {
+        "message": "标题倒序",
+        "description": "Settings order or statistics label."
+    },
+    "messageActions": {
+        "message": "消息操作",
+        "description": "Message toolbar label."
+    },
+    "messageCharacterCount": {
+        "message": "$1 字符",
+        "description": "Message toolbar label."
+    },
+    "operationCompleted": {
+        "message": "已完成",
+        "description": "Message toolbar label."
+    },
+    "highlightLoadFailed": {
+        "message": "无法读取高亮。",
+        "description": "Library and highlight interface"
+    },
+    "highlightSaveFailed": {
+        "message": "高亮保存失败，请重试。",
+        "description": "Library and highlight interface"
+    },
+    "libraryAnnotations": {
+        "message": "注释",
+        "description": "Library and highlight interface"
+    },
+    "libraryHighlights": {
+        "message": "高亮",
+        "description": "Library and highlight interface"
+    },
+    "librarySearchMarks": {
+        "message": "搜索内容或对话",
+        "description": "Library and highlight interface"
+    },
+    "libraryReadFailed": {
+        "message": "无法读取资料。",
+        "description": "Library and highlight interface"
+    },
+    "libraryFoldersUnavailable": {
+        "message": "文件夹未加载，已显示全部资料。",
+        "description": "Folder metadata failed; source records remain readable"
+    },
+    "libraryMarksEmpty": {
+        "message": "暂无条目",
+        "description": "Library and highlight interface"
+    },
+    "libraryConversation": {
+        "message": "对话",
+        "description": "Library and highlight interface"
+    },
+    "libraryOpenOriginal": {
+        "message": "打开原页",
+        "description": "Library and highlight interface"
+    },
+    "libraryTemplates": {
+        "message": "模板",
+        "description": "Library and highlight interface"
+    },
+    "libraryDeleteMarkTitle": {
+        "message": "删除此条目？",
+        "description": "Library and highlight interface"
+    },
+    "libraryDeleteMark": {
+        "message": "此条目将从当前浏览器中删除。",
+        "description": "Library and highlight interface"
+    },
+    "librarySaveFailed": {
+        "message": "操作未完成，请重试。",
+        "description": "Library and highlight interface"
+    },
+    "librarySearchConversations": {
+        "message": "搜索对话",
+        "description": "Library conversation and batch action: librarySearchConversations"
+    },
+    "libraryAllConversations": {
+        "message": "全部对话",
+        "description": "Library conversation and batch action: libraryAllConversations"
+    },
+    "libraryBatchDeleteScope": {
+        "message": "删除选中的 $1 条记录（来自 $2 个对话）？",
+        "description": "Library conversation and batch action: libraryBatchDeleteScope"
+    },
+    "libraryBatchRecolored": {
+        "message": "已改色 $1 条",
+        "description": "Library conversation and batch action: libraryBatchRecolored"
+    },
+    "libraryBatchDeleted": {
+        "message": "已删除 $1 条",
+        "description": "Library conversation and batch action: libraryBatchDeleted"
+    },
+    "libraryBatchIncomplete": {
+        "message": "$1 条未完成",
+        "description": "Library conversation and batch action: libraryBatchIncomplete"
+    },
+    "libraryBatchProgress": {
+        "message": "已处理 $1 / $2",
+        "description": "Library conversation and batch action: libraryBatchProgress"
+    },
+    "libraryUnfiled": {
+        "message": "未分类",
+        "description": "Library folder and conversation management"
+    },
+    "libraryUnnamedConversation": {
+        "message": "未命名对话",
+        "description": "Library folder and conversation management"
+    },
+    "librarySelectEntries": {
+        "message": "选择条目",
+        "description": "Library folder and conversation management"
+    },
+    "librarySelectConversations": {
+        "message": "选择对话",
+        "description": "Library folder and conversation management"
+    },
+    "librarySelectConversation": {
+        "message": "选择 $1",
+        "description": "Library folder and conversation management"
+    },
+    "librarySelectedConversations": {
+        "message": "$1 个对话 · $2 条内容",
+        "description": "Library folder and conversation management"
+    },
+    "libraryRenameConversation": {
+        "message": "重命名对话",
+        "description": "Library folder and conversation management"
+    },
+    "libraryRenameConversationHint": {
+        "message": "留空使用对话原名。",
+        "description": "Library folder and conversation management"
+    },
+    "libraryNameTooLong": {
+        "message": "名称最多 512 个字符。",
+        "description": "Library folder and conversation management"
+    },
+    "libraryMoveConversations": {
+        "message": "移动对话",
+        "description": "Library folder and conversation management"
+    },
+    "libraryMoveConversationHint": {
+        "message": "该对话的注释和高亮将一起归档。",
+        "description": "Library folder and conversation management"
+    },
+    "libraryMoveFolderHint": {
+        "message": "文件夹及其子文件夹将一起移动。",
+        "description": "Library folder and conversation management"
+    },
+    "libraryFolderNameInvalid": {
+        "message": "名称为 1–100 个字符，不能包含斜杠。",
+        "description": "Library folder and conversation management"
+    },
+    "libraryFolderSaveFailed": {
+        "message": "保存失败，请重试。",
+        "description": "Library folder and conversation management"
+    },
+    "libraryPreviousConversations": {
+        "message": "上一页对话",
+        "description": "Library folder and conversation management"
+    },
+    "libraryNextConversations": {
+        "message": "下一页对话",
+        "description": "Library folder and conversation management"
     }
 }

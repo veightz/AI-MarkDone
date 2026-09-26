@@ -140,6 +140,31 @@ describe('ChatGPTConversationHostMonitor DOM readiness', () => {
         }
     });
 
+    it('captures the current one-slot-per-round page when the GET graph is unavailable', async () => {
+        document.querySelector('main')!.innerHTML = `
+          <div data-turn-key="user-1">
+            <div data-content-search-turn-key="round-1">
+              <div data-chatgpt-search-unit-key="round-1:0:user" data-chatgpt-search-message-ids="user-1">Question 1</div>
+              <div class="group flex flex-col pb-2 pt-2">
+                <div data-chatgpt-search-unit-key="round-1:2:assistant" data-chatgpt-search-message-ids="assistant-1 assistant-1">
+                  <div data-markdown-text-style="assistant-message">Initial answer</div>
+                </div>
+                <div class="turn-action-controls"><button aria-label="复制">Copy</button></div>
+              </div>
+            </div>
+          </div>`;
+        const harness = createHarness('current-dom');
+        try {
+            harness.monitor.init();
+            await settle();
+            expect(harness.repository.read().snapshot?.turns).toMatchObject([{
+                userText: 'Question 1',
+                assistantMarkdown: 'Initial answer',
+                identity: { turnId: 'round-1', userMessageId: 'user-1', assistantMessageId: 'assistant-1' },
+            }]);
+        } finally { harness.dispose(); }
+    });
+
     it('waits indefinitely for the official action row and reacts to its mutation once', async () => {
         document.querySelector('main')!.innerHTML = roundHtml(1, 'Delayed answer', false);
         const harness = createHarness('delayed');

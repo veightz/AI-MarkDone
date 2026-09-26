@@ -30,7 +30,7 @@ const READER_ATOMIC_UNIT_KINDS = [
 ] as const satisfies readonly ReaderAtomicUnitKind[];
 
 const READER_ATOMIC_UNIT_KIND_SET = new Set<ReaderAtomicUnitKind>(READER_ATOMIC_UNIT_KINDS);
-const RENDERED_ATOMIC_UNIT_SELECTOR = '.katex-display, .katex, pre, table, code, img, h1, h2, h3, h4, h5, h6, li, blockquote, hr';
+const RENDERED_ATOMIC_UNIT_SELECTOR = '.katex-display, .katex, pre, table, code, [data-markdown-copy="code-block"], [data-markdown-copy="inline-code"], img, h1, h2, h3, h4, h5, h6, li, blockquote, hr';
 const NON_CONTENT_TEXT_SELECTOR = [
     'button',
     '[role="button"]',
@@ -60,12 +60,14 @@ function isStructuralUnitKind(kind: ReaderAtomicUnitKind | null): boolean {
 }
 
 export function resolveRenderedAtomicUnitKind(element: HTMLElement): ReaderAtomicUnitKind | null {
-    if (element.matches('code') && element.closest('pre')) return null;
+    if (element.matches('code') && element.closest('pre, [data-markdown-copy="code-block"]')) return null;
     const annotatedKind = element.getAttribute('data-aimd-unit-kind');
     if (isReaderAtomicUnitKind(annotatedKind)) return annotatedKind;
     if (element.matches('.katex-display')) return 'display-math';
     if (element.matches('.katex')) return 'inline-math';
     if (element.matches('pre')) return 'code-block';
+    if (element.matches('[data-markdown-copy="code-block"]')) return 'code-block';
+    if (element.matches('[data-markdown-copy="inline-code"]')) return 'inline-code';
     if (element.matches('table')) return 'table';
     if (element.matches('code')) return 'inline-code';
     if (element.matches('img')) return 'image';
@@ -94,7 +96,7 @@ function collectRenderedUnitElements(root: HTMLElement): Array<{ kind: ReaderAto
     const elements = Array.from(root.querySelectorAll<HTMLElement>(RENDERED_ATOMIC_UNIT_SELECTOR))
         .filter((element) => {
             if (element.matches('.katex') && element.closest('.katex-display')) return false;
-            if (element.matches('code') && element.closest('pre')) return false;
+            if (element.matches('code') && element.closest('pre, [data-markdown-copy="code-block"]')) return false;
             return true;
         })
         .sort(compareDocumentOrder);
@@ -253,6 +255,19 @@ export function resolveStrictRenderedAtomicUnits(range: Range, root: HTMLElement
     return selection.isValid ? selection.units : [];
 }
 
+export function hasPartialRenderedInlineUnitSelection(range: Range, root: HTMLElement): boolean {
+    return collectStrictCandidateElements(range, root).some((element) => {
+        const kind = resolveRenderedAtomicUnitKind(element);
+        if (kind !== 'inline-code' && kind !== 'inline-math' && kind !== 'display-math') return false;
+        if (!rangeIntersectsElement(range, element)) return false;
+        return !rangeCoversStrictUnit(range, {
+            element,
+            kind,
+            mode: resolveRenderedAtomicUnitMode(element, kind),
+        });
+    });
+}
+
 /**
  * Resolves unannotated page-rendered units using the same selection semantics
  * as Reader. This is a visual/materialization helper only; it does not create
@@ -305,6 +320,7 @@ export function resolveSelectedRenderedAtomicUnitsFromCandidates(
         .filter((unit): unit is RenderedAtomicUnit => Boolean(unit))
         .filter((unit) => rangeIntersectsElement(range, unit.element))
         .filter((unit) => {
+            if (unit.kind === 'code-block') return rangeCoversStrictUnit(range, unit);
             if (unit.mode === 'structural' || isTextSelectableAtomicUnitKind(unit.kind)) {
                 return rangeCoversElementText(range, unit.element);
             }
@@ -379,7 +395,7 @@ function collectStrictCandidateElements(range: Range, root: HTMLElement): HTMLEl
         if (!root.contains(element)) return;
         if (!element.matches(RENDERED_ATOMIC_UNIT_SELECTOR)) return;
         if (element.matches('.katex') && element.closest('.katex-display')) return;
-        if (element.matches('code') && element.closest('pre')) return;
+        if (element.matches('code') && element.closest('pre, [data-markdown-copy="code-block"]')) return;
         candidates.add(element);
     };
     const commonElement = getElementForNode(range.commonAncestorContainer);
@@ -405,7 +421,7 @@ function collectStrictCandidateElementsForRoot(root: HTMLElement): HTMLElement[]
     ];
     return candidates.filter((element) => {
         if (element.matches('.katex') && element.closest('.katex-display')) return false;
-        if (element.matches('code') && element.closest('pre')) return false;
+        if (element.matches('code') && element.closest('pre, [data-markdown-copy="code-block"]')) return false;
         return true;
     }).sort(compareDocumentOrder);
 }

@@ -1,7 +1,7 @@
 import type { CloudBackupProviderId } from '../../../../../contracts/protocol';
 import type { ModalHost } from '../../../components/ModalHost';
 import { t } from '../../../components/i18n';
-import { Icons } from '../../../../../assets/icons';
+import { settingsIcon, uploadIcon, downloadIcon } from '../../../../../assets/workspaceIcons';
 
 type CloudBackupRowStatus = {
     configured?: boolean;
@@ -115,22 +115,22 @@ export class CloudBackupSettingsPanel {
         const controls: HTMLElement[] = [];
 
         if (!configured) {
-            controls.push(this.createIconButton(Icons.settings, t('cloudBackupSettings'), 'cloud-backup-google-drive-settings', () => this.actions.openSettings?.()));
+            controls.push(this.createIconButton(settingsIcon, t('cloudBackupSettings'), 'cloud-backup-google-drive-settings', () => this.actions.openSettings?.()));
             this.actionsEl.replaceChildren(...controls);
             return;
         }
 
         if (connected) {
             controls.push(
-                this.createTextButton(Icons.upload, t('cloudBackupBackupNow'), 'cloud-backup-google-drive-backup-now', 'primary', () => this.actions.backupNow?.('googleDrive')),
-                this.createTextButton(Icons.download, t('cloudBackupRestore'), 'cloud-backup-google-drive-restore', 'secondary', () => this.actions.restore?.('googleDrive')),
+                this.createTextButton(uploadIcon, t('cloudBackupBackupNow'), 'cloud-backup-google-drive-backup-now', 'primary', () => this.actions.backupNow?.('googleDrive')),
+                this.createTextButton(downloadIcon, t('cloudBackupRestore'), 'cloud-backup-google-drive-restore', 'secondary', () => this.actions.restore?.('googleDrive')),
                 this.createTextButton('', t('cloudBackupLogoutGoogleDrive'), 'cloud-backup-google-drive-disconnect', 'secondary', () => this.runAndRefresh(() => this.actions.disconnect?.('googleDrive'))),
-                this.createIconButton(Icons.settings, t('cloudBackupSettings'), 'cloud-backup-google-drive-settings', () => this.actions.openSettings?.()),
+                this.createIconButton(settingsIcon, t('cloudBackupSettings'), 'cloud-backup-google-drive-settings', () => this.actions.openSettings?.()),
             );
         } else {
             controls.push(
                 this.createTextButton('', t('cloudBackupLoginGoogleDrive'), 'cloud-backup-google-drive-connect', 'primary', () => this.runAndRefresh(() => this.actions.connect?.('googleDrive'))),
-                this.createIconButton(Icons.settings, t('cloudBackupSettings'), 'cloud-backup-google-drive-settings', () => this.actions.openSettings?.()),
+                this.createIconButton(settingsIcon, t('cloudBackupSettings'), 'cloud-backup-google-drive-settings', () => this.actions.openSettings?.()),
             );
         }
 

@@ -81,6 +81,16 @@ function getAnchorTop(anchor: HTMLElement): number {
     return anchor.getBoundingClientRect().top;
 }
 
+function getExpectedAnchorTop(adapter: SiteAdapter, anchor: HTMLElement, fallbackTop: number): number {
+    const root = adapter.getConversationScrollRoot?.();
+    if (!root?.contains(anchor)) return fallbackTop;
+    const rootTop = root.getBoundingClientRect().top;
+    if (!Number.isFinite(rootTop)) return fallbackTop;
+    const scrollPadding = Number.parseFloat(window.getComputedStyle(root).scrollPaddingTop) || 0;
+    const scrollMargin = Number.parseFloat(window.getComputedStyle(anchor).scrollMarginTop) || 0;
+    return rootTop + scrollPadding + scrollMargin;
+}
+
 function scrollAnchor(anchor: HTMLElement): void {
     releaseChatGPTSendPositionRestore();
     anchor.scrollIntoView({ behavior: 'auto', block: 'start' });
@@ -168,13 +178,15 @@ export async function navigateChatGPTDirectoryTarget(
 ): Promise<ScrollResult> {
     const materialized = await materializeChatGPTConversationTarget(adapter, target, options);
     if (!materialized.ok) return materialized;
-    const exactTarget: ChatGPTNavigationTarget = {
-        position: materialized.round.position,
-        messageId: materialized.round.messageId,
-        roundId: materialized.round.roundId,
-        userMessageId: materialized.round.userMessageId,
-        assistantMessageId: materialized.round.assistantMessageId,
-    };
+    const exactTarget: ChatGPTNavigationTarget = options.source === 'directory' || options.source === 'stepper'
+        ? { position: materialized.round.position, assistantMessageId: materialized.round.assistantMessageId }
+        : {
+            position: materialized.round.position,
+            messageId: materialized.round.messageId,
+            roundId: materialized.round.roundId,
+            userMessageId: materialized.round.userMessageId,
+            assistantMessageId: materialized.round.assistantMessageId,
+        };
     const anchor = materialized.anchor;
     if (anchor && typeof anchor.scrollIntoView === 'function') {
         const alignment = await scrollChatGPTAnchorWithAlignment(adapter, exactTarget, anchor, options);
@@ -200,9 +212,14 @@ async function scrollChatGPTAnchorWithAlignment(
     let anchor = initialAnchor;
     let attempts = 1;
     let aborted = false;
+    let signalAborted = false;
     let mutationCount = 0;
     let resizeCount = 0;
     const abortForUser = () => {
+        aborted = true;
+    };
+    const abortForSignal = () => {
+        signalAborted = true;
         aborted = true;
     };
     const userAbortEvents: Array<keyof DocumentEventMap> = ['pointerdown', 'keydown', 'wheel', 'touchstart'];
@@ -210,7 +227,9 @@ async function scrollChatGPTAnchorWithAlignment(
     let mutationObserver: MutationObserver | null = null;
     let resizeObserver: ResizeObserver | null = null;
 
+    if (options.signal?.aborted) return { ok: false, message: 'Navigation cancelled' };
     scrollAnchor(anchor);
+    if (options.signal?.aborted) return { ok: false, message: 'Navigation cancelled' };
     const targetTop = getAnchorTop(anchor);
     debugEvents.push({ stage: 'scroll', position: target.position, attempt: attempts, top: targetTop });
 
@@ -219,6 +238,8 @@ async function scrollChatGPTAnchorWithAlignment(
         return { ok: true, anchor };
     }
 
+    options.signal?.addEventListener('abort', abortForSignal, { once: true });
+    if (options.signal?.aborted) abortForSignal();
     for (const eventName of userAbortEvents) {
         document.addEventListener(eventName, abortForUser, { capture: true, passive: true });
     }
@@ -270,7 +291,7 @@ async function scrollChatGPTAnchorWithAlignment(
             }
 
             const currentTop = getAnchorTop(anchor);
-            const delta = currentTop - targetTop;
+            const delta = currentTop - getExpectedAnchorTop(adapter, anchor, targetTop);
             debugEvents.push({
                 stage: 'measure',
                 position: target.position,
@@ -308,6 +329,7 @@ async function scrollChatGPTAnchorWithAlignment(
         for (const eventName of userAbortEvents) {
             document.removeEventListener(eventName, abortForUser, { capture: true });
         }
+        options.signal?.removeEventListener('abort', abortForSignal);
         debugEvents.push({
             stage: 'done',
             position: target.position,
@@ -320,6 +342,7 @@ async function scrollChatGPTAnchorWithAlignment(
         flushNavigationDebug(debugEvents);
     }
 
+    if (signalAborted) return { ok: false, message: 'Navigation cancelled' };
     if (aborted) return { ok: true, anchor };
     if (!anchor.isConnected) return { ok: false, message: 'Navigation target was disconnected' };
     return { ok: false, message: 'Navigation target did not stabilize' };

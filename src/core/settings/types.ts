@@ -155,6 +155,7 @@ export type AppSettings = {
     chatgptDirectory: ChatGPTDirectorySettings;
     chatgptBehavior: ChatGPTBehaviorSettings;
     appearance: {
+        themeMode?: 'auto' | 'light' | 'dark';
         fontSizePx: number;
         accentColor: ThemeAccentColor | null;
     };
@@ -216,7 +217,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
         showPageSelectionToolbar: true,
         navigationSeekStepPx: DEFAULT_CHATGPT_NAVIGATION_SEEK_STEP_PX,
     },
-    appearance: { fontSizePx: DEFAULT_GLOBAL_FONT_SIZE_PX, accentColor: null },
+    appearance: { themeMode: 'auto', fontSizePx: DEFAULT_GLOBAL_FONT_SIZE_PX, accentColor: null },
     bookmarks: { sortMode: 'alpha-asc' },
     language: 'auto',
 };

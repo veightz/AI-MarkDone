@@ -25,12 +25,14 @@ describe('bookmarks import/export', () => {
         const payload = { version: '2.0', exportDate: new Date(0).toISOString(), bookmarks: source };
         const result = parseImportData(payload);
         expect(result.bookmarks).toHaveLength(200);
+        expect(result.sourceFormat).toBe('v2');
     });
 
-    it('buildExportPayload emits v2.0 wrapper and supports flat export', () => {
+    it('buildExportPayload emits v3.0 wrapper and supports flat export', () => {
         const source = loadFixture('bookmarks-200.json') as Bookmark[];
         const preserve = buildExportPayload(source, true);
-        expect(preserve.version).toBe('2.0');
+        expect(preserve.version).toBe('3.0');
+        expect(parseImportData(preserve).sourceFormat).toBe('v3');
         expect(preserve.bookmarks).toHaveLength(200);
         expect(preserve.bookmarks.every((b) => typeof b.folderPath === 'string')).toBe(true);
 

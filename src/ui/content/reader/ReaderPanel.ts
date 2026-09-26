@@ -1,9 +1,9 @@
+import { readMarkDocumentTitle } from '../../../drivers/content/chatgpt/readMarkDocumentTitle';
 import type { Theme } from '../../../core/types/theme';
-import {
-    copyIcon,
-    messageSquareTextIcon,
-    pinIcon,
-} from '../../../assets/icons';
+import { pinIcon } from '../../../assets/icons';
+import { copyIcon, messageSquareTextIcon } from '../../../assets/workspaceIcons';
+import { HighlightSession, createHighlightRecord, highlightAnchor } from '../highlights/HighlightSession';
+import { createHighlightSwatches } from '../components/HighlightSwatches';
 import type { ReaderItem } from '../../../services/reader/types';
 import { copyReaderItemMarkdownToClipboard } from '../../../services/reader/readerMarkdownCopy';
 import {
@@ -36,6 +36,7 @@ import {
     type SelectedAtomicUnit,
 } from '../../../services/reader/atomicSelection';
 import { buildAtomicSelectionExport } from '../../../services/reader/atomicExport';
+import { isHighlightableTextSelection } from '../../../services/reader/highlightSelection';
 import {
     createReaderCommentRecord,
     resolveReaderCommentAnchor,
@@ -215,6 +216,8 @@ export class ReaderPanel {
     private commentExportSettings: ReaderCommentExportSettings = createDefaultReaderCommentExportSettings();
     private persistAnnotations = false;
     private annotationDocument: ReaderAnnotationDocument | null = null;
+    private readonly highlights = new HighlightSession(() => this.syncCommentUi(), () => this.notify(t('highlightLoadFailed')));
+    private highlightSaving = false;
     private persistentComments = new Map<string, ReaderCommentRecord[]>();
     private persistentCommentsLoaded = false;
     private annotationLoadGeneration = 0;
@@ -390,9 +393,10 @@ export class ReaderPanel {
         }
         const generation = ++this.showGeneration;
         this.workflow.open(items, startIndex, options);
-        const nextAnnotationDocument = options?.annotationDocument ?? null;
+        const nextAnnotationDocument = options?.annotationDocument ? readMarkDocumentTitle(options.annotationDocument) : null;
         const documentChanged = readerAnnotationDocumentKeyOrNull(this.annotationDocument) !== readerAnnotationDocumentKeyOrNull(nextAnnotationDocument);
         this.annotationDocument = nextAnnotationDocument;
+        this.highlights.bind(nextAnnotationDocument);
         if (documentChanged) {
             this.annotationLoadGeneration += 1;
             this.unsubscribeAnnotationChanges?.();
@@ -610,6 +614,7 @@ export class ReaderPanel {
         this.annotationLoadGeneration += 1;
         this.unsubscribeAnnotationChanges?.();
         this.unsubscribeAnnotationChanges = null;
+        this.highlights.dispose();
         this.persistentCommentsLoaded = false;
         if (this.overlaySession?.host && this.onKeyDown) {
             this.overlaySession.host.removeEventListener('keydown', this.onKeyDown);
@@ -1785,7 +1790,7 @@ export class ReaderPanel {
             return;
         }
         const annotation = toReaderAnnotationRecord(record, target);
-        const result = await readerAnnotationsClient.create(document, annotation);
+        const result = await readerAnnotationsClient.create(readMarkDocumentTitle(document), annotation);
         if (!result.ok || !result.data.annotation) {
             throw new Error(result.ok ? 'Annotation save returned no annotation' : result.message);
         }
@@ -1805,7 +1810,7 @@ export class ReaderPanel {
             return;
         }
         const annotation = toReaderAnnotationRecord(record, record.target ?? target);
-        const result = await readerAnnotationsClient.update(document, annotation, record.revision);
+        const result = await readerAnnotationsClient.update(readMarkDocumentTitle(document), annotation, record.revision);
         if (!result.ok || !result.data.annotation) {
             throw new Error(result.ok ? 'Annotation update returned no annotation' : result.message);
         }
@@ -1879,6 +1884,21 @@ export class ReaderPanel {
             }
         }
 
+        const item = this.getCurrentItem();
+        const target = item ? this.getAnnotationTarget(item) : null;
+        const highlightLayer = this.host.document.createElement('div');
+        highlightLayer.className = 'reader-text-highlights';
+        persistentLayer.append(highlightLayer);
+        for (const record of this.highlights.list()) {
+            if (record.target.assistantMessageId !== target?.assistantMessageId) continue;
+            const resolved = resolveReaderCommentAnchor(markdownRoot, highlightAnchor(record));
+            for (const rect of resolved.rects) {
+                const element = this.createCommentHighlight(rect, false);
+                element.dataset.color = record.color;
+                highlightLayer.append(element);
+            }
+        }
+
         this.syncTransientCommentUi();
     }
 
@@ -1937,7 +1957,12 @@ export class ReaderPanel {
         const buttonSize = this.getTokenSize('--aimd-size-control-icon-panel', 32);
         const gap = this.getTokenSize('--aimd-space-2', 8);
         const showStickyAction = this.isStickyAvailable();
-        const actionCount = showStickyAction ? 3 : 2;
+        const item = this.getCurrentItem();
+        const target = item ? this.getAnnotationTarget(item) : null;
+        const markdownRoot = this.getMarkdownRoot();
+        const showHighlights = !!this.annotationDocument && !!target && !!markdownRoot
+            && isHighlightableTextSelection(selection.range, markdownRoot);
+        const actionCount = (showStickyAction ? 3 : 2) + (showHighlights ? 3 : 0);
         const actionWidth = (buttonSize * actionCount) + (gap * (actionCount - 1));
         const clampPadding = this.getTokenSize('--aimd-space-3', 12);
         const verticalGap = this.getTokenSize('--aimd-space-2', 8);
@@ -1996,6 +2021,7 @@ export class ReaderPanel {
                 anchorRect: commentButton.getBoundingClientRect(),
                 initialText: '',
                 selectedSource: sourceMarkdown,
+                sessionOnly: !this.annotationDocument || !this.persistAnnotations || !target,
                 onSave: (value) => {
                     const item = this.getCurrentItem();
                     if (!item) return;
@@ -2025,6 +2051,23 @@ export class ReaderPanel {
                 },
             });
         });
+        group.append(copyButton, commentButton);
+        if (showHighlights && item && target) {
+            group.append(createHighlightSwatches({ document: this.host.document, onSelect: async color => {
+                if (this.highlightSaving) return;
+                const root = this.getMarkdownRoot();
+                if (!root || this.getCurrentItem()?.id !== item.id
+                    || !isHighlightableTextSelection(selection.range, root)) { this.notify(t('pageAnnotationSelectionUnavailable')); return; }
+                this.highlightSaving = true;
+                group.querySelectorAll<HTMLButtonElement>('button').forEach(button => { button.disabled = true; });
+                try {
+                    const record = createReaderCommentRecord({id: `highlight-${crypto.randomUUID()}`, itemId: item.id, comment: '', range: selection.range, root, selectedUnits: selection.selectedUnits});
+                    await this.highlights.create(createHighlightRecord(record, target, color));
+                    if (this.getCurrentItem()?.id === item.id) { this.commentSelectionSnapshot = null; this.syncTransientCommentUi(); }
+                } catch { this.notify(t('highlightSaveFailed')); }
+                finally { this.highlightSaving = false; group.querySelectorAll<HTMLButtonElement>('button').forEach(button => { button.disabled = false; }); }
+            } }));
+        }
         if (showStickyAction) {
             const stickButton = this.host.document.createElement('button');
             stickButton.className = 'icon-btn reader-comment-action__button';
@@ -2036,11 +2079,10 @@ export class ReaderPanel {
             stickButton.addEventListener('click', () => {
                 this.addStickyBlock(this.materializeSelectionExport(selection));
             });
-            group.append(copyButton, commentButton, stickButton);
+            group.append(stickButton);
             return group;
         }
 
-        group.append(copyButton, commentButton);
         return group;
     }
 
@@ -2084,6 +2126,8 @@ export class ReaderPanel {
     private openExistingComment(record: ReaderCommentRecord, fallbackRect: DOMRect, options?: { scrollIntoView?: boolean }): void {
         this.activeCommentId = record.id;
         this.syncCommentUi();
+        const item = this.getCurrentItem();
+        const target = item ? this.getAnnotationTarget(item) : null;
         const markdownRoot = this.getMarkdownRoot();
         const resolved = markdownRoot ? resolveReaderCommentAnchor(markdownRoot, record) : null;
         if (options?.scrollIntoView && resolved?.unionRect) {
@@ -2095,6 +2139,7 @@ export class ReaderPanel {
             anchorRect: contentAnchorRect ?? fallbackRect,
             initialText: record.comment,
             selectedSource: record.sourceMarkdown,
+            sessionOnly: !this.annotationDocument || !target || record.revision === undefined,
             onSave: async (value) => {
                 await this.persistUpdatedComment({
                     ...record,
@@ -2108,7 +2153,12 @@ export class ReaderPanel {
                 this.syncCommentUi();
             },
             onDelete: async () => {
-                await this.persistRemovedComment(record);
+                try {
+                    await this.persistRemovedComment(record);
+                } catch (error) {
+                    this.notify(String(error));
+                    throw error;
+                }
                 this.activeCommentId = null;
                 this.syncCommentUi();
                 this.syncCommentControls();
@@ -2137,6 +2187,7 @@ export class ReaderPanel {
         anchorRect: DOMRect;
         initialText: string;
         selectedSource: string;
+        sessionOnly: boolean;
         onSave: (value: string) => void | Promise<void>;
         onDelete?: () => void;
         onCancel?: () => void;
@@ -2167,15 +2218,19 @@ export class ReaderPanel {
                 const result = params.onSave(value);
                 if (result && typeof (result as Promise<void>).then === 'function') {
                     return result.then(() => {
-                        this.notify(this.getLabel('readerCommentSaved', 'Annotation saved'));
+                        this.notify(this.getLabel(
+                            params.sessionOnly ? 'readerCommentSessionOnly' : 'readerCommentSaved',
+                            params.sessionOnly ? 'Only kept in this session.' : 'Annotation saved',
+                        ));
                     });
                 }
-                this.notify(this.getLabel('readerCommentSaved', 'Annotation saved'));
+                this.notify(this.getLabel(
+                    params.sessionOnly ? 'readerCommentSessionOnly' : 'readerCommentSaved',
+                    params.sessionOnly ? 'Only kept in this session.' : 'Annotation saved',
+                ));
                 return result;
             },
-            onDelete: () => {
-                params.onDelete?.();
-            },
+            onDelete: () => params.onDelete?.(),
             onCancel: () => {
                 params.onCancel?.();
                 this.syncCommentUi();
@@ -2195,6 +2250,17 @@ export class ReaderPanel {
             }
         }
         return entries;
+    }
+
+    getLibraryAnnotations(): ReaderCommentRecord[] {
+        if (!this.annotationDocument) return [];
+        return this.workflow.items.flatMap(item => this.getCommentsForItem(item.id, 'created').map(record => ({...record, document: this.annotationDocument!, target: record.target ?? this.getAnnotationTarget(item) ?? undefined})));
+    }
+    updateLibraryAnnotation(record: ReaderCommentRecord): void {
+        saveReaderComment(READER_COMMENT_SCOPE_ID, record); this.syncCommentUi(); this.syncCommentControls();
+    }
+    removeLibraryAnnotation(record: ReaderCommentRecord): void {
+        removeReaderComment(READER_COMMENT_SCOPE_ID, record.itemId, record.id); this.syncCommentUi(); this.syncCommentControls();
     }
 
     private isPersistedAnnotationEntry(entry: ReaderAnnotationListEntry): boolean {
@@ -2306,6 +2372,7 @@ export class ReaderPanel {
                 bulkEdit: this.getLabel('readerCommentBulkEdit', 'Bulk edit'),
                 bulkCancel: this.getLabel('readerCommentBulkCancel', 'Cancel bulk edit'),
                 selectAll: this.getLabel('readerCommentSelectAll', 'Select all'),
+                invertSelection: this.getLabel('invertSelection', 'Invert selection'),
                 deleteSelected: this.getLabel('readerCommentDeleteSelected', 'Delete selected'),
                 persistence: this.getLabel('readerAnnotationPersistenceLabel', 'Persist annotations'),
                 persistenceTooltip: this.getLabel('readerAnnotationPersistenceTooltip', 'When enabled, new annotations are saved locally and remain after you close the browser, but consider cleaning them up regularly.'),

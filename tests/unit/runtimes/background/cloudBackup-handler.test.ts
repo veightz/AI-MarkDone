@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ExtRequest } from '../../../../src/contracts/protocol';
 import type { CloudBackupProvider } from '../../../../src/drivers/background/cloudBackup/provider';
-import type { CloudBackupSnapshotV1 } from '../../../../src/core/cloudBackup/types';
+import type { CloudBackupSnapshot } from '../../../../src/core/cloudBackup/types';
 
 type StorageMap = Record<string, any>;
 
@@ -56,6 +56,30 @@ function bookmark(position: number, title = `T${position}`) {
     };
 }
 
+const markDocument = { platform: 'chatgpt' as const, conversationId: 'sample', title: 'Sample' };
+const markRecord = {
+    id: 'mark-1', itemId: 'item-1', target: { assistantMessageId: 'assistant-1' }, quoteText: 'quote', sourceMarkdown: 'quote',
+    selectors: { textQuote: { exact: 'quote', prefix: '', suffix: '' }, textPosition: { start: 0, end: 5 }, domRange: null, atomicRefs: [] },
+    createdAt: 1, updatedAt: 1, revision: 1,
+};
+const highlightKey = 'aimd:highlights:document:v1:chatgpt:conversation:sample';
+const annotationKey = 'aimd:reader_annotations:document:chatgpt:conversation:sample';
+const catalogKey = 'aimd:mark_library:catalog:v1';
+function markStores(): StorageMap {
+    return {
+        [highlightKey]: { schemaVersion: 1, document: markDocument, highlights: [{ ...markRecord, color: 'blue' }] },
+        [annotationKey]: { schemaVersion: 1, document: markDocument, annotations: [{ ...markRecord, comment: 'Note', lastKnownAnchorState: 'anchored' }] },
+        [catalogKey]: { schemaVersion: 1, revision: 1, folders: [{ id: 'saved', parentId: null, name: 'Saved', createdAt: 1, updatedAt: 1 }], conversations: [{ document: markDocument, folderId: 'saved', customTitle: 'Research', updatedAt: 1 }] },
+    };
+}
+
+function snapshotProvider(snapshot: CloudBackupSnapshot): CloudBackupProvider {
+    return {
+        connect: vi.fn(), disconnect: vi.fn(), uploadSnapshot: vi.fn(),
+        listSnapshots: vi.fn(async () => []), downloadSnapshot: vi.fn(async () => snapshot), deleteSnapshot: vi.fn(),
+    };
+}
+
 describe('background cloud backup handler', () => {
     beforeEach(() => {
         vi.resetModules();
@@ -70,7 +94,7 @@ describe('background cloud backup handler', () => {
             'aimd:bookmarks:index:v1': ['bookmark:chatgpt.com/c/1:1'],
         };
         (globalThis as any).browser = createInMemoryBrowser(store);
-        const uploads: CloudBackupSnapshotV1[] = [];
+        const uploads: CloudBackupSnapshot[] = [];
         const provider: CloudBackupProvider = {
             connect: vi.fn(),
             disconnect: vi.fn(),
@@ -90,8 +114,268 @@ describe('background cloud backup handler', () => {
 
         expect(res?.response.ok).toBe(true);
         expect(uploads).toHaveLength(1);
+        expect(uploads[0]!.schemaVersion).toBe(3);
+        if (uploads[0]!.schemaVersion !== 3) throw new Error('Expected Library snapshot');
         expect(uploads[0]!.payload.bookmarks).toHaveLength(1);
         expect(uploads[0]!.payloadHash).toMatch(/^sha256:/);
+    });
+
+    it('includes durable marks, organization and empty bookmark folders in the new snapshot', async () => {
+        const store: StorageMap = {
+            ...markStores(),
+            'bookmark:chatgpt.com/c/1:1': bookmark(1),
+            'aimd:bookmarks:index:v1': ['bookmark:chatgpt.com/c/1:1'],
+            'folder:Empty': { path: 'Empty', name: 'Empty', depth: 1, createdAt: 1, updatedAt: 1 },
+            folderPaths: ['Empty'],
+        };
+        // The folder index uses a legacy key; keep the test independent of its spelling.
+        const { LEGACY_STORAGE_KEYS } = await import('../../../../src/contracts/storage');
+        store[LEGACY_STORAGE_KEYS.folderPathsIndex] = ['Empty'];
+        delete store.folderPaths;
+        (globalThis as any).browser = createInMemoryBrowser(store);
+        const uploads: CloudBackupSnapshot[] = [];
+        const provider: CloudBackupProvider = {
+            connect: vi.fn(), disconnect: vi.fn(), listSnapshots: vi.fn(async () => []), downloadSnapshot: vi.fn(), deleteSnapshot: vi.fn(),
+            uploadSnapshot: vi.fn(async snapshot => { uploads.push(snapshot); return { snapshotId: snapshot.snapshotId, name: 'backup.json', size: 1, createdAt: snapshot.createdAt }; }),
+        };
+        const mod = await import('../../../../src/runtimes/background/handlers/cloudBackup');
+        mod.setCloudBackupProviderFactoryForTests(() => provider);
+
+        const result = await mod.handleCloudBackupRequest(req('cloudBackup:backupNow', { provider: 'googleDrive' }));
+
+        expect(result?.response.ok).toBe(true);
+        const snapshot = uploads[0]!;
+        if (snapshot.schemaVersion !== 3) throw new Error('Expected Library snapshot');
+        expect(snapshot.payload.bookmarkFolders).toEqual(['Empty']);
+        expect(snapshot.payload.highlights[0]!.highlights).toHaveLength(1);
+        expect(snapshot.payload.annotations[0]!.annotations).toHaveLength(1);
+        expect(snapshot.payload.markCatalog.conversations[0]!.customTitle).toBe('Research');
+    });
+
+    it('refuses to upload an incomplete snapshot when a durable bundle is corrupt', async () => {
+        const store: StorageMap = { ...markStores(), [annotationKey]: { broken: true } };
+        (globalThis as any).browser = createInMemoryBrowser(store);
+        const provider: CloudBackupProvider = { ...snapshotProvider({} as CloudBackupSnapshot), uploadSnapshot: vi.fn() };
+        const mod = await import('../../../../src/runtimes/background/handlers/cloudBackup');
+        mod.setCloudBackupProviderFactoryForTests(() => provider);
+
+        const result = await mod.handleCloudBackupRequest(req('cloudBackup:backupNow', { provider: 'googleDrive' }));
+
+        expect(result?.response).toMatchObject({ ok: false, error: { code: 'SNAPSHOT_CORRUPTED' } });
+        expect(provider.uploadSnapshot).not.toHaveBeenCalled();
+    });
+
+    it('does not treat a null folder catalog as an empty catalog during backup', async () => {
+        const store: StorageMap = { ...markStores(), [catalogKey]: null };
+        (globalThis as any).browser = createInMemoryBrowser(store);
+        const provider: CloudBackupProvider = { ...snapshotProvider({} as CloudBackupSnapshot), uploadSnapshot: vi.fn() };
+        const mod = await import('../../../../src/runtimes/background/handlers/cloudBackup');
+        mod.setCloudBackupProviderFactoryForTests(() => provider);
+
+        const result = await mod.handleCloudBackupRequest(req('cloudBackup:backupNow', { provider: 'googleDrive' }));
+
+        expect(result?.response).toMatchObject({ ok: false, error: { code: 'SNAPSHOT_CORRUPTED' } });
+        expect(provider.uploadSnapshot).not.toHaveBeenCalled();
+    });
+
+    it('safe-merges new marks and folders while retaining local mark conflicts', async () => {
+        const localMarks = markStores();
+        const store: StorageMap = { ...localMarks, 'bookmark:chatgpt.com/c/1:1': bookmark(1), 'aimd:bookmarks:index:v1': ['bookmark:chatgpt.com/c/1:1'] };
+        (globalThis as any).browser = createInMemoryBrowser(store);
+        const { buildExportPayload } = await import('../../../../src/core/bookmarks/importExport');
+        const { createLibraryCloudBackupSnapshot } = await import('../../../../src/core/cloudBackup/snapshot');
+        const remoteMarks = markStores();
+        remoteMarks[highlightKey].highlights.push({ ...markRecord, id: 'mark-2', color: 'red' });
+        remoteMarks[highlightKey].highlights[0].color = 'yellow';
+        remoteMarks[annotationKey].annotations.push({ ...markRecord, id: 'note-2', comment: 'Remote note', lastKnownAnchorState: 'anchored' });
+        remoteMarks[catalogKey].folders.push({ id: 'remote', parentId: null, name: 'Remote', createdAt: 2, updatedAt: 2 });
+        const snapshot = await createLibraryCloudBackupSnapshot({
+            version: '4.0', exportDate: new Date().toISOString(),
+            bookmarks: buildExportPayload([bookmark(2)], true).bookmarks, bookmarkFolders: ['Archive', 'Empty'],
+            highlights: [remoteMarks[highlightKey]], annotations: [remoteMarks[annotationKey]], markCatalog: remoteMarks[catalogKey],
+        });
+        const mod = await import('../../../../src/runtimes/background/handlers/cloudBackup');
+        mod.setCloudBackupProviderFactoryForTests(() => snapshotProvider(snapshot));
+
+        const preview = await mod.handleCloudBackupRequest(req('cloudBackup:previewRestore', { provider: 'googleDrive', snapshotId: snapshot.snapshotId, strategy: 'safeMerge' }));
+        expect((preview as any).response.data.library).toMatchObject({ highlights: { added: 1, conflict: 1 }, annotations: { added: 1 }, folders: { added: 1 } });
+        const result = await mod.handleCloudBackupRequest(req('cloudBackup:applyRestore', { provider: 'googleDrive', snapshotId: snapshot.snapshotId, strategy: 'safeMerge', payloadHash: snapshot.payloadHash }));
+
+        expect(result?.response.ok).toBe(true);
+        expect(store[highlightKey].highlights).toHaveLength(2);
+        expect(store[highlightKey].highlights[0].color).toBe('blue');
+        expect(store[annotationKey].annotations).toHaveLength(2);
+        expect(store[catalogKey].folders).toHaveLength(2);
+        expect(store[catalogKey].conversations[0].customTitle).toBe('Research');
+        expect(store['bookmark:chatgpt.com/c/1:1']).toBeDefined();
+        expect(store['bookmark:chatgpt.com/c/2:2']).toBeDefined();
+        const { LEGACY_STORAGE_KEYS } = await import('../../../../src/contracts/storage');
+        expect(store[LEGACY_STORAGE_KEYS.folderPathsIndex]).toContain('Empty');
+        expect(Object.keys(store).some(key => key.startsWith('aimd:cloud_backup:emergency_restore:'))).toBe(false);
+    });
+
+    it('replaces all Library domains only for a version 3 snapshot and keeps a complete emergency copy', async () => {
+        const { LEGACY_STORAGE_KEYS } = await import('../../../../src/contracts/storage');
+        const store: StorageMap = { ...markStores(), 'bookmark:chatgpt.com/c/1:1': bookmark(1), 'aimd:bookmarks:index:v1': ['bookmark:chatgpt.com/c/1:1'],
+            [LEGACY_STORAGE_KEYS.folderPathsIndex]: ['OldFolder'], [LEGACY_STORAGE_KEYS.lastSelectedFolderPath]: 'OldFolder',
+            'folder:OldFolder': { path: 'OldFolder', name: 'OldFolder', depth: 1, createdAt: 1, updatedAt: 1 } };
+        (globalThis as any).browser = createInMemoryBrowser(store);
+        const { buildExportPayload } = await import('../../../../src/core/bookmarks/importExport');
+        const { createLibraryCloudBackupSnapshot } = await import('../../../../src/core/cloudBackup/snapshot');
+        const snapshot = await createLibraryCloudBackupSnapshot({ version: '4.0', exportDate: new Date().toISOString(), bookmarks: buildExportPayload([bookmark(2)], true).bookmarks, bookmarkFolders: [], highlights: [], annotations: [], markCatalog: { schemaVersion: 1, revision: 0, folders: [], conversations: [] } });
+        const mod = await import('../../../../src/runtimes/background/handlers/cloudBackup');
+        mod.setCloudBackupProviderFactoryForTests(() => snapshotProvider(snapshot));
+
+        const result = await mod.handleCloudBackupRequest(req('cloudBackup:applyRestore', { provider: 'googleDrive', snapshotId: snapshot.snapshotId, strategy: 'replaceLocal', payloadHash: snapshot.payloadHash }));
+
+        expect(result?.response.ok).toBe(true);
+        expect(store[highlightKey]).toBeUndefined();
+        expect(store[annotationKey]).toBeUndefined();
+        expect(store[catalogKey].folders).toHaveLength(0);
+        expect(store['folder:OldFolder']).toBeUndefined();
+        expect(store[LEGACY_STORAGE_KEYS.lastSelectedFolderPath]).toBeUndefined();
+        const emergency = Object.entries(store).find(([key]) => key.startsWith('aimd:cloud_backup:emergency_restore:googleDrive:v1:'))?.[1];
+        expect(emergency.snapshot.payload.highlights).toHaveLength(1);
+        expect(emergency.snapshot.payload.annotations).toHaveLength(1);
+        expect(emergency.snapshot.payload.markCatalog.folders).toHaveLength(1);
+    });
+
+    it('keeps old Library data and its emergency copy when a replacement write fails', async () => {
+        const store: StorageMap = { ...markStores(), 'bookmark:chatgpt.com/c/1:1': bookmark(1), 'aimd:bookmarks:index:v1': ['bookmark:chatgpt.com/c/1:1'] };
+        const browser = createInMemoryBrowser(store);
+        const write = browser.storage.local.set.getMockImplementation()!;
+        browser.storage.local.set.mockImplementation(async patch => {
+            if (patch[catalogKey] && patch['aimd:bookmarks:index:v1']) throw new Error('Simulated write failure');
+            return write(patch);
+        });
+        (globalThis as any).browser = browser;
+        const { buildExportPayload } = await import('../../../../src/core/bookmarks/importExport');
+        const { createLibraryCloudBackupSnapshot } = await import('../../../../src/core/cloudBackup/snapshot');
+        const snapshot = await createLibraryCloudBackupSnapshot({ version: '4.0', exportDate: new Date().toISOString(), bookmarks: buildExportPayload([bookmark(2)], true).bookmarks, bookmarkFolders: [], highlights: [], annotations: [], markCatalog: { schemaVersion: 1, revision: 0, folders: [], conversations: [] } });
+        const mod = await import('../../../../src/runtimes/background/handlers/cloudBackup');
+        mod.setCloudBackupProviderFactoryForTests(() => snapshotProvider(snapshot));
+
+        const result = await mod.handleCloudBackupRequest(req('cloudBackup:applyRestore', { provider: 'googleDrive', snapshotId: snapshot.snapshotId, strategy: 'replaceLocal', payloadHash: snapshot.payloadHash }));
+
+        expect(result?.response.ok).toBe(false);
+        expect(store['bookmark:chatgpt.com/c/1:1']).toBeDefined();
+        expect(store[highlightKey]).toBeDefined();
+        expect(store[annotationKey]).toBeDefined();
+        expect(Object.keys(store).some(key => key.startsWith('aimd:cloud_backup:emergency_restore:'))).toBe(true);
+    });
+
+    it('does not replace Library data when the emergency copy is silently not stored', async () => {
+        const store: StorageMap = { ...markStores(), 'bookmark:chatgpt.com/c/1:1': bookmark(1), 'aimd:bookmarks:index:v1': ['bookmark:chatgpt.com/c/1:1'] };
+        const browser = createInMemoryBrowser(store);
+        const write = browser.storage.local.set.getMockImplementation()!;
+        browser.storage.local.set.mockImplementation(async patch => {
+            if (Object.keys(patch).some(key => key.startsWith('aimd:cloud_backup:emergency_restore:'))) return;
+            return write(patch);
+        });
+        (globalThis as any).browser = browser;
+        const { buildExportPayload } = await import('../../../../src/core/bookmarks/importExport');
+        const { createLibraryCloudBackupSnapshot } = await import('../../../../src/core/cloudBackup/snapshot');
+        const snapshot = await createLibraryCloudBackupSnapshot({ version: '4.0', exportDate: new Date().toISOString(), bookmarks: buildExportPayload([bookmark(2)], true).bookmarks, bookmarkFolders: [], highlights: [], annotations: [], markCatalog: { schemaVersion: 1, revision: 0, folders: [], conversations: [] } });
+        const mod = await import('../../../../src/runtimes/background/handlers/cloudBackup');
+        mod.setCloudBackupProviderFactoryForTests(() => snapshotProvider(snapshot));
+
+        const result = await mod.handleCloudBackupRequest(req('cloudBackup:applyRestore', { provider: 'googleDrive', snapshotId: snapshot.snapshotId, strategy: 'replaceLocal', payloadHash: snapshot.payloadHash }));
+
+        expect(result?.response.ok).toBe(false);
+        expect(store['bookmark:chatgpt.com/c/1:1']).toBeDefined();
+        expect(store[highlightKey]).toBeDefined();
+        expect(store[annotationKey]).toBeDefined();
+    });
+
+    it('does not replace bookmarks from an older cloud file without a verified emergency copy', async () => {
+        const store: StorageMap = { 'bookmark:chatgpt.com/c/1:1': bookmark(1), 'aimd:bookmarks:index:v1': ['bookmark:chatgpt.com/c/1:1'] };
+        const browser = createInMemoryBrowser(store);
+        const write = browser.storage.local.set.getMockImplementation()!;
+        browser.storage.local.set.mockImplementation(async patch => {
+            if (Object.keys(patch).some(key => key.startsWith('aimd:cloud_backup:emergency_restore:'))) return;
+            return write(patch);
+        });
+        (globalThis as any).browser = browser;
+        const { buildExportPayload } = await import('../../../../src/core/bookmarks/importExport');
+        const { createCloudBackupSnapshot } = await import('../../../../src/core/cloudBackup/snapshot');
+        const snapshot = await createCloudBackupSnapshot(buildExportPayload([bookmark(2)], true));
+        const mod = await import('../../../../src/runtimes/background/handlers/cloudBackup');
+        mod.setCloudBackupProviderFactoryForTests(() => snapshotProvider(snapshot));
+
+        const result = await mod.handleCloudBackupRequest(req('cloudBackup:applyRestore', { provider: 'googleDrive', snapshotId: snapshot.snapshotId, strategy: 'replaceLocal', payloadHash: snapshot.payloadHash }));
+
+        expect(result?.response.ok).toBe(false);
+        expect(store['bookmark:chatgpt.com/c/1:1']).toBeDefined();
+        expect(store['bookmark:chatgpt.com/c/2:2']).toBeUndefined();
+    });
+
+    it('does not overwrite a bookmark omitted from a partial index during older cloud safe merge', async () => {
+        const key = 'bookmark:chatgpt.com/c/1:1';
+        const local = { ...bookmark(1, 'Local'), messageId: 'assistant-local' };
+        const store: StorageMap = { [key]: local, 'aimd:bookmarks:index:v1': [] };
+        (globalThis as any).browser = createInMemoryBrowser(store);
+        const { buildExportPayload } = await import('../../../../src/core/bookmarks/importExport');
+        const { createCloudBackupSnapshot } = await import('../../../../src/core/cloudBackup/snapshot');
+        const snapshot = await createCloudBackupSnapshot(buildExportPayload([{ ...bookmark(1, 'Remote'), messageId: null }], true));
+        const mod = await import('../../../../src/runtimes/background/handlers/cloudBackup');
+        mod.setCloudBackupProviderFactoryForTests(() => snapshotProvider(snapshot));
+
+        const result = await mod.handleCloudBackupRequest(req('cloudBackup:applyRestore', { provider: 'googleDrive', snapshotId: snapshot.snapshotId, strategy: 'safeMerge', payloadHash: snapshot.payloadHash }));
+
+        expect(result?.response.ok).toBe(true);
+        expect(store[key]).toEqual(local);
+        expect((result as any).response.data.conflicts).toBeGreaterThan(0);
+    });
+
+    it('refuses older cloud replacement when its emergency copy would omit an unindexed bookmark', async () => {
+        const key = 'bookmark:chatgpt.com/c/1:1';
+        const local = bookmark(1, 'Local');
+        const store: StorageMap = { [key]: local, 'aimd:bookmarks:index:v1': [] };
+        (globalThis as any).browser = createInMemoryBrowser(store);
+        const { buildExportPayload } = await import('../../../../src/core/bookmarks/importExport');
+        const { createCloudBackupSnapshot } = await import('../../../../src/core/cloudBackup/snapshot');
+        const snapshot = await createCloudBackupSnapshot(buildExportPayload([bookmark(2, 'Remote')], true));
+        const mod = await import('../../../../src/runtimes/background/handlers/cloudBackup');
+        mod.setCloudBackupProviderFactoryForTests(() => snapshotProvider(snapshot));
+
+        const result = await mod.handleCloudBackupRequest(req('cloudBackup:applyRestore', { provider: 'googleDrive', snapshotId: snapshot.snapshotId, strategy: 'replaceLocal', payloadHash: snapshot.payloadHash }));
+
+        expect(result?.response.ok).toBe(false);
+        expect(store[key]).toEqual(local);
+    });
+
+    it('refuses older cloud replacement when an indexed bookmark cannot enter its emergency copy', async () => {
+        const key = 'bookmark:chatgpt.com/c/1:1';
+        const store: StorageMap = { [key]: 'unreadable', 'aimd:bookmarks:index:v1': [key] };
+        (globalThis as any).browser = createInMemoryBrowser(store);
+        const { buildExportPayload } = await import('../../../../src/core/bookmarks/importExport');
+        const { createCloudBackupSnapshot } = await import('../../../../src/core/cloudBackup/snapshot');
+        const snapshot = await createCloudBackupSnapshot(buildExportPayload([bookmark(1, 'Remote')], true));
+        const mod = await import('../../../../src/runtimes/background/handlers/cloudBackup');
+        mod.setCloudBackupProviderFactoryForTests(() => snapshotProvider(snapshot));
+
+        const result = await mod.handleCloudBackupRequest(req('cloudBackup:applyRestore', { provider: 'googleDrive', snapshotId: snapshot.snapshotId, strategy: 'replaceLocal', payloadHash: snapshot.payloadHash }));
+
+        expect(result?.response.ok).toBe(false);
+        expect(store[key]).toBe('unreadable');
+    });
+
+    it('rejects a Library restore that cannot fit before writing any new records', async () => {
+        const store: StorageMap = { ...markStores() };
+        const browser = createInMemoryBrowser(store);
+        browser.storage.local.getBytesInUse.mockResolvedValue(10 * 1024 * 1024);
+        (globalThis as any).browser = browser;
+        const { buildExportPayload } = await import('../../../../src/core/bookmarks/importExport');
+        const { createLibraryCloudBackupSnapshot } = await import('../../../../src/core/cloudBackup/snapshot');
+        const snapshot = await createLibraryCloudBackupSnapshot({ version: '4.0', exportDate: new Date().toISOString(), bookmarks: buildExportPayload([bookmark(2)], true).bookmarks, bookmarkFolders: [], highlights: [], annotations: [], markCatalog: { schemaVersion: 1, revision: 0, folders: [], conversations: [] } });
+        const mod = await import('../../../../src/runtimes/background/handlers/cloudBackup');
+        mod.setCloudBackupProviderFactoryForTests(() => snapshotProvider(snapshot));
+
+        const result = await mod.handleCloudBackupRequest(req('cloudBackup:applyRestore', { provider: 'googleDrive', snapshotId: snapshot.snapshotId, strategy: 'safeMerge', payloadHash: snapshot.payloadHash }));
+
+        expect(result?.response).toMatchObject({ ok: false, error: { code: 'QUOTA_EXCEEDED' } });
+        expect(store[highlightKey].highlights).toHaveLength(1);
+        expect(Object.keys(store).some(key => key.startsWith('bookmark:'))).toBe(false);
     });
 
     it('preserves the connected account summary when backup succeeds', async () => {
@@ -174,6 +458,30 @@ describe('background cloud backup handler', () => {
         expect(store['bookmark:chatgpt.com/c/1:1'].title).toBe('Local');
     });
 
+    it('refuses apply when the Drive file changes after the user previews it', async () => {
+        const store: StorageMap = {};
+        (globalThis as any).browser = createInMemoryBrowser(store);
+        const { createLibraryCloudBackupSnapshot } = await import('../../../../src/core/cloudBackup/snapshot');
+        const { buildExportPayload } = await import('../../../../src/core/bookmarks/importExport');
+        const payload = (position: number) => ({ version: '4.0' as const, exportDate: new Date().toISOString(), bookmarks: buildExportPayload([bookmark(position)], true).bookmarks, bookmarkFolders: [], highlights: [], annotations: [], markCatalog: { schemaVersion: 1 as const, revision: 0, folders: [], conversations: [] } });
+        const before = await createLibraryCloudBackupSnapshot(payload(1));
+        const after = await createLibraryCloudBackupSnapshot(payload(2));
+        after.snapshotId = before.snapshotId;
+        const provider = snapshotProvider(before);
+        vi.mocked(provider.downloadSnapshot).mockResolvedValueOnce(before).mockResolvedValueOnce(after);
+        const mod = await import('../../../../src/runtimes/background/handlers/cloudBackup');
+        mod.setCloudBackupProviderFactoryForTests(() => provider);
+
+        const preview = await mod.handleCloudBackupRequest(req('cloudBackup:previewRestore', { provider: 'googleDrive', snapshotId: before.snapshotId, strategy: 'safeMerge' }));
+        expect(preview?.response.ok).toBe(true);
+        const result = await mod.handleCloudBackupRequest(req('cloudBackup:applyRestore', {
+            provider: 'googleDrive', snapshotId: before.snapshotId, strategy: 'safeMerge', payloadHash: before.payloadHash,
+        }));
+
+        expect(result?.response).toMatchObject({ ok: false, error: { code: 'CONFLICT' } });
+        expect(Object.keys(store).filter(key => key.startsWith('bookmark:'))).toEqual([]);
+    });
+
     it('applies a safe-merge restore by adding remote-only bookmarks and preserving local conflicts', async () => {
         const store: StorageMap = {
             'bookmark:chatgpt.com/c/1:1': bookmark(1, 'Local'),
@@ -204,6 +512,7 @@ describe('background cloud backup handler', () => {
                 provider: 'googleDrive',
                 snapshotId: snapshot.snapshotId,
                 strategy: 'safeMerge',
+                payloadHash: snapshot.payloadHash,
             },
         } as any);
 
@@ -221,6 +530,59 @@ describe('background cloud backup handler', () => {
             'bookmark:chatgpt.com/c/2:2',
         ]);
         expect(Object.keys(store).some((key) => key.startsWith('aimd:cloud_backup:emergency_restore:googleDrive:v1:'))).toBe(true);
+    });
+
+    it('shows and preserves a legacy storage-key collision when restoring an old cloud snapshot', async () => {
+        const url = 'https://chatgpt.com/c/12345678-1234-1234-1234-123456789abc';
+        const key = 'bookmark:chatgpt.com/c/12345678-1234-1234-1234-123456789abc:1';
+        const local = { ...bookmark(1, 'Local'), url, messageId: 'assistant-local' };
+        const store: StorageMap = { [key]: local, 'aimd:bookmarks:index:v1': [key] };
+        (globalThis as any).browser = createInMemoryBrowser(store);
+        const { createCloudBackupSnapshot } = await import('../../../../src/core/cloudBackup/snapshot');
+        const { buildExportPayload } = await import('../../../../src/core/bookmarks/importExport');
+        const snapshot = await createCloudBackupSnapshot(buildExportPayload([{ ...bookmark(1, 'Remote'), url, messageId: null }], true));
+        const mod = await import('../../../../src/runtimes/background/handlers/cloudBackup');
+        mod.setCloudBackupProviderFactoryForTests(() => snapshotProvider(snapshot));
+
+        const preview = await mod.handleCloudBackupRequest(req('cloudBackup:previewRestore', { provider: 'googleDrive', snapshotId: snapshot.snapshotId, strategy: 'safeMerge' }));
+        expect((preview as any).response.data.plan).toMatchObject({ bookmarksToUpsert: [], conflictCount: 1 });
+        const applied = await mod.handleCloudBackupRequest(req('cloudBackup:applyRestore', { provider: 'googleDrive', snapshotId: snapshot.snapshotId, strategy: 'safeMerge', payloadHash: snapshot.payloadHash }));
+
+        expect(applied?.response.ok).toBe(true);
+        expect(store[key]).toEqual(local);
+    });
+
+    it('creates an emergency snapshot before an explicit local replacement', async () => {
+        const store: StorageMap = {
+            ...markStores(),
+            'bookmark:chatgpt.com/c/1:1': bookmark(1, 'Local'),
+            'aimd:bookmarks:index:v1': ['bookmark:chatgpt.com/c/1:1'],
+        };
+        const browser = createInMemoryBrowser(store);
+        (globalThis as any).browser = browser;
+        const { createCloudBackupSnapshot } = await import('../../../../src/core/cloudBackup/snapshot');
+        const { buildExportPayload } = await import('../../../../src/core/bookmarks/importExport');
+        const snapshot = await createCloudBackupSnapshot(buildExportPayload([bookmark(2, 'Remote')], true), new Date(0));
+        const provider: CloudBackupProvider = {
+            connect: vi.fn(), disconnect: vi.fn(), uploadSnapshot: vi.fn(),
+            listSnapshots: vi.fn(async () => []), downloadSnapshot: vi.fn(async () => snapshot), deleteSnapshot: vi.fn(),
+        };
+        const mod = await import('../../../../src/runtimes/background/handlers/cloudBackup');
+        mod.setCloudBackupProviderFactoryForTests(() => provider);
+
+        const result = await mod.handleCloudBackupRequest(req('cloudBackup:applyRestore', {
+            provider: 'googleDrive', snapshotId: snapshot.snapshotId, strategy: 'replaceLocal', payloadHash: snapshot.payloadHash,
+        }));
+
+        expect(result?.response.ok).toBe(true);
+        expect(store['bookmark:chatgpt.com/c/1:1']).toBeUndefined();
+        expect(store['bookmark:chatgpt.com/c/2:2']).toMatchObject({ title: 'Remote' });
+        expect(store[highlightKey].highlights).toHaveLength(1);
+        expect(store[annotationKey].annotations).toHaveLength(1);
+        expect(store[catalogKey].folders).toHaveLength(1);
+        const emergency = Object.entries(store).find(([key]) => key.startsWith('aimd:cloud_backup:emergency_restore:googleDrive:v1:'))?.[1];
+        expect(emergency?.snapshot.payload.bookmarks).toMatchObject([{ title: 'Local' }]);
+        expect(browser.storage.local.set.mock.invocationCallOrder[0]).toBeLessThan(browser.storage.local.remove.mock.invocationCallOrder[0]);
     });
 
     it('moves the selected Google Drive snapshot to trash through the provider', async () => {

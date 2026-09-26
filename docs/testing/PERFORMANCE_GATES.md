@@ -1,25 +1,14 @@
 # ChatGPT Performance Gates
 
-This document is the execution contract for the 2026 ChatGPT content-runtime performance program. It turns performance work into staged, reproducible gates while preserving toolbar reliability and user-facing behavior.
+This document records the 2026 ChatGPT content-runtime performance program and its dated phase results. The bundle-size thresholds below are historical; current builds do not enforce a size limit. Use `CURRENT_TEST_GATES.md` for active verification requirements.
 
-## Active architecture override — 2026-08-11
+## Current architecture reference
 
-Current ChatGPT ownership follows ADR-0018. Historical phase records below are
-evidence for their dated builds; their references to an independent toolbar
-reconciler, source-only content, repeated refresh, or consumer-owned discovery
-are not current architecture. The benchmark now uses a canonical conversation
-route, complete typed user/assistant identities and one synthetic website-owned
-same-origin GET carrying a structurally valid Graph. The production Page Bridge
-observes that response passively; the extension never initiates it and never
-observes POST. Toolbars mount only after the resulting canonical pool joins the
-shared PageIndex → Conversation Surface lifecycle. Production may also
-establish the same pool from one stable DOM batch when no Graph is available,
-including an ID-less page. The former toolbar-owned ChatGPT scanner/recovery
-timer, Discovery Coordinator, Conversation Index, and standalone
-Materialization are deleted; benchmark recovery must therefore be caused by
-one PageIndex surface fact and one Surface reconciliation.
-The fixture must never weaken production content, route or identity validation
-to preserve an old benchmark.
+The dated phase results below are historical evidence, not an alternate runtime
+contract. For current ChatGPT discovery, toolbar readiness, and source ownership,
+use `CURRENT_TEST_GATES.md` together with ADR-0024 and ADR-0030. A benchmark
+fixture must follow those contracts rather than weakening production validation
+to reproduce an older result.
 
 ## Measurement protocol
 
@@ -41,7 +30,7 @@ The benchmark must always satisfy all of these invariants:
 - every official action row contains exactly one AI-MarkDone toolbar.
 - all replaced official action rows recover through PageIndex/Surface within 500 ms, without a toolbar-owned observer, route watcher, scan timer, or stale-recovery timer.
 - no content feature module is requested before the explicit Bookmarks trigger in the synthetic benchmark, which has no verified ChatGPT snapshot; in a live ChatGPT page, Reader/export chunks may be prewarmed once during an eligible idle window after a snapshot exists. After any trigger, every feature URL remains on the extension origin rather than the host page origin.
-- no phase may increase an already accepted bundle or runtime median captured under the same measurement protocol by more than 10% without an explicit documented reason.
+- no phase may increase an already accepted runtime median captured under the same measurement protocol by more than 10% without an explicit documented reason.
 - the direct-selection phase must produce no long task and no more than one `data-aimd-page-atomic-state` set plus one clear, regardless of repeated unchanged `selectionchange` events.
 - `npm run test:core` and `npm run build` remain green at every phase boundary.
 

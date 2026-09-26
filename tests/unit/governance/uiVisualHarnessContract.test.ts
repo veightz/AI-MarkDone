@@ -69,7 +69,6 @@ describe('UI visual harness contract', () => {
     it('keeps anchored fixtures in the viewport and normalizes mock probe box sizing', () => {
         for (const entry of [
             'mocks/components/formula-composer-assistant/main.ts',
-            'mocks/components/input-enhancement/main.ts',
         ]) {
             const mockSource = readRepoFile(entry);
             expect(mockSource, entry).toContain('isElementInViewport');
@@ -185,7 +184,7 @@ describe('UI visual harness contract', () => {
     });
 
     it('fails when a declared switch thumb is not geometrically centered in its track', () => {
-        const inputEnhancementSource = readRepoFile('src/ui/content/components/InputEnhancementPopover.ts');
+        const inputEnhancementSource = readRepoFile('src/ui/content/bookmarks/ui/tabs/SettingsTabView.ts');
 
         expect(inputEnhancementSource).toContain('data-aimd-switch-track');
         expect(source).toContain('switchGeometryViolations');

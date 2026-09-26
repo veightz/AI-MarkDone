@@ -66,7 +66,7 @@ describe('bookmarks stress', () => {
 
             const exportRes = await handleBookmarksRequest(req('bookmarks:export', { preserveStructure: true }));
             expect(exportRes?.response.ok).toBe(true);
-            expect((exportRes as any).response.data.payload.version).toBe('2.0');
+            expect((exportRes as any).response.data.payload.version).toBe('4.0');
 
             store['bookmark:stress.invalid:1'] = 'corrupted';
             const repairRes = await handleBookmarksRequest(req('bookmarks:repair'));

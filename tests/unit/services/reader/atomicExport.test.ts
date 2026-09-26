@@ -3,6 +3,17 @@ import { describe, expect, it } from 'vitest';
 import { buildAtomicSelectionExport } from '@/services/reader/atomicExport';
 
 describe('atomicExport', () => {
+    it('preserves paragraph boundaries in a cross-paragraph text selection without atomic units', () => {
+        const root = document.createElement('div');
+        root.innerHTML = '<p>First line</p><p>Second line</p>';
+        const paragraphs = root.querySelectorAll('p');
+        const range = document.createRange();
+        range.setStart(paragraphs[0]!.firstChild!, 0);
+        range.setEnd(paragraphs[1]!.firstChild!, 6);
+
+        expect(buildAtomicSelectionExport({ range, root, selectedUnits: [] })).toBe('First line\n\nSecond');
+    });
+
     it('replaces intersected atomic units with their markdown source', () => {
         const root = document.createElement('div');
         root.innerHTML = `

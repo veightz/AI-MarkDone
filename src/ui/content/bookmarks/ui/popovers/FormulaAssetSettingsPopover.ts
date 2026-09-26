@@ -1,4 +1,4 @@
-import { imageIcon } from '../../../../../assets/icons';
+import { imageIcon } from '../../../../../assets/workspaceIcons';
 import type { FormulaSettings } from '../../../../../core/settings/formula';
 import { createIcon } from '../../../components/Icon';
 import { createReaderSettingsDialogShell } from '../../../reader/ReaderSettingsDialogShell';

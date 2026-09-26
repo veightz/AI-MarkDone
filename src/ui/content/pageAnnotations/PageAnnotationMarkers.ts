@@ -1,4 +1,5 @@
-import { messageSquareTextIcon } from '../../../assets/icons';
+import { messageSquareTextIcon } from '../../../assets/workspaceIcons';
+import type { HighlightColor } from '../../../contracts/highlights';
 import type { AppearanceSnapshot } from '../../../style/appearance';
 import { areAppearanceSnapshotsEqual } from '../../../style/appearance';
 import { AppearanceScope } from '../../../style/appearanceScope';
@@ -12,16 +13,24 @@ const TOKEN_STYLE_ID = 'aimd-chatgpt-page-annotation-markers-tokens';
 
 export type MarkersAnchorRender = {
     id: string;
+    kind?: 'annotation';
     left: number;
     top: number;
     active: boolean;
     label?: string;
     onOpen: () => void;
+} | {
+    id: string;
+    kind: 'highlight';
+    color: HighlightColor;
+    left: number;
+    top: number;
+    label?: string;
 };
 
 export type MarkersItemRender = {
     root: HTMLElement;
-    highlights: Array<{ left: number; top: number; width: number; height: number }>;
+    highlights: Array<{ left: number; top: number; width: number; height: number; color?: HighlightColor }>;
     anchors: MarkersAnchorRender[];
     /** Stable layout signature supplied by the controller/planner. */
     signature?: string;
@@ -29,6 +38,7 @@ export type MarkersItemRender = {
 
 function getMarkersCss(): string {
     return `
+:host { mix-blend-mode: var(--aimd-highlight-blend-mode); }
 .markers-layer,
 .markers-layer * {
   box-sizing: border-box;
@@ -78,6 +88,9 @@ function getMarkersCss(): string {
 .reader-comment-highlight--active {
   background: color-mix(in srgb, var(--aimd-interactive-selected) 98%, var(--aimd-interactive-primary) 12%);
 }
+.reader-comment-highlight[data-color="blue"] { background: var(--aimd-highlight-blue); }
+.reader-comment-highlight[data-color="yellow"] { background: var(--aimd-highlight-yellow); }
+.reader-comment-highlight[data-color="red"] { background: var(--aimd-highlight-red); }
 
 .reader-comment-anchor {
   position: absolute;
@@ -101,6 +114,19 @@ function getMarkersCss(): string {
   background: var(--_reader-comment-floating-active-bg);
   border-color: var(--_reader-comment-floating-border);
 }
+
+.reader-highlight-anchor {
+  position: absolute;
+  display: block;
+  width: var(--aimd-space-2);
+  height: var(--aimd-size-control-compact);
+  border: 1px solid var(--aimd-border-subtle);
+  border-radius: var(--aimd-radius-full);
+  box-shadow: var(--aimd-workspace-raised);
+}
+.reader-highlight-anchor[data-color="blue"] { background: var(--aimd-highlight-blue); }
+.reader-highlight-anchor[data-color="yellow"] { background: var(--aimd-highlight-yellow); }
+.reader-highlight-anchor[data-color="red"] { background: var(--aimd-highlight-red); }
 `;
 }
 
@@ -120,10 +146,16 @@ type MarkerHost = {
  */
 export class PageAnnotationMarkers {
     private readonly hosts = new Map<HTMLElement, MarkerHost>();
+    private readonly rootResizeObserver: ResizeObserver | null;
     private appearance: AppearanceSnapshot;
 
-    constructor(appearance: AppearanceSnapshot) {
+    constructor(appearance: AppearanceSnapshot, onRootResize?: () => void) {
         this.appearance = appearance;
+        this.rootResizeObserver = typeof ResizeObserver === 'undefined' || !onRootResize
+            ? null
+            : new ResizeObserver((entries) => {
+                if (entries.some((entry) => this.hosts.has(entry.target as HTMLElement))) onRootResize();
+            });
     }
 
     setAppearance(snapshot: AppearanceSnapshot): void {
@@ -138,6 +170,7 @@ export class PageAnnotationMarkers {
             if (activeRoots.has(root) && entry.host.isConnected) continue;
             entry.host.remove();
             entry.scope.dispose();
+            this.rootResizeObserver?.unobserve(root);
             this.hosts.delete(root);
         }
 
@@ -150,7 +183,7 @@ export class PageAnnotationMarkers {
                 entry,
                 dx: rootRect.left - hostRect.left,
                 dy: rootRect.top - hostRect.top,
-                signature: item.signature ?? fallbackSignature(item),
+                signature: `${item.signature ?? fallbackSignature(item)}:${Math.round(rootRect.left - hostRect.left)}:${Math.round(rootRect.top - hostRect.top)}`,
             };
         });
 
@@ -161,6 +194,7 @@ export class PageAnnotationMarkers {
             for (const rect of item.highlights) {
                 const highlight = document.createElement('div');
                 highlight.className = 'reader-comment-highlight';
+                if (rect.color) highlight.dataset.color = rect.color;
                 highlight.style.left = `${Math.round(rect.left + dx)}px`;
                 highlight.style.top = `${Math.round(rect.top + dy)}px`;
                 highlight.style.width = `${Math.round(rect.width)}px`;
@@ -168,6 +202,17 @@ export class PageAnnotationMarkers {
                 layer.appendChild(highlight);
             }
             for (const anchor of item.anchors) {
+                if (anchor.kind === 'highlight') {
+                    const chip = document.createElement('span');
+                    chip.className = 'reader-highlight-anchor';
+                    chip.dataset.color = anchor.color;
+                    chip.setAttribute('role', 'img');
+                    chip.setAttribute('aria-label', anchor.label?.trim() || 'Highlight');
+                    chip.style.left = `${Math.round(anchor.left + dx)}px`;
+                    chip.style.top = `${Math.round(anchor.top + dy)}px`;
+                    layer.appendChild(chip);
+                    continue;
+                }
                 const button = document.createElement('button');
                 button.type = 'button';
                 button.className = `icon-btn reader-comment-anchor${anchor.active ? ' reader-comment-highlight--active' : ''}`;
@@ -190,6 +235,7 @@ export class PageAnnotationMarkers {
     }
 
     dispose(): void {
+        this.rootResizeObserver?.disconnect();
         for (const [, entry] of this.hosts) {
             entry.host.remove();
             entry.scope.dispose();
@@ -223,6 +269,7 @@ export class PageAnnotationMarkers {
 
         const entry: MarkerHost = { host, shadow, layer, scope, signature: null };
         this.hosts.set(root, entry);
+        this.rootResizeObserver?.observe(root);
         return entry;
     }
 
@@ -231,6 +278,6 @@ export class PageAnnotationMarkers {
 function fallbackSignature(item: MarkersItemRender): string {
     return JSON.stringify({
         highlights: item.highlights,
-        anchors: item.anchors.map((anchor) => [anchor.id, anchor.left, anchor.top, anchor.active]),
+        anchors: item.anchors.map((anchor) => [anchor.id, anchor.left, anchor.top, 'kind' in anchor ? anchor.kind : 'annotation', 'color' in anchor ? anchor.color : anchor.active]),
     });
 }

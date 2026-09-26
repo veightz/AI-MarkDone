@@ -1,9 +1,5 @@
 import type { SiteAdapter } from '../../../drivers/content/adapters/base';
 import { armChatGPTSendPositionRestore } from '../../../drivers/content/chatgpt/sendPositionRestoreEvents';
-import {
-    activateChatGPTComposerInputEnhancementMount,
-    findChatGPTComposerInputEnhancementMount,
-} from '../../../drivers/content/chatgpt/composerInputEnhancementMount';
 import { applyComposerNativeTextEdit, readComposer } from '../../../drivers/content/sending/composerPort';
 import {
     getContenteditableCaretClientRect,
@@ -49,14 +45,6 @@ import {
     type AppearanceSnapshot,
 } from '../../../style/appearance';
 import { FormulaComposerAssistantPopover } from '../components/FormulaComposerAssistantPopover';
-import { InputEnhancementButton } from '../components/InputEnhancementButton';
-import {
-    createInputEnhancementGuideContent,
-    INPUT_ENHANCEMENT_GUIDE_CSS,
-} from '../components/InputEnhancementGuide';
-import { InputEnhancementPopover } from '../components/InputEnhancementPopover';
-import { OverlaySession } from '../overlay/OverlaySession';
-import { t } from '../components/i18n';
 import { ChatGPTComposerBindingSource, type ChatGPTComposerInput } from './ChatGPTComposerBindingSource';
 
 type ComposerInput = ChatGPTComposerInput;
@@ -65,7 +53,6 @@ const FORMULA_HOVER_DELAY_MS = 160;
 const FORMULA_PREVIEW_MAX_SOURCE_LENGTH = 4000;
 
 export type ChatGPTComposerEditingControllerOptions = {
-    onInputEnhancementChange?: (settings: ChatGPTInputEnhancementSettings) => Promise<boolean>;
     loadFormulaSnippets?: () => Promise<LatexSnippetCatalog>;
     renderFormula?: (options: FormulaRenderOptions) => Promise<FormulaSvgAsset>;
     prewarmFormula?: () => void;
@@ -87,11 +74,6 @@ export class ChatGPTComposerEditingController {
     private composer: ComposerInput | null = null;
     private readonly bindingSource: ChatGPTComposerBindingSource;
     private unsubscribeBinding: (() => void) | null = null;
-    private inputEnhancementButton: InputEnhancementButton | null = null;
-    private inputEnhancementPopover: InputEnhancementPopover | null = null;
-    private inputEnhancementMountCleanup: (() => void) | null = null;
-    private inputEnhancementSavePending = false;
-    private inputEnhancementGuideSession: OverlaySession | null = null;
     private isInsertingNewline = false;
     private isTriggeringSend = false;
     private composing = false;
@@ -117,6 +99,7 @@ export class ChatGPTComposerEditingController {
     init(): void {
         if (this.initialized) return;
         this.initialized = true;
+        document.addEventListener('keydown', this.onDocumentEnterCapture, { capture: true });
         this.bindComposer();
         this.unsubscribeBinding = this.bindingSource.subscribe(() => this.bindComposer());
     }
@@ -124,14 +107,13 @@ export class ChatGPTComposerEditingController {
     dispose(): void {
         if (!this.initialized) return;
         this.initialized = false;
+        document.removeEventListener('keydown', this.onDocumentEnterCapture, { capture: true } as any);
         this.detachComposer();
         this.unsubscribeBinding?.();
         this.unsubscribeBinding = null;
         this.clearFormulaTimers();
         this.formulaAssistant?.dispose();
         this.formulaAssistant = null;
-        this.inputEnhancementGuideSession?.unmount();
-        this.inputEnhancementGuideSession = null;
     }
 
     setInputEnhancementSettings(settings: ChatGPTInputEnhancementSettings): void {
@@ -143,8 +125,6 @@ export class ChatGPTComposerEditingController {
         if (areAppearanceSnapshotsEqual(this.appearance, snapshot)) return;
         this.appearance = snapshot;
         this.formulaAssistant?.setAppearance(snapshot);
-        this.inputEnhancementPopover?.setAppearance(snapshot);
-        this.inputEnhancementGuideSession?.setAppearance(snapshot);
     }
 
     private bindComposer(): void {
@@ -163,7 +143,6 @@ export class ChatGPTComposerEditingController {
             next.addEventListener('compositionend', this.onCompositionEnd as EventListener);
             next.addEventListener('mousemove', this.onComposerMouseMove as EventListener);
         }
-        if (next) this.ensureInputEnhancementButton(next);
     }
 
     private detachComposer(): void {
@@ -178,93 +157,6 @@ export class ChatGPTComposerEditingController {
         this.composer = null;
         this.formulaSnippetSession = null;
         this.closeFormulaAssistant();
-        this.disposeInputEnhancementButton();
-    }
-
-    private ensureInputEnhancementButton(composer: ComposerInput): void {
-        if (!this.inputEnhancementSettings.available) {
-            this.disposeInputEnhancementButton();
-            return;
-        }
-        const mount = findChatGPTComposerInputEnhancementMount(composer);
-        if (!mount) {
-            this.disposeInputEnhancementButton();
-            return;
-        }
-        if (this.inputEnhancementButton?.host.parentElement === mount.container) {
-            if (mount.anchor.nextElementSibling !== this.inputEnhancementButton.host) {
-                mount.container.insertBefore(this.inputEnhancementButton.host, mount.anchor.nextSibling);
-            }
-            return;
-        }
-
-        this.disposeInputEnhancementButton();
-        mount.container.querySelectorAll('[data-aimd-role="input-enhancement-button"]')
-            .forEach((node) => node.remove());
-        this.inputEnhancementButton = new InputEnhancementButton({
-            onOpen: () => this.openInputEnhancementPopover(),
-        });
-        this.syncInputEnhancementUi();
-        this.inputEnhancementMountCleanup = activateChatGPTComposerInputEnhancementMount(mount);
-        mount.container.insertBefore(this.inputEnhancementButton.host, mount.anchor.nextSibling);
-    }
-
-    private disposeInputEnhancementButton(): void {
-        this.inputEnhancementPopover?.dispose();
-        this.inputEnhancementPopover = null;
-        this.inputEnhancementButton?.dispose();
-        this.inputEnhancementButton = null;
-        this.inputEnhancementMountCleanup?.();
-        this.inputEnhancementMountCleanup = null;
-    }
-
-    private openInputEnhancementPopover(): void {
-        const button = this.inputEnhancementButton;
-        if (!button || this.inputEnhancementSavePending) return;
-        if (this.inputEnhancementPopover?.isOpen()) {
-            this.inputEnhancementPopover.close('programmatic');
-            return;
-        }
-        if (!this.inputEnhancementPopover) {
-            this.inputEnhancementPopover = new InputEnhancementPopover({
-                onChange: (settings) => void this.persistInputEnhancementSettings(settings),
-                onClose: () => {
-                    this.inputEnhancementButton?.setExpanded(false);
-                },
-                onOpenGuide: () => this.openInputEnhancementGuide(),
-            });
-            this.inputEnhancementPopover.setAppearance(this.appearance);
-        }
-        button.setExpanded(true);
-        this.inputEnhancementPopover.open({
-            anchor: button.getAnchorElement(),
-            settings: this.inputEnhancementSettings,
-            pending: this.inputEnhancementSavePending,
-        });
-    }
-
-    private async persistInputEnhancementSettings(settings: ChatGPTInputEnhancementSettings): Promise<void> {
-        if (this.inputEnhancementSavePending) return;
-        const previous = this.cloneInputEnhancementSettings(this.inputEnhancementSettings);
-        this.applyInputEnhancementSettings(settings);
-        this.inputEnhancementSavePending = true;
-        this.syncInputEnhancementUi();
-        try {
-            const saved = await (
-                this.options.onInputEnhancementChange?.(this.cloneInputEnhancementSettings(settings))
-                ?? Promise.resolve(true)
-            );
-            if (!saved) {
-                this.applyInputEnhancementSettings(previous);
-                logger.warn('[AI-MarkDone][ChatGPTComposerEditing] Input enhancement settings were not saved');
-            }
-        } catch (error) {
-            this.applyInputEnhancementSettings(previous);
-            logger.warn('[AI-MarkDone][ChatGPTComposerEditing] Failed to save input enhancement settings', error);
-        } finally {
-            this.inputEnhancementSavePending = false;
-            this.syncInputEnhancementUi();
-        }
     }
 
     private applyInputEnhancementSettings(settings: ChatGPTInputEnhancementSettings): void {
@@ -285,18 +177,6 @@ export class ChatGPTComposerEditingController {
             this.closeFormulaAssistant();
             this.scheduleFormulaRefresh(0);
         }
-        this.syncInputEnhancementUi();
-    }
-
-    private syncInputEnhancementUi(): void {
-        this.inputEnhancementButton?.setEnabled(
-            this.inputEnhancementSettings.available && this.inputEnhancementSettings.enabled,
-        );
-        this.inputEnhancementButton?.setPending(this.inputEnhancementSavePending);
-        this.inputEnhancementPopover?.update(
-            this.inputEnhancementSettings,
-            this.inputEnhancementSavePending,
-        );
     }
 
     private cloneInputEnhancementSettings(
@@ -305,39 +185,15 @@ export class ChatGPTComposerEditingController {
         return { ...settings, lists: { ...settings.lists } };
     }
 
-    private openInputEnhancementGuide(): void {
-        if (!this.inputEnhancementGuideSession) {
-            this.inputEnhancementGuideSession = new OverlaySession({
-                id: 'aimd-input-enhancement-guide',
-                theme: this.appearance.theme,
-                themeOverrides: this.appearance.overrides,
-                surfaceCss: '',
-                overlayCss: INPUT_ENHANCEMENT_GUIDE_CSS,
-                surfaceStyleId: 'aimd-input-enhancement-guide-surface',
-                overlayStyleId: 'aimd-input-enhancement-guide-content',
-                overlayStyleCache: 'shared',
-                zIndex: 'var(--aimd-z-tooltip)',
-            });
-        }
-        const session = this.inputEnhancementGuideSession;
-        void session.modalHost.showCustom({
-            kind: 'info',
-            title: t('chatgptInputEnhancementGuideTitle'),
-            body: createInputEnhancementGuideContent(),
-            dialogClassName: 'input-enhancement-guide-dialog',
-            onClosed: () => {
-                if (this.inputEnhancementGuideSession !== session || session.modalHost.isOpen()) return;
-                session.unmount();
-                this.inputEnhancementGuideSession = null;
-            },
-        });
-    }
+    private onDocumentEnterCapture = (event: KeyboardEvent): void => {
+        if (this.shouldConvertEnter(event)) this.onKeyDownCapture(event);
+    };
 
     private onKeyDownCapture = (event: KeyboardEvent): void => {
-        const target = event.currentTarget;
+        const target = this.composer;
         const enhancement = resolveChatGPTInputEnhancement(this.inputEnhancementSettings);
         if (!enhancement.enabled || this.isInsertingNewline || this.isTriggeringSend || event.defaultPrevented) return;
-        if (!(target instanceof HTMLElement)) return;
+        if (!(target instanceof HTMLElement) || !event.composedPath().includes(target)) return;
         if ((enhancement.formulaSuggestions || enhancement.formulaPreview) && this.handleFormulaKeydown(event, target)) return;
         if (enhancement.lists.enabled && this.handleMarkdownDeletion(event, target, enhancement.lists)) return;
         if (enhancement.boldShortcut && this.shouldToggleBold(event)) {

@@ -41,6 +41,7 @@ export class PageAnnotationStore {
     private durable = new Map<string, ReaderCommentRecord[]>();
     private runtime = new Map<string, ReaderCommentRecord[]>();
     private loadedDocumentKey: string | null = null;
+    private loadFailure: string | null = null;
     private loadGeneration = 0;
     private unsubscribeChanges: (() => void) | null = null;
     private readonly listeners = new Set<() => void>();
@@ -63,11 +64,23 @@ export class PageAnnotationStore {
         return this.document;
     }
 
+    getLoadFailure(): string | null {
+        return this.loadFailure;
+    }
+
+    async reload(): Promise<void> {
+        const document = this.document;
+        if (!document) return;
+        await this.loadDurable(document);
+        this.emit();
+    }
+
     async bindDocument(document: ReaderAnnotationDocument | null): Promise<void> {
         const nextKey = document ? readerAnnotationDocumentKey(document) : null;
-        if (document && nextKey === this.loadedDocumentKey) return;
+        if (document && nextKey === this.loadedDocumentKey) { this.document = document; return; }
         this.document = document;
         this.loadedDocumentKey = nextKey;
+        this.loadFailure = null;
         this.loadGeneration += 1;
         this.runtime.clear();
         this.durable.clear();
@@ -173,6 +186,7 @@ export class PageAnnotationStore {
         this.runtime.clear();
         this.document = null;
         this.loadedDocumentKey = null;
+        this.loadFailure = null;
         this.loadGeneration += 1;
     }
 
@@ -180,7 +194,11 @@ export class PageAnnotationStore {
         const generation = ++this.loadGeneration;
         const result = await this.client.list(document);
         if (generation !== this.loadGeneration || this.loadedDocumentKey !== readerAnnotationDocumentKey(document)) return;
-        if (!result.ok) return;
+        if (!result.ok) {
+            this.loadFailure = result.message;
+            return;
+        }
+        this.loadFailure = null;
         this.durable.clear();
         for (const entry of result.data?.entries ?? []) {
             if (readerAnnotationDocumentKey(entry.document) !== readerAnnotationDocumentKey(document)) continue;

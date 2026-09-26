@@ -56,9 +56,28 @@ describe('ConversationNavigationCoordinator', () => {
             },
         });
         expect(execute).toHaveBeenCalledTimes(1);
+        expect(execute).toHaveBeenCalledWith(expect.anything(), expect.anything(), 'directory');
     });
 
-    it('fails closed when message identity and stored position disagree', async () => {
+    it('does not reuse a page-control execution for a bookmark request to the same target', async () => {
+        const source = createConversationContentSource({
+            conversationId: '12345678-1234-1234-1234-123456789abc',
+            rounds: [{ id: 'round-1', assistantMessageId: 'assistant-1', assistantContent: 'Answer' }],
+        });
+        const execute = vi.fn(async () => ({ ok: true as const }));
+        const coordinator = new ConversationNavigationCoordinator({ source, execute });
+        const target = { position: 1, assistantMessageId: 'assistant-1' };
+        const directory = coordinator.navigate({ ...target, source: 'directory' });
+        const bookmark = coordinator.navigate({ ...target, source: 'bookmark' });
+
+        expect(directory).not.toBe(bookmark);
+        expect(await directory).toEqual({ ok: false, reason: 'cancelled' });
+        expect((await bookmark).ok).toBe(true);
+        expect(execute).toHaveBeenCalledOnce();
+        expect(execute).toHaveBeenCalledWith(expect.anything(), expect.anything(), 'bookmark');
+    });
+
+    it('follows a bookmark identity after its stored position changes', async () => {
         const source = createConversationContentSource({
             conversationId: '12345678-1234-1234-1234-123456789abc',
             rounds: [
@@ -75,11 +94,115 @@ describe('ConversationNavigationCoordinator', () => {
             source: 'bookmark',
         });
 
-        expect(result).toEqual({ ok: false, reason: 'identity-conflict' });
-        expect(execute).not.toHaveBeenCalled();
+        expect(result.ok).toBe(true);
+        if (result.ok) expect(result.target.position).toBe(2);
+        expect(execute).toHaveBeenCalledOnce();
     });
 
-    it('uses position only for legacy bookmarks after a complete source is available', async () => {
+    it('does not reuse a cancelled same-target navigation', async () => {
+        const source = createConversationContentSource({
+            conversationId: '12345678-1234-1234-1234-123456789abc',
+            rounds: [{ id: 'round-1', assistantMessageId: 'assistant-1', assistantContent: 'Answer' }],
+        });
+        const execute = vi.fn(async (_target, options) => {
+            if (options.signal?.aborted) return { ok: false as const, message: 'Navigation cancelled' };
+            return { ok: true as const };
+        });
+        const coordinator = new ConversationNavigationCoordinator({ source, execute });
+        const abort = new AbortController();
+        const input = { position: 1, assistantMessageId: 'assistant-1', source: 'directory' as const };
+        const first = coordinator.navigate(input, { signal: abort.signal });
+        abort.abort();
+        const second = coordinator.navigate(input);
+
+        expect(second).not.toBe(first);
+        expect((await second).ok).toBe(true);
+    });
+
+    it('restarts a pending same-target navigation for a fresh user click', async () => {
+        const source = createConversationContentSource({
+            conversationId: '12345678-1234-1234-1234-123456789abc',
+            rounds: [{ id: 'round-1', assistantMessageId: 'assistant-1', assistantContent: 'Answer' }],
+        });
+        let calls = 0;
+        const execute = vi.fn(async (_target, options) => {
+            calls += 1;
+            if (calls > 1) return { ok: true as const };
+            return new Promise<{ ok: false; message: string }>((resolve) => {
+                options.signal?.addEventListener('abort', () => resolve({ ok: false, message: 'Navigation cancelled' }), { once: true });
+            });
+        });
+        const coordinator = new ConversationNavigationCoordinator({ source, execute });
+        const input = { position: 1, assistantMessageId: 'assistant-1', source: 'directory' as const };
+        const first = coordinator.navigate(input);
+        await vi.waitFor(() => expect(execute).toHaveBeenCalledOnce());
+        const second = coordinator.navigate(input);
+
+        expect(second).not.toBe(first);
+        expect(await first).toEqual({ ok: false, reason: 'cancelled' });
+        expect((await second).ok).toBe(true);
+        expect(execute).toHaveBeenCalledTimes(2);
+    });
+
+    it('continues to share an in-flight duplicate bookmark request', async () => {
+        const source = createConversationContentSource({
+            conversationId: '12345678-1234-1234-1234-123456789abc',
+            rounds: [{ id: 'round-1', assistantMessageId: 'assistant-1', assistantContent: 'Answer' }],
+        });
+        let complete!: (value: { ok: true }) => void;
+        const execute = vi.fn(() => new Promise<{ ok: true }>((resolve) => { complete = resolve; }));
+        const coordinator = new ConversationNavigationCoordinator({ source, execute });
+        const input = { position: 1, assistantMessageId: 'assistant-1', source: 'bookmark' as const };
+        const first = coordinator.navigate(input);
+        await vi.waitFor(() => expect(execute).toHaveBeenCalledOnce());
+        const second = coordinator.navigate(input);
+
+        expect(second).toBe(first);
+        complete({ ok: true });
+        expect((await second).ok).toBe(true);
+    });
+
+    it('does not report an old execution as successful after it was cancelled', async () => {
+        const source = createConversationContentSource({
+            conversationId: '12345678-1234-1234-1234-123456789abc',
+            rounds: [{ id: 'round-1', assistantMessageId: 'assistant-1', assistantContent: 'Answer' }],
+        });
+        let finish!: (value: { ok: true }) => void;
+        const execute = vi.fn(() => new Promise<{ ok: true }>((resolve) => { finish = resolve; }));
+        const coordinator = new ConversationNavigationCoordinator({ source, execute });
+        const pending = coordinator.navigate({ position: 1, assistantMessageId: 'assistant-1', source: 'directory' });
+        await vi.waitFor(() => expect(execute).toHaveBeenCalledOnce());
+
+        coordinator.cancelActive();
+        finish({ ok: true });
+
+        expect(await pending).toEqual({ ok: false, reason: 'cancelled' });
+    });
+
+    it('follows a Directory message identity when provisional turn ID and ordinal changed', async () => {
+        const source = createConversationContentSource({
+            conversationId: '12345678-1234-1234-1234-123456789abc',
+            rounds: [
+                { id: 'prepended-round', assistantMessageId: 'assistant-0', assistantContent: 'Earlier' },
+                { id: 'current-round', userMessageId: 'current-user', assistantMessageId: 'assistant-1', assistantContent: 'Answer' },
+            ],
+        });
+        const execute = vi.fn(async () => ({ ok: true as const }));
+        const coordinator = new ConversationNavigationCoordinator({ source, execute });
+
+        const result = await coordinator.navigate({
+            position: 1,
+            roundId: 'provisional-round',
+            userMessageId: 'provisional-user',
+            assistantMessageId: 'assistant-1',
+            source: 'directory',
+        }, { timeoutMs: 20 });
+
+        expect(result.ok).toBe(true);
+        if (result.ok) expect(result.target).toMatchObject({ position: 2, roundId: 'current-round' });
+    });
+
+    it('does not jump to another message for an ID-less legacy bookmark', async () => {
         const snapshot = toConversationSnapshotV1({
             conversationId: '12345678-1234-1234-1234-123456789abc',
             rounds: [{ id: 'round-1', userPrompt: 'First', assistantContent: 'A1', userMessageId: 'user-1', assistantMessageId: 'assistant-1' }],
@@ -90,11 +213,8 @@ describe('ConversationNavigationCoordinator', () => {
 
         const result = await coordinator.navigate({ position: 1, source: 'bookmark' });
 
-        expect(result.ok).toBe(true);
-        if (result.ok) {
-            expect(result.resolvedBy).toBe('position');
-            expect(result.target.assistantMessageId).toBe('assistant-1');
-        }
+        expect(result).toEqual({ ok: false, reason: 'source-unavailable' });
+        expect(execute).not.toHaveBeenCalled();
     });
 
     it('does not use position-only fallback while a get source is still unverified', async () => {
@@ -110,7 +230,7 @@ describe('ConversationNavigationCoordinator', () => {
             const resultPromise = coordinator.navigate({ position: 1, source: 'bookmark' }, { timeoutMs: 20 });
 
             await vi.advanceTimersByTimeAsync(25);
-            await expect(resultPromise).resolves.toEqual({ ok: false, reason: 'hydration-timeout' });
+            await expect(resultPromise).resolves.toEqual({ ok: false, reason: 'source-unavailable' });
             expect(execute).not.toHaveBeenCalled();
         } finally {
             vi.useRealTimers();

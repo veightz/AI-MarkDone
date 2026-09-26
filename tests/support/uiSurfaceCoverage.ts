@@ -75,12 +75,12 @@ export const uiSurfaceCoverage = [
         visualEvidence: { status: 'covered-by-family', mockPath: 'mocks/components/host-integrated-controls', reason: 'The real directory rail renders active, bookmarked, hover, preview, and narrow-screen states' },
     },
     {
-        id: 'input-enhancement', family: 'composer', userEntry: 'Plus-adjacent Input Enhancement button',
-        ownerModule: 'src/ui/content/controllers/ChatGPTComposerEditingController.ts', productionEntry: 'src/runtimes/content/entry.ts',
-        profiles: ['anchored', 'modal'], domScopes: ['shadow-root', 'page-portal'], lifecycleOwners: owners('ChatGPTComposerEditingController'),
-        responsive: 'Clamp to the visual viewport and collapse to one readable column', browsers,
-        triggerTests: ['tests/unit/ui/content/controllers/ChatGPTComposerEditingController.test.ts'],
-        visualEvidence: { status: 'direct-mock', mockPath: 'mocks/components/input-enhancement' },
+        id: 'input-enhancement', family: 'settings', userEntry: 'Settings → Input & Prompts',
+        ownerModule: 'src/ui/content/bookmarks/ui/tabs/SettingsTabView.ts', productionEntry: 'src/ui/content/bookmarks/BookmarksPanel.ts',
+        profiles: ['panel', 'modal'], domScopes: ['shadow-root'], lifecycleOwners: owners('BookmarksPanel'),
+        responsive: 'Searchable direct controls in the settings category layout', browsers,
+        triggerTests: ['tests/unit/ui/bookmarks/settingsCatalog.test.ts', 'tests/unit/ui/content/controllers/ChatGPTComposerEditingController.test.ts'],
+        visualEvidence: { status: 'covered-by-family', mockPath: 'mocks/components/bookmarks-workspace', reason: 'The production settings center owns the relocated enhancement controls and syntax guide' },
     },
     {
         id: 'formula-composer-assistant', family: 'composer', userEntry: 'Formula caret inside the official composer',

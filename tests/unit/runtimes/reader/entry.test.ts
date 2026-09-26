@@ -116,6 +116,58 @@ afterEach(() => {
 });
 
 describe('detached reader runtime entry', () => {
+    it('marks an identified bookmark by message ID when its stored ordinal changed', async () => {
+        const { DEFAULT_SETTINGS } = await import('@/core/settings/types');
+        const url = 'https://chatgpt.com/c/12345678-1234-1234-1234-123456789abc';
+        const session = {
+            sessionId: 'session-1', sourceTabId: 10, readerTabId: 11, sourceUrl: url,
+            snapshot: {
+                items: [{ id: 'assistant-1', userPrompt: 'Prompt', content: 'Answer', meta: { position: 4, assistantMessageId: 'assistant-1', messageId: 'assistant-1' } }],
+                startIndex: 0, sourceUrl: url, theme: 'light' as const, createdAt: 1, updatedAt: 1,
+            },
+        };
+        window.location.hash = '#sessionId=session-1';
+        sendExtRequest.mockImplementation(async (request: any) => {
+            if (request.type === 'settings:getAll') return { ok: true, data: { settings: structuredClone(DEFAULT_SETTINGS) } };
+            if (request.type === 'readerSession:get') return { ok: true, data: { session } };
+            if (request.type === 'bookmarks:list') return { ok: true, data: { bookmarks: [{ url, urlWithoutProtocol: url.slice(8), position: 1, messageId: 'assistant-1', userMessage: 'Prompt', timestamp: 1, title: 'Prompt', platform: 'ChatGPT', folderPath: 'Import' }] } };
+            return { ok: true, data: {} };
+        });
+
+        await import('@/runtimes/reader/entry');
+        await vi.waitFor(() => expect(panelShow).toHaveBeenCalledOnce());
+
+        expect(panelShow.mock.calls[0][0][0].meta.bookmarked).toBe(true);
+        expect(sendExtRequest.mock.calls.some(([request]) => request.type === 'bookmarks:positions')).toBe(false);
+    });
+
+    it('passes the forced interface theme to Reader instead of the source page theme', async () => {
+        const { DEFAULT_SETTINGS } = await import('@/core/settings/types');
+        const settings = structuredClone(DEFAULT_SETTINGS);
+        settings.appearance.themeMode = 'light';
+        const session = {
+            sessionId: 'session-1', sourceTabId: 10, readerTabId: 11,
+            sourceUrl: 'https://chatgpt.com/c/mock',
+            snapshot: {
+                items: [{ id: 'item-1', userPrompt: 'Prompt', content: 'Answer' }],
+                startIndex: 0, sourceUrl: 'https://chatgpt.com/c/mock',
+                theme: 'dark' as const, createdAt: 1, updatedAt: 1,
+            },
+        };
+        window.location.hash = '#sessionId=session-1';
+        sendExtRequest.mockImplementation(async (request: any) => {
+            if (request.type === 'settings:getAll') return { ok: true, data: { settings } };
+            if (request.type === 'readerSession:get') return { ok: true, data: { session } };
+            if (request.type === 'bookmarks:positions') return { ok: true, data: { positions: [] } };
+            return { ok: true, data: {} };
+        });
+
+        await import('@/runtimes/reader/entry');
+        await vi.waitFor(() => expect(panelShow).toHaveBeenCalledTimes(1));
+        expect(panelSetAppearance).toHaveBeenLastCalledWith(expect.objectContaining({ theme: 'light' }));
+        expect(panelShow).toHaveBeenCalledWith(expect.any(Array), 0, 'light', expect.any(Object));
+    });
+
     it('shows a runtime failure instead of misreporting a disconnected session as expired', async () => {
         window.location.hash = '#sessionId=session-1';
         sendExtRequest.mockResolvedValue({
@@ -1156,7 +1208,7 @@ describe('detached reader runtime entry', () => {
 
         expect(sendExtRequest).toHaveBeenCalledWith(expect.objectContaining({
             type: 'bookmarks:remove',
-            payload: { url: 'https://chatgpt.com/c/mock', position: 1 },
+            payload: { url: 'https://chatgpt.com/c/mock', position: 1, messageId: 'assistant-1' },
         }));
         expect(item.meta.bookmarked).toBe(false);
         expect(notify).toHaveBeenCalledWith('removedStatus');

@@ -54,6 +54,17 @@ describe('PageAnnotationStore', () => {
         client = makeClient();
     });
 
+    it('refreshes same-conversation metadata without clearing records or reloading', async () => {
+        const store = new PageAnnotationStore(client);
+        store.setPersistEnabled(true);
+        await store.bindDocument({ ...document, title: null });
+        await store.bindDocument(document);
+        await store.create(makeRecord(), target);
+        expect(client.create).toHaveBeenCalledWith(expect.objectContaining({ title: 'Test conversation' }), expect.anything());
+        expect(client.list).toHaveBeenCalledTimes(1);
+        store.dispose();
+    });
+
     it('ignores a late load from the previous conversation', async () => {
         let finishOld!: (value: any) => void;
         vi.mocked(client.list).mockImplementationOnce(() => new Promise(resolve => { finishOld = resolve; }));
@@ -157,6 +168,30 @@ describe('PageAnnotationStore', () => {
         const store = new PageAnnotationStore(failingClient);
 
         await expect(store.listAllRecords()).rejects.toThrow('storage unavailable');
+    });
+
+    it('exposes current-conversation load failures and clears them after a successful refresh', async () => {
+        vi.mocked(client.list).mockResolvedValueOnce({
+            ok: false,
+            errorCode: 'TRANSPORT_FAILED',
+            message: 'storage unavailable',
+            failure: { kind: 'transport', code: 'TRANSPORT_FAILED', message: 'storage unavailable', delivery: 'unknown' },
+        });
+        const store = new PageAnnotationStore(client);
+        await store.bindDocument(document);
+
+        expect(store.getLoadFailure()).toBe('storage unavailable');
+        expect(store.listForConversation()).toEqual([]);
+
+        vi.mocked(client.list).mockResolvedValueOnce({
+            ok: true,
+            data: { entries: [{ document, annotation: { ...makeRecord({ revision: 1 }), target, lastKnownAnchorState: 'anchored' } }] },
+        });
+        await store.reload();
+
+        expect(store.getLoadFailure()).toBeNull();
+        expect(store.listForConversation()).toHaveLength(1);
+        store.dispose();
     });
 
     it('updates durable records with a revision through the client', async () => {

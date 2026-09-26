@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { SiteAdapter, type ConversationGroupRef, type ThemeDetector } from '@/drivers/content/adapters/base';
+import { ChatGPTAdapter } from '@/drivers/content/adapters/sites/chatgpt';
 import { invalidateChatGPTDomRoundSnapshot } from '@/drivers/content/chatgpt/domConversationDiscovery';
 import { ChatGPTConversationSurface } from '@/drivers/content/chatgpt/ChatGPTConversationSurface';
 import { createConversationContentSource } from '../../../helpers/chatgptContentFixtures';
@@ -345,6 +346,124 @@ function setSyntheticRoundGeometry(positions: number[], currentPosition: number)
 }
 
 describe('ChatGPT directory navigation', () => {
+    it('follows mounted messages whose display turn keys differ from canonical IDs', async () => {
+        const { ChatGPTDirectoryController } = await import('@/ui/content/controllers/ChatGPTDirectoryController');
+        document.body.innerHTML = `<main>
+          <div data-turn-key="user-2" data-content-search-turn-key="display-turn-2">
+            <div data-chatgpt-search-unit-key="display-turn-2:0:user" data-chatgpt-search-message-ids="user-2">Prompt 2</div>
+            <div data-chatgpt-search-unit-key="display-turn-2:2:assistant" data-chatgpt-search-message-ids="assistant-2 assistant-2">
+              <div data-markdown-text-style="assistant-message">Answer 2</div>
+            </div>
+          </div>
+        </main>`;
+        const adapter = new ChatGPTAdapter();
+        const source = createConversationContentSource(buildCanonicalSnapshot(3));
+        const surface = new ChatGPTConversationSurface({ adapter, content: source });
+        const controller = new ChatGPTDirectoryController(adapter, null, { surface });
+        controller.init('light');
+        try {
+            const activePosition = () => document.getElementById('aimd-chatgpt-directory-rail')?.shadowRoot
+                ?.querySelector<HTMLElement>('.rail__item[data-active="1"]')?.dataset.position;
+            expect(activePosition()).toBe('2');
+            document.querySelector('main')!.innerHTML = `<div data-turn-key="user-3" data-content-search-turn-key="display-turn-3">
+              <div data-chatgpt-search-unit-key="display-turn-3:0:user" data-chatgpt-search-message-ids="user-3">Prompt 3</div>
+              <div data-chatgpt-search-unit-key="display-turn-3:2:assistant" data-chatgpt-search-message-ids="assistant-3 assistant-3">
+                <div data-markdown-text-style="assistant-message">Answer 3</div>
+              </div>
+            </div>`;
+            surface.refreshSurface();
+            await vi.advanceTimersByTimeAsync(600);
+            expect(activePosition()).toBe('3');
+        } finally {
+            controller.dispose();
+            surface.dispose();
+            adapter.dispose();
+        }
+    });
+
+    it('can repeatedly click a search-unit message with a distinct display turn key', async () => {
+        const { ConversationNavigationCoordinator } = await import('@/services/content/ConversationNavigationCoordinator');
+        const { ChatGPTDirectoryController } = await import('@/ui/content/controllers/ChatGPTDirectoryController');
+        const { navigateChatGPTDirectoryTarget } = await import('@/ui/content/chatgptDirectory/navigation');
+        document.body.innerHTML = `<main>
+          <div data-turn-key="user-1" data-content-search-turn-key="display-turn-1">
+            <div data-chatgpt-search-unit-key="display-turn-1:0:user" data-chatgpt-search-message-ids="user-1">Prompt 1</div>
+            <div data-chatgpt-search-unit-key="display-turn-1:2:assistant" data-chatgpt-search-message-ids="assistant-1 assistant-1">
+              <div data-markdown-text-style="assistant-message">Answer 1</div>
+            </div>
+          </div>
+        </main>`;
+        const adapter = new ChatGPTAdapter();
+        const source = createConversationContentSource(buildCanonicalSnapshot(1));
+        const surface = new ChatGPTConversationSurface({ adapter, content: source });
+        const anchor = document.querySelector<HTMLElement>('[data-chatgpt-search-unit-key="display-turn-1:0:user"]')!;
+        anchor.scrollIntoView = vi.fn();
+        const navigation = new ConversationNavigationCoordinator({
+            source,
+            execute: (target, options) => navigateChatGPTDirectoryTarget(adapter, target, {
+                ...options, surface, alignmentTimeoutMs: 0,
+            }),
+        });
+        const controller = new ChatGPTDirectoryController(adapter, null, { surface, navigation });
+        controller.init('light');
+        try {
+            document.getElementById('aimd-chatgpt-directory-rail')?.shadowRoot
+                ?.querySelector<HTMLButtonElement>('[data-position="1"]')?.click();
+            await vi.advanceTimersByTimeAsync(100);
+            expect(anchor.scrollIntoView).toHaveBeenCalledOnce();
+            document.getElementById('aimd-chatgpt-directory-rail')?.shadowRoot
+                ?.querySelector<HTMLButtonElement>('[data-position="1"]')?.click();
+            await vi.advanceTimersByTimeAsync(100);
+            expect(anchor.scrollIntoView).toHaveBeenCalledTimes(2);
+        } finally {
+            controller.dispose();
+            navigation.cancelActive();
+            surface.dispose();
+            adapter.dispose();
+        }
+    });
+
+    it('keeps a directory click on the same message when history changes its ordinal before redraw', async () => {
+        const { ConversationNavigationCoordinator } = await import('@/services/content/ConversationNavigationCoordinator');
+        const { ChatGPTDirectoryController } = await import('@/ui/content/controllers/ChatGPTDirectoryController');
+        const { navigateChatGPTDirectoryTarget } = await import('@/ui/content/chatgptDirectory/navigation');
+        const adapter = new ChatGPTNavigationTestAdapter();
+        mountRoleWindow([3]);
+        setCanonicalSnapshot(adapter, buildCanonicalSnapshot(3));
+        const surface = getSurface(adapter);
+        const source = sourcesByAdapter.get(adapter)!;
+        const anchor = document.getElementById('user-3')!;
+        anchor.scrollIntoView = vi.fn();
+        const execute = vi.fn((target, options) => navigateChatGPTDirectoryTarget(adapter, target, {
+            ...options, surface,
+        }));
+        const navigation = new ConversationNavigationCoordinator({ source, execute });
+        const controller = new ChatGPTDirectoryController(adapter, null, { surface, navigation });
+        controller.init('light');
+        try {
+            const button = document.getElementById('aimd-chatgpt-directory-rail')!
+                .shadowRoot!.querySelector<HTMLButtonElement>('[data-position="3"]')!;
+            const snapshot = buildCanonicalSnapshot(3);
+            snapshot.revision = 2;
+            snapshot.rounds.unshift({
+                id: 'round-0', userPrompt: 'Older prompt', assistantContent: 'Older answer',
+                userMessageId: 'user-0', assistantMessageId: 'assistant-0',
+            });
+            source.publish(snapshot);
+
+            button.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true, composed: true }));
+            button.click();
+            await vi.advanceTimersByTimeAsync(240);
+
+            expect(execute).toHaveBeenCalledOnce();
+            expect(execute.mock.calls[0]![0]).toMatchObject({ position: 4, assistantMessageId: 'assistant-3' });
+            expect(anchor.scrollIntoView).toHaveBeenCalledOnce();
+        } finally {
+            controller.dispose();
+            navigation.cancelActive();
+        }
+    });
+
     it('navigates directly from the Runtime Surface without a duplicate content projection', async () => {
         const { navigateChatGPTDirectoryTarget } = await import('@/ui/content/chatgptDirectory/navigation');
         const adapter = new ChatGPTNavigationTestAdapter();
@@ -429,6 +548,40 @@ describe('ChatGPT directory navigation', () => {
         window.removeEventListener('aimd:chatgpt-send-position-restore:release', releaseListener);
     });
 
+    it('retries when the first scroll stops before the scrollport start', async () => {
+        const { navigateChatGPTDirectoryTarget } = await import('@/ui/content/chatgptDirectory/navigation');
+        const adapter = new ChatGPTNavigationTestAdapter();
+        const anchor = buildMaterializedRoundDom();
+        publishCanonicalRounds(adapter, ['a1']);
+        const scrollRoot = document.createElement('div');
+        scrollRoot.append(...Array.from(document.body.children));
+        document.body.append(scrollRoot);
+        scrollRoot.getBoundingClientRect = vi.fn(() => ({
+            x: 0, y: 52, top: 52, left: 0, right: 100, bottom: 900,
+            width: 100, height: 848, toJSON: () => ({}),
+        }));
+        adapter.getConversationScrollRoot = () => scrollRoot;
+        let top = 1200;
+        anchor.getBoundingClientRect = vi.fn(() => ({
+            x: 0, y: top, top, left: 0, right: 100, bottom: top + 40,
+            width: 100, height: 40, toJSON: () => ({}),
+        }));
+        anchor.scrollIntoView = vi.fn(() => {
+            top = (anchor.scrollIntoView as ReturnType<typeof vi.fn>).mock.calls.length === 1 ? 1200 : 52;
+        });
+
+        const resultPromise = navigateChatGPTDirectoryTarget(adapter, { position: 1 }, {
+            surface: getSurface(adapter),
+            alignmentTimeoutMs: 240,
+            alignmentQuietMs: 40,
+            maxAlignmentAttempts: 3,
+        });
+        await vi.advanceTimersByTimeAsync(260);
+
+        expect(await resultPromise).toEqual({ ok: true });
+        expect(anchor.scrollIntoView).toHaveBeenCalledTimes(2);
+    });
+
     it('does not keep realigning after the user starts navigating manually', async () => {
         const { navigateChatGPTDirectoryTarget } = await import('@/ui/content/chatgptDirectory/navigation');
         const adapter = new ChatGPTNavigationTestAdapter();
@@ -468,6 +621,26 @@ describe('ChatGPT directory navigation', () => {
 
         expect(result).toEqual({ ok: true });
         expect(anchor.scrollIntoView).toHaveBeenCalledTimes(1);
+    });
+
+    it('stops an old alignment when a newer Directory click aborts its signal', async () => {
+        const { navigateChatGPTDirectoryTarget } = await import('@/ui/content/chatgptDirectory/navigation');
+        const adapter = new ChatGPTNavigationTestAdapter();
+        const anchor = buildMaterializedRoundDom();
+        publishCanonicalRounds(adapter, ['a1']);
+        anchor.scrollIntoView = vi.fn();
+        const controller = new AbortController();
+        const resultPromise = navigateChatGPTDirectoryTarget(adapter, { position: 1 }, {
+            surface: getSurface(adapter), source: 'directory', signal: controller.signal,
+            alignmentTimeoutMs: 240, alignmentQuietMs: 40,
+        });
+
+        await vi.advanceTimersByTimeAsync(30);
+        controller.abort();
+        await vi.advanceTimersByTimeAsync(260);
+
+        expect(await resultPromise).toEqual({ ok: false, message: 'Navigation cancelled' });
+        expect(anchor.scrollIntoView).toHaveBeenCalledOnce();
     });
 
     it('does not report success when the exact anchor remains outside the alignment tolerance', async () => {
@@ -588,6 +761,73 @@ describe('ChatGPT directory navigation', () => {
         expect(navigationMocks.highlightNavigationTarget).toHaveBeenCalledWith(document.getElementById('user-10'));
     });
 
+    it('uses the stable assistant ID when a Directory target has a provisional turn ID', async () => {
+        const { navigateChatGPTDirectoryTarget } = await import('@/ui/content/chatgptDirectory/navigation');
+        const adapter = new ChatGPTNavigationTestAdapter();
+        mountRoleWindow([1, 2]);
+        setCanonicalSnapshot(adapter, buildCanonicalSnapshot(2));
+        const anchor = document.getElementById('user-2') as HTMLElement;
+        anchor.scrollIntoView = vi.fn();
+
+        const result = await navigateChatGPTDirectoryTarget(adapter, {
+            position: 1,
+            roundId: 'provisional-turn-2',
+            userMessageId: 'user-2',
+            assistantMessageId: 'assistant-2',
+        }, { surface: getSurface(adapter), source: 'directory', alignmentTimeoutMs: 0 });
+
+        expect(result).toEqual({ ok: true });
+        expect(anchor.scrollIntoView).toHaveBeenCalledOnce();
+    });
+
+    it('uses a current turn-key shell to hydrate the exact directory target', async () => {
+        const { navigateChatGPTDirectoryTarget } = await import('@/ui/content/chatgptDirectory/navigation');
+        const adapter = new ChatGPTNavigationTestAdapter();
+        document.body.innerHTML = '<main><div data-content-search-turn-key="round-2" data-turn-key="user-2"></div></main>';
+        setCanonicalSnapshot(adapter, buildCanonicalSnapshot(3));
+        const scrollRoot = attachTestScrollRoot(adapter);
+        const slot = document.querySelector<HTMLElement>('[data-content-search-turn-key="round-2"]')!;
+        slot.scrollIntoView = vi.fn(() => {
+            slot.innerHTML = `
+              <div data-turn="user" data-turn-id="round-2"><div data-message-author-role="user" data-message-id="user-2">Prompt 2</div></div>
+              <div data-turn="assistant" data-turn-id="round-2"><div data-message-author-role="assistant" data-message-id="assistant-2">Answer 2</div></div>`;
+            slot.querySelector<HTMLElement>('[data-turn="user"]')!.scrollIntoView = vi.fn();
+        });
+        const resultPromise = navigateChatGPTDirectoryTarget(adapter, { position: 2, roundId: 'round-2', userMessageId: 'user-2', assistantMessageId: 'assistant-2' }, {
+            surface: getSurface(adapter), timeoutMs: 300, alignmentTimeoutMs: 0,
+        });
+        await vi.advanceTimersByTimeAsync(100);
+        expect(await resultPromise).toEqual({ ok: true });
+        expect(slot.scrollIntoView).toHaveBeenCalledOnce();
+        expect(scrollRoot.scrollTo).not.toHaveBeenCalled();
+    });
+
+    it.each(['directory', 'stepper', 'reader', 'bookmark', undefined] as const)(
+        'limits incomplete-round slot recovery to page controls (source: %s)', async (source) => {
+            const { navigateChatGPTDirectoryTarget } = await import('@/ui/content/chatgptDirectory/navigation');
+            const adapter = new ChatGPTNavigationTestAdapter();
+            const slots = mountVirtualizedTurnSlots(14, [13, 14]);
+            const snapshot = buildCanonicalSnapshot(14);
+            snapshot.rounds[0].userMessageId = null;
+            setCanonicalSnapshot(adapter, snapshot);
+            const scrollRoot = attachTestScrollRoot(adapter);
+            const slot = slots.userSlots.get(10)!;
+            slot.scrollIntoView = vi.fn(() => {
+                slots.hydrateRound(10).scrollIntoView = vi.fn();
+            });
+
+            const promise = navigateChatGPTDirectoryTarget(adapter, { position: 10 }, {
+                surface: getSurface(adapter), source, timeoutMs: 300, alignmentTimeoutMs: 0,
+            });
+            await vi.advanceTimersByTimeAsync(100);
+            const result = await promise;
+            const isPageControl = source === 'directory' || source === 'stepper';
+            expect(result.ok).toBe(isPageControl);
+            expect(slot.scrollIntoView).toHaveBeenCalledTimes(isPageControl ? 1 : 0);
+            expect(scrollRoot.scrollTo).not.toHaveBeenCalled();
+        },
+    );
+
     it('waits for hydration events without repeating the coarse slot scroll', async () => {
         const { navigateChatGPTDirectoryTarget } = await import('@/ui/content/chatgptDirectory/navigation');
         const adapter = new ChatGPTNavigationTestAdapter();
@@ -624,6 +864,66 @@ describe('ChatGPT directory navigation', () => {
         } finally {
             querySelectorAll.mockRestore();
         }
+    });
+
+    it('retries an exact host slot when the first long scroll leaves it outside the viewport', async () => {
+        const { navigateChatGPTDirectoryTarget } = await import('@/ui/content/chatgptDirectory/navigation');
+        const adapter = new ChatGPTNavigationTestAdapter();
+        const slots = mountVirtualizedTurnSlots(14, [1, 13, 14]);
+        setCanonicalSnapshot(adapter, buildCanonicalSnapshot(14));
+        const root = attachTestScrollRoot(adapter);
+        root.append(document.querySelector('main')!);
+        document.body.append(root);
+        const slot = slots.userSlots.get(2)!;
+        let top = 1500;
+        slot.getBoundingClientRect = vi.fn(() => ({
+            x: 0, y: top, top, left: 0, right: 100, bottom: top + 40,
+            width: 100, height: 40, toJSON: () => ({}),
+        }));
+        slot.scrollIntoView = vi.fn(() => {
+            if ((slot.scrollIntoView as ReturnType<typeof vi.fn>).mock.calls.length === 2) {
+                top = 0;
+                slots.hydrateRound(2).scrollIntoView = vi.fn();
+            }
+        });
+
+        const promise = navigateChatGPTDirectoryTarget(adapter, { position: 2 }, {
+            surface: getSurface(adapter), timeoutMs: 400, alignmentTimeoutMs: 0,
+        });
+        await vi.advanceTimersByTimeAsync(440);
+
+        expect(await promise).toEqual({ ok: true });
+        expect(slot.scrollIntoView).toHaveBeenCalledTimes(2);
+        expect(root.scrollTo).not.toHaveBeenCalled();
+    });
+
+    it('retries a visible empty host slot after settling so a second click is unnecessary', async () => {
+        const { navigateChatGPTDirectoryTarget } = await import('@/ui/content/chatgptDirectory/navigation');
+        const adapter = new ChatGPTNavigationTestAdapter();
+        const slots = mountVirtualizedTurnSlots(14, [1, 13, 14]);
+        setCanonicalSnapshot(adapter, buildCanonicalSnapshot(14));
+        const root = attachTestScrollRoot(adapter);
+        root.append(document.querySelector('main')!);
+        document.body.append(root);
+        const slot = slots.userSlots.get(2)!;
+        slot.getBoundingClientRect = vi.fn(() => ({
+            x: 0, y: 0, top: 0, left: 0, right: 100, bottom: 40,
+            width: 100, height: 40, toJSON: () => ({}),
+        }));
+        slot.scrollIntoView = vi.fn(() => {
+            if ((slot.scrollIntoView as ReturnType<typeof vi.fn>).mock.calls.length === 2) {
+                slots.hydrateRound(2).scrollIntoView = vi.fn();
+            }
+        });
+
+        const promise = navigateChatGPTDirectoryTarget(adapter, { position: 2 }, {
+            surface: getSurface(adapter), timeoutMs: 500, alignmentTimeoutMs: 0,
+        });
+        await vi.advanceTimersByTimeAsync(520);
+
+        expect(await promise).toEqual({ ok: true });
+        expect(slot.scrollIntoView).toHaveBeenCalledTimes(2);
+        expect(root.scrollTo).not.toHaveBeenCalled();
     });
 
     it('keeps using the calibrated host slot during slow long-distance hydration instead of pixel fallback', async () => {
@@ -832,6 +1132,120 @@ describe('ChatGPT directory navigation', () => {
         expect(result).toEqual({ ok: true });
         expect(scrollTo).toHaveBeenCalled();
         expect(Number(scrollTo.mock.calls[0]?.[0].top)).toBeLessThan(2000);
+    });
+
+    it('seeks toward older unmounted turns in ChatGPT’s reverse scroll container', async () => {
+        const { navigateChatGPTDirectoryTarget } = await import('@/ui/content/chatgptDirectory/navigation');
+        const adapter = new ChatGPTNavigationTestAdapter();
+        mountRoleWindow([5]);
+        setCanonicalSnapshot(adapter, buildCanonicalSnapshot(8));
+        const surface = getSurface(adapter);
+        const root = attachTestScrollRoot(adapter);
+        root.style.flexDirection = 'column-reverse';
+        setSyntheticRoundGeometry([5], 5);
+        const scrollTo = vi.spyOn(root, 'scrollTo').mockImplementation((options: ScrollToOptions) => {
+            root.scrollTop = Number(options.top ?? 0);
+            mountRoleWindow([2, 5]);
+            setSyntheticRoundGeometry([2, 5], 2);
+            const anchor = document.getElementById('user-2');
+            if (anchor) anchor.scrollIntoView = vi.fn();
+            invalidateChatGPTDomRoundSnapshot(adapter);
+            surface.refreshSurface();
+        });
+
+        const resultPromise = navigateChatGPTDirectoryTarget(adapter, { position: 2 }, {
+            surface, timeoutMs: 300, alignmentTimeoutMs: 0,
+        });
+        await vi.advanceTimersByTimeAsync(360);
+
+        expect(await resultPromise).toEqual({ ok: true });
+        expect(Number(scrollTo.mock.calls[0]?.[0].top)).toBeLessThan(0);
+    });
+
+    it('coarsely seeks a distant unmounted directory target before incremental correction', async () => {
+        const { navigateChatGPTDirectoryTarget } = await import('@/ui/content/chatgptDirectory/navigation');
+        const adapter = new ChatGPTNavigationTestAdapter();
+        mountRoleWindow([76]);
+        setCanonicalSnapshot(adapter, buildCanonicalSnapshot(76));
+        const surface = getSurface(adapter);
+        const root = attachTestScrollRoot(adapter);
+        root.style.flexDirection = 'column-reverse';
+        Object.defineProperty(root, 'scrollHeight', { configurable: true, value: 60_500 });
+        setSyntheticRoundGeometry([76], 76);
+        const scrollTo = vi.spyOn(root, 'scrollTo').mockImplementation((options: ScrollToOptions) => {
+            root.scrollTop = Number(options.top ?? 0);
+            mountRoleWindow([1]);
+            setSyntheticRoundGeometry([1], 1);
+            document.getElementById('user-1')!.scrollIntoView = vi.fn();
+            invalidateChatGPTDomRoundSnapshot(adapter);
+            surface.refreshSurface();
+        });
+
+        const resultPromise = navigateChatGPTDirectoryTarget(adapter, { position: 1 }, {
+            source: 'directory', surface, timeoutMs: 300, alignmentTimeoutMs: 0,
+        });
+        await vi.advanceTimersByTimeAsync(360);
+
+        expect(await resultPromise).toEqual({ ok: true });
+        expect(Number(scrollTo.mock.calls[0]?.[0].top)).toBe(-60_000);
+    });
+
+    it.each(['directory', 'stepper'] as const)(
+        'waits briefly for older history at the current top boundary (%s)', async (source) => {
+            const { navigateChatGPTDirectoryTarget } = await import('@/ui/content/chatgptDirectory/navigation');
+            const adapter = new ChatGPTNavigationTestAdapter();
+            mountRoleWindow([3]);
+            setCanonicalSnapshot(adapter, buildCanonicalSnapshot(3));
+            const surface = getSurface(adapter);
+            const root = attachTestScrollRoot(adapter);
+            setSyntheticRoundGeometry([3], 3);
+            window.setTimeout(() => {
+                mountRoleWindow([1, 3]);
+                const anchor = document.getElementById('user-1');
+                if (anchor) anchor.scrollIntoView = vi.fn();
+                invalidateChatGPTDomRoundSnapshot(adapter);
+                surface.refreshSurface();
+            }, 300);
+
+            const promise = navigateChatGPTDirectoryTarget(adapter, { position: 1 }, {
+                surface, source, timeoutMs: 1500, alignmentTimeoutMs: 0,
+            });
+            await vi.advanceTimersByTimeAsync(400);
+
+            expect(await promise).toEqual({ ok: true });
+            expect(root.scrollTo).not.toHaveBeenCalled();
+            expect(document.getElementById('user-1')?.scrollIntoView).toHaveBeenCalledOnce();
+        },
+    );
+
+    it('keeps the old immediate top-boundary failure for non-page-control navigation', async () => {
+        const { navigateChatGPTDirectoryTarget } = await import('@/ui/content/chatgptDirectory/navigation');
+        const adapter = new ChatGPTNavigationTestAdapter();
+        mountRoleWindow([3]);
+        setCanonicalSnapshot(adapter, buildCanonicalSnapshot(3));
+        attachTestScrollRoot(adapter);
+        setSyntheticRoundGeometry([3], 3);
+
+        const result = await navigateChatGPTDirectoryTarget(adapter, { position: 1 }, {
+            surface: getSurface(adapter), source: 'bookmark', alignmentTimeoutMs: 0,
+        });
+        expect(result).toEqual({ ok: false, message: 'Conversation navigation seek timeout' });
+    });
+
+    it('stops a page-control boundary wait when no older history appears', async () => {
+        const { navigateChatGPTDirectoryTarget } = await import('@/ui/content/chatgptDirectory/navigation');
+        const adapter = new ChatGPTNavigationTestAdapter();
+        mountRoleWindow([3]);
+        setCanonicalSnapshot(adapter, buildCanonicalSnapshot(3));
+        const root = attachTestScrollRoot(adapter);
+        setSyntheticRoundGeometry([3], 3);
+
+        const promise = navigateChatGPTDirectoryTarget(adapter, { position: 1 }, {
+            surface: getSurface(adapter), source: 'directory', timeoutMs: 3000, alignmentTimeoutMs: 0,
+        });
+        await vi.advanceTimersByTimeAsync(1300);
+        expect(await promise).toEqual({ ok: false, message: 'Conversation navigation seek timeout' });
+        expect(root.scrollTo).not.toHaveBeenCalled();
     });
 
     it('reverses and reduces the seek step after the cursor crosses the target', async () => {

@@ -3,7 +3,7 @@ import type {
     ImportMergeEntry,
     ImportMergeStatus,
 } from './types';
-import { buildBookmarkIdentityKeyFromParts } from './keys';
+import { buildBookmarkDedupeKey, buildBookmarkIdentityKeyForBookmark } from './keys';
 
 type MergeResult = {
     entries: ImportMergeEntry[];
@@ -35,7 +35,7 @@ export function planImportMerge(params: {
 }): MergeResult {
     const existingByIdentity = new Map<string, Bookmark>();
     for (const b of params.existing) {
-        existingByIdentity.set(buildBookmarkIdentityKeyFromParts(b), b);
+        existingByIdentity.set(buildBookmarkDedupeKey(b), b);
     }
 
     const usedTitlesByFolder = new Map<string, Set<string>>();
@@ -60,10 +60,10 @@ export function planImportMerge(params: {
     let redirectedToImport = 0;
 
     // Track accepted import entries so duplicates inside the same file are detected.
-    const seenIdentity = new Map<string, Bookmark>(existingByIdentity);
+    const acceptedByCoordinate = new Map<string, Bookmark>();
 
     for (const bookmark of params.incoming) {
-        const identity = buildBookmarkIdentityKeyFromParts(bookmark);
+        const identity = buildBookmarkDedupeKey(bookmark);
         const folderPath = bookmark.folderPath || 'Import';
 
         let status: ImportMergeStatus = 'normal';
@@ -71,7 +71,8 @@ export function planImportMerge(params: {
         let existingTitle: string | undefined;
         let existingFolderPath: string | undefined;
 
-        const existingDuplicate = seenIdentity.get(identity);
+        const coordinate = buildBookmarkIdentityKeyForBookmark(bookmark);
+        const existingDuplicate = existingByIdentity.get(identity) ?? acceptedByCoordinate.get(coordinate);
         if (existingDuplicate) {
             status = 'duplicate';
             existingTitle = existingDuplicate.title;
@@ -97,7 +98,7 @@ export function planImportMerge(params: {
 
             const next: Bookmark = renameTo ? { ...bookmark, title: renameTo } : bookmark;
             accepted.push(next);
-            seenIdentity.set(identity, next);
+            acceptedByCoordinate.set(coordinate, next);
         }
 
         entries.push({ bookmark, status, renameTo, existingTitle, existingFolderPath });
@@ -105,4 +106,3 @@ export function planImportMerge(params: {
 
     return { entries, accepted, skippedDuplicates, renamed, redirectedToImport };
 }
-

@@ -1,0 +1,13 @@
+:host {
+  --_reader-code-block-flow: 0 0 1em;
+  --_reader-code-surface-effect: inset 0 1px 0 color-mix(in srgb, var(--aimd-bg-primary) 60%, transparent);
+  --_reader-formula-flow: 1em 0;
+  --_reader-pager-inset: 2px 6px 2px 0;
+  --_reader-control-border-effect: 0 0 0 1px color-mix(in srgb, var(--aimd-border-default) 72%, transparent);
+  --_reader-control-focus-effect: 0 0 0 3px var(--aimd-focus-ring);
+  --_reader-input-focus-effect: inset 0 0 0 1px color-mix(in srgb, var(--aimd-interactive-primary) 32%, transparent);
+  --_reader-template-token-flow: 0 0.2em;
+  font-family: var(--aimd-font-family-sans);
+}
+*, *::before, *::after { box-sizing: border-box; }
+button, input, select, textarea { font-family: inherit; font-size: inherit; line-height: inherit; color: inherit; }

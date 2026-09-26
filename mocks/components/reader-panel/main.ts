@@ -1,4 +1,5 @@
 import '../browserExtensionMock';
+import { installHighlightFixture } from '../highlightFixture';
 
 import { bookOpenIcon } from '../../../src/assets/icons';
 import { DEFAULT_SETTINGS } from '../../../src/core/settings/types';
@@ -17,7 +18,7 @@ import {
 } from '../visualHarnessBridge';
 
 ensurePageTokens();
-history.replaceState({}, '', '/c/12345678-abcd-4abc-8def-1234567890ab');
+history.replaceState({}, '', '/c/12345678-abcd-4abc-8def-1234567890ab' + window.location.search);
 
 const readerItems: ReaderItem[] = [
     {
@@ -137,7 +138,8 @@ const adapter = {
 const panel = new ReaderPanel();
 let toolbar: MessageToolbar | null = null;
 let stepper: ChatGPTMessageStepperController | null = null;
-let variant: VisualHarnessVariant = { theme: 'light', locale: 'en' };
+const fixtureParams = new URLSearchParams(window.location.search);
+let variant: VisualHarnessVariant = { theme: fixtureParams.get('theme') === 'dark' ? 'dark' : 'light', locale: fixtureParams.get('locale') === 'zh_CN' ? 'zh_CN' : 'en' };
 let lastTrigger: 'toolbar' | 'page-control' = 'toolbar';
 
 const nextTask = (): Promise<void> => new Promise((resolve) => window.setTimeout(resolve, 0));
@@ -153,6 +155,7 @@ function getReaderActions() {
 async function showReader(trigger: 'toolbar' | 'page-control'): Promise<void> {
     lastTrigger = trigger;
     await panel.show(readerItems, 0, variant.theme, {
+        annotationDocument: { platform: 'chatgpt', conversationId: fixtureParams.get('conversation') || 'visual-reader', title: 'Reader highlight preview', lastKnownUrl: `https://chatgpt.com/c/${fixtureParams.get('conversation') || 'visual-reader'}` },
         profile: 'conversation-reader',
         actions: getReaderActions(),
     });
@@ -198,6 +201,10 @@ function mountToolbar(): void {
 function mountPageControl(): void {
     stepper?.dispose();
     stepper = new ChatGPTMessageStepperController(adapter, {
+        surface: {
+            readFrame: () => ({frameToken:'fixture',surfaceToken:'fixture',contentKind:'ready',document:null,snapshot:null,projectionId:'fixture',contentToken:'fixture',obtainedTurns:[],pendingSurfaces:[]}),
+            subscribeFrame: listener => {listener();return ()=>undefined;}, refreshSurface:()=>undefined, materialization:{} as any,
+        },
         onOpenDetachedReader: () => showReader('page-control'),
         onTogglePageBookmark: () => ({ saved: false }),
         onRefreshPageBookmarkState: () => false,
@@ -246,6 +253,8 @@ async function applyVariant(next: VisualHarnessVariant): Promise<void> {
     await openFromProductionTrigger(next.theme === 'dark');
 }
 
+installHighlightFixture();
+readerItems.forEach(item => { item.meta = {...item.meta, assistantMessageId: item.meta?.messageId}; });
 await applyVariant(variant);
 
 installVisualHarnessBridge({

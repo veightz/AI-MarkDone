@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Bookmark } from '../../../../src/core/bookmarks/types';
-import { buildCloudBackupRestorePlan } from '../../../../src/core/cloudBackup/snapshot';
+import { buildCloudBackupRestorePlan, excludeBookmarkStorageKeyConflicts } from '../../../../src/core/cloudBackup/snapshot';
 
 function bookmark(overrides: Partial<Bookmark> = {}): Bookmark {
     return {
@@ -75,5 +75,18 @@ describe('cloud backup restore plan', () => {
         expect(plan.localCount).toBe(2);
         expect(plan.remoteCount).toBe(2);
         expect(plan.conflictCount).toBe(0);
+    });
+
+    it('keeps an occupied legacy key local even when message identities differ', () => {
+        const url = 'https://chatgpt.com/c/12345678-1234-1234-1234-123456789abc';
+        const local = bookmark({ url, position: 1, messageId: 'assistant-local', title: 'Local' });
+        const remote = bookmark({ url, position: 1, messageId: null, title: 'Remote' });
+        const plan = excludeBookmarkStorageKeyConflicts(
+            buildCloudBackupRestorePlan({ localBookmarks: [local], remoteBookmarks: [remote], strategy: 'safeMerge' }),
+            ['bookmark:chatgpt.com/c/12345678-1234-1234-1234-123456789abc:1'],
+        );
+
+        expect(plan.bookmarksToUpsert).toEqual([]);
+        expect(plan.conflictCount).toBe(1);
     });
 });

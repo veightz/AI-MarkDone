@@ -26,6 +26,8 @@ function record(id: string, updatedAt = 100): ReaderCommentRecord {
 
 async function openManager(params: {
     getCurrentRecords: () => ReaderCommentRecord[];
+    getCurrentLoadFailure?: () => string | null;
+    retryCurrent?: () => Promise<void>;
     loadAll?: () => Promise<ReaderCommentRecord[]>;
     onInsertAll?: (records: ReaderCommentRecord[]) => void | Promise<void>;
 }) {
@@ -39,6 +41,8 @@ async function openManager(params: {
         shadow,
         modalHost,
         getCurrentRecords: params.getCurrentRecords,
+        getCurrentLoadFailure: params.getCurrentLoadFailure,
+        retryCurrent: params.retryCurrent,
         loadAll: params.loadAll ?? (async () => []),
         onSelect: vi.fn(),
         onDelete: vi.fn(async () => true),
@@ -64,6 +68,23 @@ describe('PageAnnotationManagerPopover', () => {
         const currentTab = dialog.querySelector('[data-view="current"]') as HTMLElement;
         expect(currentTab.dataset.active).toBe('1');
         expect(dialog.querySelectorAll('.page-annotation-manager__item')).toHaveLength(1);
+    });
+
+    it('shows a retry state for current-conversation load failures instead of an empty list', async () => {
+        let loadFailed = true;
+        const retryCurrent = vi.fn(async () => { loadFailed = false; });
+        const { shadow } = await openManager({
+            getCurrentRecords: () => [],
+            getCurrentLoadFailure: () => loadFailed ? 'Could not load annotations' : null,
+            retryCurrent,
+        });
+
+        const dialog = shadow.querySelector('.mock-modal--page-annotation-manager') as HTMLElement;
+        expect(dialog.querySelector('[data-role="current-load-error"]')?.textContent).toContain('Could not load annotations');
+        expect(dialog.querySelector('.page-annotation-manager__empty')).toBeNull();
+        (dialog.querySelector('[data-action="page-annotation-retry-current"]') as HTMLButtonElement).click();
+        await vi.waitFor(() => expect(retryCurrent).toHaveBeenCalledOnce());
+        await vi.waitFor(() => expect(dialog.querySelector('.page-annotation-manager__empty')).not.toBeNull());
     });
 
     it('keeps the row DOM stable when the visible query does not change', async () => {

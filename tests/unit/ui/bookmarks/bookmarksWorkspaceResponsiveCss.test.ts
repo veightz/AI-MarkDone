@@ -10,25 +10,20 @@ describe('Bookmarks workspace responsive family styles', () => {
         expect(responsiveCss).toContain('@media (max-width: 980px)');
         expect(responsiveCss).toContain('@media (max-width: 720px)');
         expect(responsiveCss).toContain('@media (max-width: 560px)');
-        expect(responsiveCss).toContain('.bookmarks-shell');
+        expect(shippedCss).toContain('.library-sidebar-modules');
         expect(responsiveCss).toContain('.settings-panel-scroll');
         expect(responsiveCss).toContain('.settings-row');
         expect(shippedCss).toContain(responsiveCss.trim());
     });
 
-    it('keeps the bookmark toolbar and row content readable without hiding touch actions at phone widths', () => {
-        const responsiveCss = getBookmarksWorkspaceResponsiveCss();
-
-        expect(responsiveCss).toMatch(/@media \(max-width: 720px\)[\s\S]*?\.toolbar-row--bookmarks > \.toolbar-actions\s*\{[\s\S]*?justify-content: flex-start;[\s\S]*?flex-wrap: wrap;/);
-        expect(responsiveCss).toMatch(/@media \(max-width: 560px\)[\s\S]*?\.tree-item\s*\{[\s\S]*?padding-right: var\(--aimd-space-2\);/);
-        expect(responsiveCss).toMatch(/@media \(max-width: 560px\)[\s\S]*?\.tree-title-meta\s*\{[\s\S]*?grid-template-columns: minmax\(0, 1fr\);/);
-        expect(responsiveCss).toMatch(/@media \(max-width: 560px\)[\s\S]*?\.tree-item\[data-selected="1"\] \.tree-actions[\s\S]*?display: inline-flex;/);
-    });
-
-    it('reserves enough desktop row space for every bookmark action', () => {
-        const shippedCss = getBookmarksPanelCss();
-
-        expect(shippedCss).toContain('var(--aimd-size-control-icon-panel) * 5');
+    it('keeps row actions in a click menu at narrow widths and respects reduced motion', () => {
+        const css = getBookmarksPanelCss();
+        expect(css).toContain('@media (max-width: 760px)');
+        expect(css).toContain('.library-more>summary');
+        expect(css).toContain('.library-menu-items { position: fixed;');
+        expect(css).toContain('.library-record-copy { flex: 1; min-width: 0;');
+        expect(css).toContain('@media (prefers-reduced-motion: reduce)');
+        expect(css).not.toContain('.tree-item:hover .tree-actions');
     });
 
     it('keeps community QR codes large and stacks them into one scan-friendly column on narrow layouts', () => {

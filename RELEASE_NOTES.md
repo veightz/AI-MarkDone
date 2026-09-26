@@ -1,5 +1,19 @@
 # Release Notes
 
+## v6.0.0 (2026-09-25)
+
+AI-MarkDone 6.0.0 refreshes most of the extension interface and adapts to ChatGPT’s September 24 website update. It adds persistent color highlights, shared page/Reader annotations, searchable Settings, and a redesigned Library. Local Library files and Google Drive backups now include saved bookmarks, highlights, annotations, and folders, while older bookmark-only files remain readable.
+
+**This is a broad update, so some details will continue to improve. Feedback on Settings categories and everyday use is welcome.**
+
+**If AI-MarkDone has been useful to you, you are welcome to support the project through the Support tab and encourage me to keep improving it. Feedback and sharing are also greatly appreciated.**
+
+### Highlights
+- Reworked the Library, Settings, message toolbar, and lower-right page controls; moved Input Enhancement options into searchable Settings categories.
+- Added blue, yellow, and coral highlights for selected ChatGPT and Reader text, plus an annotation “Insert and delete” action.
+- Improved long-conversation Directory navigation and expanded previews; added message timestamps beside character counts.
+- Updated the AI-MarkDone logo across the extension.
+
 ## v5.4.1 (2026-08-26)
 
 This release adds an on-demand way to load all messages in a ChatGPT conversation. Click the action in the lower-right corner of the page after entering a conversation; the resulting message pool is shared by the directory, Reader, and export flows.

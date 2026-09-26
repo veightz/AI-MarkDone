@@ -1,3 +1,4 @@
+import { SettingsCatalog, type SettingsCategoryId } from './SettingsCatalog';
 import type { AppSettings } from '../../../../../core/settings/types';
 import {
     CHATGPT_DIRECTORY_RIGHT_INSET_STEP_PX,
@@ -57,13 +58,13 @@ import { normalizeFormulaSourceFormat, type FormulaSourceFormat } from '../../..
 import type { ModalHost } from '../../../components/ModalHost';
 import { getLocale, setLocale, t } from '../../../components/i18n';
 import { createIcon } from '../../../components/Icon';
-import { Icons } from '../../../../../assets/icons';
+import { chatgptIcon } from '../../../../../assets/icons';
+import { downloadIcon, settingsIcon } from '../../../../../assets/workspaceIcons';
 import {
     installTransientOutsideDismissBoundary,
     type TransientOutsideDismissBoundaryHandle,
 } from '../../../components/transientUi';
 import { createBookmarksInlineSelect, createBookmarksInlineSelectControl } from '../components/BookmarksInlineSelect';
-import { FormulaAssetSettingsPopover } from '../popovers/FormulaAssetSettingsPopover';
 import { CloudBackupSettingsPanel, type CloudBackupSettingsPanelActions } from '../cloudBackup/CloudBackupSettingsPanel';
 import { createDefaultCommentTemplate, type CommentTemplateSegment } from '../../../../../core/settings/readerCommentExport';
 import { buildCommentsExport, normalizeCommentTemplate, normalizeReaderCommentExportSettings } from '../../../../../services/reader/commentExport';
@@ -72,6 +73,7 @@ import type { RuntimeClientFailure } from '../../../../../drivers/shared/clients
 import { getRuntimeFailurePresentation } from '../../../components/runtimeFailurePresentation';
 import type { DiscoveryDiagnosticsSnapshotV1 } from '../../../../../contracts/conversationDiscoveryDiagnostics';
 import { copyTextToClipboard } from '../../../../../drivers/content/clipboard/clipboard';
+import { createInputEnhancementGuideContent, INPUT_ENHANCEMENT_GUIDE_CSS } from '../../../components/InputEnhancementGuide';
 
 export type SettingsDataState =
     | { kind: 'loading' }
@@ -87,6 +89,7 @@ export type SettingsTabViewState = {
 export type SettingsTabViewActions = {
     loadState?: () => Promise<SettingsTabViewState | null>;
     retryLoad?: () => Promise<void> | void;
+    setBookmarksSettings?: (patch: Partial<AppSettings['bookmarks']>) => Promise<boolean | void> | boolean | void;
     setPlatforms?: (patch: Partial<AppSettings['platforms']>) => Promise<boolean | void> | boolean | void;
     setBehaviorSettings?: (patch: Partial<AppSettings['behavior']>) => Promise<boolean | void> | boolean | void;
     setReaderSettings?: (patch: Partial<AppSettings['reader']>) => Promise<boolean | void> | boolean | void;
@@ -129,7 +132,7 @@ type StepperFieldRef = {
 };
 
 type Refs = {
-    platforms: Record<keyof AppSettings['platforms'], HTMLInputElement>;
+    platforms: Pick<Record<keyof AppSettings['platforms'], HTMLInputElement>, 'chatgpt'>;
     behavior: {
         showMessageToolbar: HTMLInputElement;
         showSaveMessages: HTMLInputElement;
@@ -140,13 +143,10 @@ type Refs = {
         clickCopyMarkdown: HTMLInputElement;
         clickCopyFormulaFormat: SelectRef;
         markdownCopyFormulaFormat: SelectRef;
-        assetActionsButton: HTMLButtonElement;
-        assetActionsSummary: HTMLElement;
         assetFontSize: SliderFieldRef;
     };
     advanced: {
         root: HTMLElement;
-        button: HTMLButtonElement;
         body: HTMLElement;
         fontSize?: StepperFieldRef;
     };
@@ -204,12 +204,10 @@ export class SettingsTabView {
     private scrollRoot: HTMLElement;
     private refs: Refs;
     private selectRefs: SelectRef[] = [];
-    private readonly formulaAssetSettingsPopover = new FormulaAssetSettingsPopover();
     private readonly readerCommentTemplateSettingsPopover = new ReaderCommentTemplateSettingsPopover();
     private readonly outsideDismissBoundary: TransientOutsideDismissBoundaryHandle;
-    private advancedExpanded = false;
-    private mainPageRoot: HTMLElement | null = null;
-    private buttonsPageRoot: HTMLElement | null = null;
+    private catalog: SettingsCatalog | null = null;
+    private extraSync: Array<() => void> = [];
     private languageChangeRevision = 0;
     private languageSaveQueue: Promise<void> = Promise.resolve();
     private readonly readDiscoveryDiagnostics: (() => DiscoveryDiagnosticsSnapshotV1 | null) | null;
@@ -257,39 +255,12 @@ export class SettingsTabView {
         content.className = 'settings-grid settings-content';
 
         // Platforms group
-        const platformsGroup = this.createGroup(Icons.globe, t('platforms'));
+        const platformsGroup = this.createGroup();
         const platforms = {
-            chatgpt: this.createToggle(platformsGroup.body, `${Icons.chatgpt} ChatGPT`, t('enableOnChatGPT')),
-            gemini: this.createToggle(platformsGroup.body, `${Icons.gemini} Gemini`, t('enableFormulaOnlyOnGemini')),
-            claude: this.createToggle(platformsGroup.body, `${Icons.claude} Claude`, t('enableFormulaOnlyOnClaude')),
-            deepseek: this.createToggle(platformsGroup.body, `${Icons.deepseek} DeepSeek`, t('enableFormulaOnlyOnDeepSeek')),
+            chatgpt: this.createToggle(platformsGroup.body, `${chatgptIcon} ChatGPT`, t('enableOnChatGPT')),
         };
 
-        const buttonsEntryGroup = this.createGroup(Icons.settings, t('buttonsEntrypointsSettingsLabel'));
-        const buttonsEntry = this.createActionRow(
-            buttonsEntryGroup.body,
-            t('buttonsEntrypointsSettingsLabel'),
-            t('buttonsEntrypointsSettingsDesc'),
-            'settings-buttons-page-entry',
-        );
-
-        const buttonsContent = document.createElement('div');
-        buttonsContent.className = 'settings-grid settings-content settings-secondary-page';
-        buttonsContent.hidden = true;
-        buttonsContent.dataset.role = 'settings-buttons-page';
-        const buttonsHeader = document.createElement('div');
-        buttonsHeader.className = 'settings-secondary-header';
-        const buttonsBack = document.createElement('button');
-        buttonsBack.type = 'button';
-        buttonsBack.className = 'secondary-btn settings-secondary-back';
-        buttonsBack.dataset.role = 'settings-buttons-page-back';
-        buttonsBack.textContent = t('btnBack');
-        const buttonsTitle = document.createElement('h3');
-        buttonsTitle.className = 'card-title settings-secondary-title';
-        buttonsTitle.innerHTML = `${Icons.settings}<span>${t('buttonsEntrypointsSettingsLabel')}</span>`;
-        buttonsHeader.append(buttonsBack, buttonsTitle);
-
-        const buttonsGroup = this.createGroup(Icons.settings, t('buttonsEntrypointsSettingsLabel'));
+        const buttonsGroup = this.createGroup();
         const showMessageToolbar = this.createToggle(buttonsGroup.body, t('messageToolbarLabel'), t('messageToolbarDesc'));
         const showSaveMessages = this.createToggle(buttonsGroup.body, t('saveMessagesLabel'), t('saveMessagesDesc'));
         const showWordCount = this.createToggle(buttonsGroup.body, t('wordCountLabel'), t('wordCountDesc'));
@@ -313,15 +284,7 @@ export class SettingsTabView {
             t('chatgptShowMessageStepperLabel'),
             t('chatgptShowMessageStepperDesc'),
         );
-        const formulaAssetActions = this.createActionRow(
-            buttonsGroup.body,
-            t('formulaAssetActionsLabel'),
-            t('formulaAssetActionsDesc'),
-            'settings-formula-asset-actions',
-        );
-        buttonsContent.append(buttonsHeader, buttonsGroup.root);
-
-        const chatGptDirectoryGroup = this.createGroup(Icons.chatgpt, t('chatgptReadingInputSettingsLabel'));
+        const chatGptDirectoryGroup = this.createGroup();
         const chatGptDirectoryEnabled = this.createToggle(
             chatGptDirectoryGroup.body,
             t('chatgptDirectoryEnabledLabel'),
@@ -406,7 +369,7 @@ export class SettingsTabView {
         const chatGptPageWidthScale = this.createSliderRow(
             chatGptDirectoryGroup.body,
             t('chatgptPageWidthScaleLabel'),
-            t('chatgptPageWidthScaleDesc'),
+            '',
             MIN_CHATGPT_PAGE_WIDTH_SCALE,
             MAX_CHATGPT_PAGE_WIDTH_SCALE,
             CHATGPT_PAGE_WIDTH_SCALE_STEP,
@@ -424,7 +387,7 @@ export class SettingsTabView {
             (value) => `${value}px`,
         );
 
-        const readerGroup = this.createGroup(Icons.bookOpen, t('readerWorkflowSettingsLabel'));
+        const readerGroup = this.createGroup();
         const readerDefaultOpenMode = this.createSelect(
             readerGroup.body,
             t('readerDefaultOpenModeLabel'),
@@ -456,7 +419,7 @@ export class SettingsTabView {
             'settings-reader-comment-template',
         );
 
-        const copyExportGroup = this.createGroup(Icons.copy, t('copyFormulaExportSettingsLabel'));
+        const copyExportGroup = this.createGroup();
         const saveContextOnly = this.createToggle(copyExportGroup.body, t('contextOnlySaveLabel'), t('contextOnlySaveDesc'));
         const formulaClickCopyMarkdown = this.createToggle(
             copyExportGroup.body,
@@ -514,15 +477,15 @@ export class SettingsTabView {
             (value) => `${value}x`,
         );
         // Language group
-        const languageGroup = this.createGroup(Icons.languages, t('settingsLanguageLabel'));
-        const language = this.createSelect(languageGroup.body, t('settingsLanguageLabel'), t('settingsLanguageDesc'), [
+        const languageGroup = this.createGroup();
+        const language = this.createSelect(languageGroup.body, t('settingsLanguageLabel'), '', [
             { value: 'auto', label: t('languageAuto') },
             { value: 'en', label: t('languageEnglish') },
             { value: 'zh_CN', label: t('languageZhCN') },
         ], 'language');
 
         // Data management group (Google Drive backup + local backup/export)
-        const storageGroup = this.createSection(Icons.database, t('dataManagement'));
+        const storageGroup = this.createGroup();
         const googleDriveBackupCard = document.createElement('section');
         googleDriveBackupCard.className = 'settings-data-card';
         googleDriveBackupCard.dataset.role = 'settings-google-drive-backup-card';
@@ -574,7 +537,7 @@ export class SettingsTabView {
         exportBtn.type = 'button';
         exportBtn.className = 'secondary-btn';
         exportBtn.dataset.role = 'settings-export-all-bookmarks';
-        exportBtn.innerHTML = `${Icons.download} ${t('exportAllBtn')}`;
+        exportBtn.innerHTML = `${downloadIcon} ${t('exportAllBtn')}`;
         exportBtn.addEventListener('click', () => void this.actions.exportAllBookmarks?.());
         backup.append(backupInfo, exportBtn);
         backupCard.appendChild(backup);
@@ -582,7 +545,7 @@ export class SettingsTabView {
 
         const advancedGroup = this.createAdvancedSettingsGroup();
 
-        const diagnosticsGroup = this.createGroup(Icons.info, t('settingsDiscoveryDiagnosticsLabel'));
+        const diagnosticsGroup = this.createGroup();
         const diagnosticsItem = document.createElement('div');
         diagnosticsItem.className = 'settings-row settings-item';
         const diagnosticsInfo = document.createElement('div');
@@ -607,7 +570,7 @@ export class SettingsTabView {
 
         content.append(
             platformsGroup.root,
-            buttonsEntryGroup.root,
+            buttonsGroup.root,
             chatGptDirectoryGroup.root,
             readerGroup.root,
             copyExportGroup.root,
@@ -616,21 +579,14 @@ export class SettingsTabView {
             advancedGroup.root,
             diagnosticsGroup.root,
         );
-        scroll.append(content, buttonsContent);
+        scroll.append(content);
         this.root.append(runtimeNotice, scroll);
-        this.mainPageRoot = content;
-        this.buttonsPageRoot = buttonsContent;
-        buttonsEntry.button.addEventListener('click', () => this.showSettingsPage('buttons'));
-        buttonsBack.addEventListener('click', () => this.showSettingsPage('main'));
 
         const storageText = storageInfo.querySelector<HTMLElement>('[data-field="storage_usage"]')!;
 
         this.refs = {
             platforms: {
                 chatgpt: platforms.chatgpt.input,
-                gemini: platforms.gemini.input,
-                claude: platforms.claude.input,
-                deepseek: platforms.deepseek.input,
             },
             behavior: {
                 showMessageToolbar: showMessageToolbar.input,
@@ -642,8 +598,6 @@ export class SettingsTabView {
                 clickCopyMarkdown: formulaClickCopyMarkdown.input,
                 clickCopyFormulaFormat: formulaClickCopyFormulaFormat,
                 markdownCopyFormulaFormat: formulaMarkdownCopyFormulaFormat,
-                assetActionsButton: formulaAssetActions.button,
-                assetActionsSummary: formulaAssetActions.summary,
                 assetFontSize: formulaAssetFontSize,
             },
             advanced: advancedGroup,
@@ -687,9 +641,6 @@ export class SettingsTabView {
             storageText,
         };
         this.refs.platforms.chatgpt.dataset.role = 'settings-platform-chatgpt';
-        this.refs.platforms.gemini.dataset.role = 'settings-platform-gemini';
-        this.refs.platforms.claude.dataset.role = 'settings-platform-claude';
-        this.refs.platforms.deepseek.dataset.role = 'settings-platform-deepseek';
         this.refs.behavior.showMessageToolbar.dataset.role = 'settings-show-message-toolbar';
         this.refs.behavior.showSaveMessages.dataset.role = 'settings-show-save-messages';
         this.refs.behavior.showWordCount.dataset.role = 'settings-show-word-count';
@@ -697,7 +648,6 @@ export class SettingsTabView {
         this.refs.formula.clickCopyMarkdown.dataset.role = 'settings-formula-click-copy-markdown';
         this.refs.formula.clickCopyFormulaFormat.trigger.dataset.role = 'settings-formula-click-copy-format';
         this.refs.formula.markdownCopyFormulaFormat.trigger.dataset.role = 'settings-formula-markdown-copy-format';
-        this.refs.formula.assetActionsButton.dataset.role = 'settings-formula-asset-actions';
         this.refs.formula.assetFontSize.input.dataset.role = 'settings-formula-asset-font-size';
         this.refs.export.pngWidthPreset.trigger.dataset.role = 'settings-export-png-width-preset';
         this.refs.export.pngWidth.input.dataset.role = 'settings-export-png-width';
@@ -727,37 +677,31 @@ export class SettingsTabView {
         this.refs.reader.promptPositionBottom.dataset.role = 'settings-reader-comment-prompt-position-bottom';
         this.refs.reader.promptsButton.dataset.role = 'settings-reader-prompts';
         this.refs.reader.templateButton.dataset.role = 'settings-reader-comment-template';
-        this.refs.advanced.button.dataset.role = 'settings-advanced-toggle';
 
         this.bindHandlers();
         this.applySettingsToDom();
+        this.buildCatalog();
+        this.extraSync.forEach(sync => sync());
     }
+
+    getNavigationElement(): HTMLElement { return this.catalog!.navigation; }
 
     getElement(): HTMLElement {
         return this.root;
     }
 
     focusPrimaryInput(): void {
-        this.refs.platforms.chatgpt.focus({ preventScroll: true } as FocusOptions);
+        this.catalog?.search.focus({ preventScroll: true });
     }
 
     dismissTransientUi(): void {
         this.closeSelectMenus();
-        this.formulaAssetSettingsPopover.close();
         this.readerCommentTemplateSettingsPopover.close();
     }
 
     consumeEscape(): boolean {
-        if (this.buttonsPageRoot && !this.buttonsPageRoot.hidden) {
-            this.showSettingsPage('main');
-            return true;
-        }
         if (this.readerCommentTemplateSettingsPopover.isOpen()) {
             this.readerCommentTemplateSettingsPopover.close();
-            return true;
-        }
-        if (this.formulaAssetSettingsPopover.isOpen()) {
-            this.formulaAssetSettingsPopover.close();
             return true;
         }
         const hasOpenSelect = this.selectRefs.some((selectRef) => selectRef.shell.dataset.open === '1');
@@ -790,6 +734,7 @@ export class SettingsTabView {
                 navigationSeekStepPx: normalizeChatGPTNavigationSeekStepPx(params.settings.chatgptBehavior?.navigationSeekStepPx),
             },
             appearance: {
+                themeMode: params.settings.appearance?.themeMode ?? 'auto',
                 fontSizePx: this.normalizeGlobalFontSize(params.settings.appearance?.fontSizePx ?? DEFAULT_SETTINGS.appearance.fontSizePx),
                 accentColor: this.normalizeAccentColor(params.settings.appearance?.accentColor),
             },
@@ -812,12 +757,106 @@ export class SettingsTabView {
         this.dismissTransientUi();
     }
 
-    private showSettingsPage(page: 'main' | 'buttons'): void {
-        if (!this.mainPageRoot || !this.buttonsPageRoot) return;
-        this.dismissTransientUi();
-        const showButtons = page === 'buttons';
-        this.mainPageRoot.hidden = showButtons;
-        this.buttonsPageRoot.hidden = !showButtons;
+    private buildCatalog(): void {
+        const groups: Record<SettingsCategoryId, HTMLElement[]> = { appearance: [], reading: [], input: [], marks: [], export: [], controls: [], data: [], advanced: [] };
+        const add = (category: SettingsCategoryId, ...controls: HTMLElement[]) => {
+            for (const control of controls) {
+                const row = control.closest<HTMLElement>('.settings-item') ?? control;
+                if (!groups[category].includes(row)) groups[category].push(row);
+            }
+        };
+        const r = this.refs;
+        add('appearance', r.advanced.fontSize!.root, this.root.querySelector<HTMLElement>('.settings-color-row')!, r.language.root, r.chatgptDirectory.pageWidthScale.root);
+        add('reading', r.chatgptDirectory.enabled, r.chatgptDirectory.mode.root, r.chatgptDirectory.promptLabelMode, r.chatgptDirectory.rightInset.root, r.chatgptDirectory.previewMaxChars.root, r.chatgptDirectory.restorePositionAfterSend, r.reader.defaultOpenMode.root, r.reader.renderCode, r.reader.showOutline);
+        add('input', r.chatgptDirectory.inputEnhancement, r.chatgptDirectory.promptAutocomplete, r.reader.promptsButton);
+        add('marks', r.reader.persistAnnotations, r.chatgptDirectory.pageAnnotationsEnabled, r.reader.promptPositionBottom, r.reader.templateButton);
+        add('export', r.behavior.saveContextOnly, r.formula.clickCopyMarkdown, r.formula.clickCopyFormulaFormat.root, r.formula.markdownCopyFormulaFormat.root, r.formula.assetFontSize.root, r.export.pngWidthPreset.trigger, r.export.pngPixelRatio.root);
+        add('controls', r.behavior.showMessageToolbar, r.behavior.showSaveMessages, r.behavior.showWordCount, r.chatgptDirectory.showPageBookmarkControl, r.chatgptDirectory.showDetachedReaderControl, r.chatgptDirectory.showPromptControl, r.chatgptDirectory.showMessageStepper, r.chatgptDirectory.arrowKeyMessageNavigation, r.chatgptDirectory.showPageSelectionToolbar, r.chatgptDirectory.atomicMarkdownCopyShortcut.root);
+        add('data', ...this.root.querySelectorAll<HTMLElement>('.settings-data-card'));
+        add('advanced', r.platforms.chatgpt, r.chatgptDirectory.navigationSeekStep.root, this.diagnosticsCopyButton);
+        const staging = document.createElement('div');
+        const toggle = (category: SettingsCategoryId, role: string, label: string, description: string, read: () => boolean, write: (value: boolean) => void) => {
+            const ref = this.createToggle(staging, label, description); ref.input.dataset.role = role;
+            ref.input.addEventListener('change', () => { write(ref.input.checked); this.syncToggle(ref.input); });
+            this.extraSync.push(() => { ref.input.checked = read(); this.syncToggle(ref.input); }); add(category, ref.root);
+        };
+        const select = (category: SettingsCategoryId, role: string, label: string, options: Array<{value: string; label: string}>, read: () => string, write: (value: string) => void) => {
+            const ref = this.createSelect(staging, label, '', options, role); ref.trigger.dataset.role = role;
+            ref.onChange(write); this.extraSync.push(() => ref.setValue(read())); add(category, ref.root);
+        };
+        select('appearance', 'settings-theme-mode', t('settingsThemeMode'), [
+            { value: 'auto', label: t('settingsThemeAuto') }, { value: 'light', label: t('settingsThemeLight') }, { value: 'dark', label: t('settingsThemeDark') },
+        ], () => this.settings.appearance.themeMode ?? 'auto', value => {
+            const themeMode = value === 'light' || value === 'dark' ? value : 'auto';
+            this.settings.appearance.themeMode = themeMode; void this.actions.setAppearanceSettings?.({ themeMode });
+        });
+        toggle('reading', 'settings-hide-official-navigation', t('settingsHideOfficialNavigation'), '', () => this.settings.chatgptDirectory.hideOfficialNavigation, value => {
+            this.settings.chatgptDirectory.hideOfficialNavigation = value; void this.actions.setChatGptDirectorySettings?.({ hideOfficialNavigation: value });
+        });
+        for (const [field, label, min, max, step] of [
+            ['bodyFontSizePx', t('settingsReaderBodyFont'), 12, 22, 1],
+            ['contentMaxWidthPx', t('settingsReaderBodyWidth'), 480, 1600, 20],
+        ] as const) {
+            const ref = this.createSliderRow(staging, label, '', min, max, step, `settings-reader-${field}`, value => `${value}px`);
+            ref.input.dataset.role = `settings-reader-${field}`;
+            ref.input.addEventListener('input', () => this.syncSliderValue(ref));
+            ref.input.addEventListener('change', () => { const value = Number(ref.input.value); this.settings.reader[field] = value; void this.actions.setReaderSettings?.({ [field]: value }); });
+            this.extraSync.push(() => this.syncSliderValue(ref, this.settings.reader[field])); add('reading', ref.root);
+        }
+        for (const [field, label, description] of [
+            ['enterKeyNewline', t('chatgptInputEnhancementEnterLabel'), t('chatgptInputEnhancementEnterDesc')],
+            ['boldShortcut', t('chatgptInputEnhancementBoldLabel'), t('chatgptInputEnhancementBoldDesc')],
+            ['formulaSuggestions', t('chatgptInputEnhancementFormulaSuggestionsLabel'), ''],
+            ['formulaPreview', t('chatgptInputEnhancementFormulaPreviewLabel'), ''],
+        ] as const) toggle('input', `settings-input-${field}`, label, description, () => this.settings.chatgptBehavior.inputEnhancement[field], value => {
+            const inputEnhancement = { ...this.settings.chatgptBehavior.inputEnhancement, [field]: value };
+            this.settings.chatgptBehavior.inputEnhancement = inputEnhancement; void this.actions.setChatGptBehaviorSettings?.({ inputEnhancement });
+        });
+        for (const [field, label] of [['enabled', t('chatgptInputEnhancementListsLabel')], ['ordered', t('chatgptInputEnhancementOrderedListLabel')], ['unordered', t('chatgptInputEnhancementUnorderedListLabel')]] as const) {
+            toggle('input', `settings-input-lists-${field}`, label, '', () => this.settings.chatgptBehavior.inputEnhancement.lists[field], value => {
+                const previous = this.settings.chatgptBehavior.inputEnhancement;
+                const inputEnhancement = { ...previous, lists: { ...previous.lists, [field]: value } };
+                this.settings.chatgptBehavior.inputEnhancement = inputEnhancement; void this.actions.setChatGptBehaviorSettings?.({ inputEnhancement });
+            });
+        }
+        const guide = this.createActionRow(staging, t('chatgptInputEnhancementGuideTitle'), '', 'settings-input-guide');
+        guide.button.addEventListener('click', () => {
+            const body = createInputEnhancementGuideContent();
+            const style = document.createElement('style'); style.textContent = INPUT_ENHANCEMENT_GUIDE_CSS; body.prepend(style);
+            void this.modal.showCustom({kind: 'info', title: t('chatgptInputEnhancementGuideTitle'), body});
+        }); add('input', guide.root);
+        select('marks', 'settings-comment-sort', t('settingsCommentSort'), [{ value: 'created', label: t('settingsSortCreated') }, { value: 'position', label: t('settingsSortPosition') }], () => this.settings.reader.commentExport.sortMode, value => {
+            const commentExport = { ...this.settings.reader.commentExport, sortMode: value === 'position' ? 'position' as const : 'created' as const };
+            this.settings.reader.commentExport = commentExport; void this.actions.setReaderSettings?.({ commentExport });
+        });
+        select('data', 'settings-bookmark-sort', t('settingsDefaultBookmarkSort'), [
+            { value: 'time-desc', label: t('sortTimeDesc') }, { value: 'time-asc', label: t('sortTimeAsc') },
+            { value: 'alpha-asc', label: t('sortAlphaAsc') }, { value: 'alpha-desc', label: t('sortAlphaDesc') },
+        ], () => this.settings.bookmarks.sortMode, value => {
+            const sortMode = value as AppSettings['bookmarks']['sortMode'];
+            this.settings.bookmarks.sortMode = sortMode; void this.actions.setBookmarksSettings?.({ sortMode });
+        });
+        for (const [field, label, role] of [
+            ['copyPng', t('formulaCopyAsPng'), 'settings-formula-asset-action-copy-png'],
+            ['copySvg', t('formulaCopyAsSvg'), 'settings-formula-asset-action-copy-svg'],
+            ['copyMathml', t('formulaCopyAsMathml'), 'settings-formula-asset-action-copy-mathml'],
+            ['savePng', t('formulaSaveAsPng'), 'settings-formula-asset-action-save-png'],
+            ['saveSvg', t('formulaSaveAsSvg'), 'settings-formula-asset-action-save-svg'],
+        ] as const) toggle('export', role, label, '', () => this.settings.formula.assetActions[field], value => {
+            const assetActions = { ...this.settings.formula.assetActions, [field]: value };
+            this.settings.formula.assetActions = assetActions; void this.actions.setFormulaSettings?.({ assetActions });
+        });
+        groups.appearance.unshift(groups.appearance.pop()!);
+        const promptRows = groups.input.splice(1, 2); groups.input.push(...promptRows);
+        const notice = this.createActionRow(staging, t('settingsResetReaderNotice'), '', 'settings-reset-reader-notice');
+        notice.button.addEventListener('click', async () => {
+            notice.button.disabled = true;
+            try { if (await this.actions.setReaderSettings?.({ detachedNoticeConfirmed: false }) !== false) notice.summary.textContent = t('settingsReaderNoticeReset'); }
+            finally { notice.button.disabled = false; }
+        }); add('advanced', notice.button);
+        this.catalog = new SettingsCatalog(groups, () => { this.dismissTransientUi(); this.scrollRoot.scrollTop = 0; });
+        this.scrollRoot.replaceChildren(this.catalog.content);
+        this.root.insertBefore(this.catalog.header, this.scrollRoot);
     }
 
     private async handleRuntimeRecovery(): Promise<void> {
@@ -937,10 +976,6 @@ export class SettingsTabView {
             this.applySettingsToDom();
             void this.actions.setFormulaSettings?.({ markdownCopyFormulaFormat: next });
         });
-        this.refs.formula.assetActionsButton.addEventListener('click', (event) => {
-            event.preventDefault();
-            this.openFormulaAssetSettingsPopover();
-        });
         this.refs.formula.assetFontSize.input.addEventListener('input', () => {
             this.syncSliderValue(this.refs.formula.assetFontSize);
         });
@@ -952,10 +987,6 @@ export class SettingsTabView {
             });
             this.syncSliderValue(this.refs.formula.assetFontSize, next);
             void this.actions.setFormulaSettings?.({ assetFontSizePx: next });
-        });
-        this.refs.advanced.button.addEventListener('click', () => {
-            this.advancedExpanded = !this.advancedExpanded;
-            this.renderAdvancedSettings();
         });
         this.refs.export.pngWidthPreset.onChange((value) => {
             const nextPreset = value as PngExportWidthPreset;
@@ -995,6 +1026,7 @@ export class SettingsTabView {
             const inputEnhancement = {
                 ...this.settings.chatgptBehavior.inputEnhancement,
                 available: this.refs.chatgptDirectory.inputEnhancement.checked,
+                ...(this.refs.chatgptDirectory.inputEnhancement.checked ? { enabled: true } : {}),
             };
             this.settings.chatgptBehavior.inputEnhancement = inputEnhancement;
             void this.actions.setChatGptBehaviorSettings?.({ inputEnhancement });
@@ -1164,9 +1196,6 @@ export class SettingsTabView {
         const s = this.settings;
         const usagePercent = this.formatPercent(this.storageUsage?.usedPercentage);
         this.refs.platforms.chatgpt.checked = Boolean(s.platforms.chatgpt);
-        this.refs.platforms.gemini.checked = Boolean(s.platforms.gemini);
-        this.refs.platforms.claude.checked = Boolean(s.platforms.claude);
-        this.refs.platforms.deepseek.checked = Boolean(s.platforms.deepseek);
 
         this.refs.behavior.showMessageToolbar.checked = Boolean(s.behavior.showMessageToolbar);
         this.refs.behavior.showSaveMessages.checked = Boolean(s.behavior.showSaveMessages);
@@ -1175,7 +1204,6 @@ export class SettingsTabView {
         this.refs.formula.clickCopyMarkdown.checked = Boolean(s.formula.clickCopyMarkdown);
         this.refs.formula.clickCopyFormulaFormat.setValue(s.formula.clickCopyFormulaFormat);
         this.refs.formula.markdownCopyFormulaFormat.setValue(s.formula.markdownCopyFormulaFormat);
-        this.refs.formula.assetActionsSummary.textContent = this.formatFormulaAssetActionsSummary(s.formula);
         this.syncSliderValue(this.refs.formula.assetFontSize, normalizeFormulaAssetFontSizePx(s.formula.assetFontSizePx));
         this.refs.export.pngWidthPreset.setValue(s.export.pngWidthPreset);
         this.syncSliderValue(this.refs.export.pngWidth, resolvePngExportWidth(s.export));
@@ -1186,7 +1214,7 @@ export class SettingsTabView {
         this.refs.chatgptDirectory.atomicMarkdownCopyShortcut.setValue(
             normalizeChatGPTAtomicMarkdownCopyShortcut(s.chatgptBehavior.atomicMarkdownCopyShortcut),
         );
-        this.refs.chatgptDirectory.inputEnhancement.checked = Boolean(s.chatgptBehavior.inputEnhancement.available);
+        this.refs.chatgptDirectory.inputEnhancement.checked = Boolean(s.chatgptBehavior.inputEnhancement.available && s.chatgptBehavior.inputEnhancement.enabled);
         this.refs.chatgptDirectory.promptAutocomplete.checked = Boolean(s.chatgptBehavior.promptAutocomplete);
         this.refs.chatgptDirectory.pageAnnotationsEnabled.checked = Boolean(s.chatgptBehavior.pageAnnotationsEnabled);
         this.refs.chatgptDirectory.showPageSelectionToolbar.checked = Boolean(s.chatgptBehavior.showPageSelectionToolbar);
@@ -1212,9 +1240,6 @@ export class SettingsTabView {
         this.refs.language.setValue(s.language);
 
         this.syncToggle(this.refs.platforms.chatgpt);
-        this.syncToggle(this.refs.platforms.gemini);
-        this.syncToggle(this.refs.platforms.claude);
-        this.syncToggle(this.refs.platforms.deepseek);
         this.syncToggle(this.refs.behavior.showMessageToolbar);
         this.syncToggle(this.refs.behavior.showSaveMessages);
         this.syncToggle(this.refs.behavior.showWordCount);
@@ -1237,6 +1262,7 @@ export class SettingsTabView {
         this.syncToggle(this.refs.reader.persistAnnotations);
         this.syncToggle(this.refs.reader.promptPositionBottom);
 
+        this.extraSync.forEach(sync => sync());
         this.refs.storageText.textContent = usagePercent;
         this.renderAdvancedSettings();
 
@@ -1284,27 +1310,9 @@ export class SettingsTabView {
         }, 1500);
     }
 
-    private createGroup(icon: string, title: string): { root: HTMLElement; body: HTMLElement } {
+    private createGroup(): { root: HTMLElement; body: HTMLElement } {
         const root = document.createElement('div');
-        root.className = 'settings-card settings-group';
-        const h = document.createElement('h3');
-        h.className = 'card-title settings-group-title';
-        h.innerHTML = `${icon}<span>${title}</span>`;
-        const body = document.createElement('div');
-        root.append(h, body);
-        return { root, body };
-    }
-
-    private createSection(icon: string, title: string): { root: HTMLElement; body: HTMLElement } {
-        const root = document.createElement('section');
-        root.className = 'settings-section settings-group';
-        const h = document.createElement('h3');
-        h.className = 'card-title settings-group-title';
-        h.innerHTML = `${icon}<span>${title}</span>`;
-        const body = document.createElement('div');
-        body.className = 'settings-section-body';
-        root.append(h, body);
-        return { root, body };
+        return { root, body: root };
     }
 
     private createToggle(parent: HTMLElement, labelHtml: string, desc: string): { root: HTMLElement; input: HTMLInputElement } {
@@ -1331,6 +1339,7 @@ export class SettingsTabView {
         input.type = 'checkbox';
         const knob = document.createElement('span');
         knob.className = 'toggle-knob';
+        knob.setAttribute('data-aimd-switch-track', '');
         input.addEventListener('change', () => {
             toggle.dataset.checked = input.checked ? '1' : '0';
         });
@@ -1364,7 +1373,7 @@ export class SettingsTabView {
         const configureLabel = t('btnConfigure');
         button.setAttribute('aria-label', configureLabel);
         button.setAttribute('title', configureLabel);
-        button.appendChild(createIcon(Icons.settings));
+        button.appendChild(createIcon(settingsIcon));
 
         item.append(info, button);
         parent.appendChild(item);
@@ -1520,40 +1529,25 @@ export class SettingsTabView {
         root.className = 'settings-advanced';
         root.dataset.expanded = '0';
 
-        const button = document.createElement('button');
-        button.type = 'button';
-        button.className = 'settings-advanced-toggle';
-        button.setAttribute('aria-expanded', 'false');
-        button.innerHTML = `
-          <span class="settings-advanced-toggle__label">${t('advancedSettingsLabel')}</span>
-          <span class="settings-advanced-toggle__hint">${t('advancedSettingsDesc')}</span>
-        `;
-
         const body = document.createElement('div');
         body.className = 'settings-advanced-body';
         body.dataset.role = 'settings-advanced-body';
 
-        root.append(button, body);
-        return { root, button, body };
+        root.append(body);
+        return { root, body };
     }
 
     private renderAdvancedSettings(): void {
-        const { root, button, body } = this.refs.advanced;
-        root.dataset.expanded = this.advancedExpanded ? '1' : '0';
-        button.setAttribute('aria-expanded', this.advancedExpanded ? 'true' : 'false');
+        if (this.refs.advanced.fontSize) { this.syncFontSizeStepper(this.refs.advanced.fontSize); this.syncAccentColorSwatches(); return; }
+        const { body } = this.refs.advanced;
         body.replaceChildren();
-        if (!this.advancedExpanded) return;
 
         const appearanceSection = document.createElement('div');
         appearanceSection.className = 'settings-advanced-section';
-        const appearanceTitle = document.createElement('h4');
-        appearanceTitle.className = 'settings-advanced-section__title';
-        appearanceTitle.textContent = t('appearanceSettingsLabel');
-        appearanceSection.appendChild(appearanceTitle);
         const fontSize = this.createStepperRow(
             appearanceSection,
             t('globalFontSizeLabel'),
-            t('globalFontSizeDesc'),
+            '',
             MIN_GLOBAL_FONT_SIZE_PX,
             MAX_GLOBAL_FONT_SIZE_PX,
             GLOBAL_FONT_SIZE_STEP_PX,
@@ -1567,7 +1561,7 @@ export class SettingsTabView {
         this.createAccentColorRow(
             appearanceSection,
             t('themeAccentColorLabel'),
-            t('themeAccentColorDesc'),
+            '',
         );
 
         body.append(appearanceSection);
@@ -1659,7 +1653,7 @@ export class SettingsTabView {
 
     private syncAccentColorSwatches(): void {
         const selected = this.normalizeAccentColor(this.settings.appearance?.accentColor) ?? THEME_ACCENT_SWATCHES[0].value;
-        this.refs.advanced.body.querySelectorAll<HTMLButtonElement>('[data-role="settings-accent-color-swatch"]').forEach((button) => {
+        this.root.querySelectorAll<HTMLButtonElement>('[data-role="settings-accent-color-swatch"]').forEach((button) => {
             const isSelected = button.dataset.color === selected;
             button.dataset.selected = isSelected ? '1' : '0';
             button.setAttribute('aria-checked', isSelected ? 'true' : 'false');
@@ -1717,14 +1711,6 @@ export class SettingsTabView {
                 saveSvg: Boolean(assetActions.saveSvg ?? DEFAULT_FORMULA_SETTINGS.assetActions.saveSvg),
             },
         };
-    }
-
-    private formatFormulaAssetActionsSummary(settings: FormulaSettings): string {
-        const actions = settings.assetActions;
-        const count = [actions.copyPng, actions.copySvg, actions.copyMathml, actions.savePng, actions.saveSvg].filter(Boolean).length;
-        if (count === 0) return t('formulaAssetActionsSummaryNone');
-        if (count === 5) return t('formulaAssetActionsSummaryAll');
-        return t('formulaAssetActionsSummaryCount', [String(count)]);
     }
 
     private formatReaderPromptSummary(): string {
@@ -1814,31 +1800,6 @@ export class SettingsTabView {
             onRestoreDefault: () => createDefaultCommentTemplate(),
             onSave: (template) => {
                 this.updateReaderCommentExport({ ...current, template });
-            },
-        });
-    }
-
-    private openFormulaAssetSettingsPopover(): void {
-        this.dismissTransientUi();
-        this.formulaAssetSettingsPopover.open({
-            parent: this.root,
-            settings: this.settings.formula,
-            labels: {
-                title: t('formulaAssetActionsPopupTitle'),
-                close: t('btnClose'),
-                copyPng: t('formulaCopyAsPng'),
-                copySvg: t('formulaCopyAsSvg'),
-                copyMathml: t('formulaCopyAsMathml'),
-                savePng: t('formulaSaveAsPng'),
-                saveSvg: t('formulaSaveAsSvg'),
-            },
-            onChange: (assetActions) => {
-                this.settings.formula = this.normalizeFormulaSettings({
-                    ...this.settings.formula,
-                    assetActions,
-                });
-                this.applySettingsToDom();
-                void this.actions.setFormulaSettings?.({ assetActions: this.settings.formula.assetActions });
             },
         });
     }

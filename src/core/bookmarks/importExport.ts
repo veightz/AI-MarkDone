@@ -1,13 +1,13 @@
 import type {
     Bookmark,
-    ExportPayloadV2,
+    ExportPayloadV3,
     ImportParseResult,
     ImportPayloadV2,
 } from './types';
 import { normalizeUrlWithoutProtocol } from './keys';
 import { PathUtils } from './path';
 
-export const BOOKMARKS_EXPORT_VERSION = '2.0' as const;
+export const BOOKMARKS_EXPORT_VERSION = '3.0' as const;
 export const DEFAULT_FOLDER_PATH = 'Import';
 export const DEFAULT_PLATFORM = 'ChatGPT';
 
@@ -117,7 +117,11 @@ export function parseImportData(data: unknown): ImportParseResult {
         sourceFormat = 'array';
         items = data;
     } else if (data && typeof data === 'object' && Array.isArray((data as ImportPayloadV2).bookmarks)) {
-        sourceFormat = 'v2';
+        const version = (data as ImportPayloadV2).version;
+        if (version && version !== '2.0' && version !== '3.0') {
+            return { sourceFormat: 'array', bookmarks: [], invalidCount: 0, warnings: ['Unsupported import version'] };
+        }
+        sourceFormat = version === '3.0' ? 'v3' : 'v2';
         items = (data as ImportPayloadV2).bookmarks;
     } else {
         return { sourceFormat: 'array', bookmarks: [], invalidCount: 0, warnings: ['Invalid import format'] };
@@ -140,7 +144,7 @@ export function parseImportData(data: unknown): ImportParseResult {
     return { sourceFormat, bookmarks, invalidCount, warnings };
 }
 
-export function buildExportPayload(bookmarks: Bookmark[], preserveStructure: boolean): ExportPayloadV2 {
+export function buildExportPayload(bookmarks: Bookmark[], preserveStructure: boolean): ExportPayloadV3 {
     const exportBookmarks = preserveStructure
         ? bookmarks.map((b) => ({ ...b, folderPath: b.folderPath }))
         : bookmarks.map((b) => ({ ...b, folderPath: null }));

@@ -1,4 +1,4 @@
-import { Icons } from '../../../../../assets/icons';
+import { coffeeIcon, githubIcon } from '../../../../../assets/icons';
 import { t } from '../../../components/i18n';
 
 export type SponsorTabViewActions = {
@@ -65,7 +65,7 @@ export class SponsorTabView {
         const wechat = params.actions.getAssetUrl('icons/wechat_qr.png');
         donate.innerHTML = `
           <div class="sponsor-section-head">
-            <div class="sponsor-section-icon sponsor-section-icon--warm">${Icons.coffee}</div>
+            <div class="sponsor-section-icon sponsor-section-icon--warm">${coffeeIcon}</div>
             <div class="sponsor-section-copy">
               <div class="sponsor-section-label">${t('ifProjectHelps')}</div>
             </div>
@@ -95,7 +95,7 @@ export class SponsorTabView {
         openSource.className = 'sponsor-card sponsor-card--primary';
         openSource.innerHTML = `
           <div class="sponsor-section-head">
-            <div class="sponsor-section-icon">${Icons.github}</div>
+            <div class="sponsor-section-icon">${githubIcon}</div>
             <div class="sponsor-section-copy">
               <div class="sponsor-section-label">${t('supportDevelopment')}</div>
             </div>
@@ -109,7 +109,7 @@ export class SponsorTabView {
               target="_blank"
               rel="noopener noreferrer"
             >
-              ${Icons.github}
+              ${githubIcon}
               ${t('starOnGitHub')}
             </a>
           </div>

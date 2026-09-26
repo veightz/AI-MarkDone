@@ -1,3 +1,5 @@
+import type { MessageMetadata } from '../../contracts/messageMetadata';
+import { moreHorizontalIcon } from '../../assets/workspaceIcons';
 import type { Theme } from '../../core/types/theme';
 import { createAppearanceSnapshot, type AppearanceSnapshot } from '../../style/appearance';
 import { AppearanceScope } from '../../style/appearanceScope';
@@ -7,7 +9,7 @@ import { TooltipDelegate } from '../../utils/tooltip';
 import { showToast } from '../../utils/toast';
 import { createIcon } from './components/Icon';
 import { TaskProgressPanel, type TaskProgressUpdate } from './components/TaskProgressPanel';
-import { t } from './components/i18n';
+import { getEffectiveLocale, t } from './components/i18n';
 import { ToolbarHoverActionPortal } from './components/ToolbarHoverActionPortal';
 
 export type ToolbarActionResult = { ok: true; message?: string } | { ok: false; message: string };
@@ -65,18 +67,41 @@ export class MessageToolbar {
     private tooltipDelegate: TooltipDelegate;
     private activeTaskAbort: AbortController | null = null;
     private lastStatsKey: string | null = null;
+    private lastTimestamp: number | undefined;
+    private readonly collapsible: boolean;
+    private expanded = false;
+    private toolbarHovered = false;
+    private capsuleCloseTimer: number | null = null;
+    private capsuleToggle: HTMLButtonElement | null = null;
+    private capsuleActions: HTMLElement | null = null;
+    private readonly collapseOutside = (event: Event) => {
+        if (event.composedPath().includes(this.host) || this.hoverActionPortal?.containsEvent(event)) return;
+        this.setExpanded(false);
+    };
+    private readonly collapseOnEscape = (event: KeyboardEvent) => {
+        if (event.key !== 'Escape' || event.isComposing || !this.expanded) return;
+        event.preventDefault(); event.stopPropagation();
+        this.setExpanded(false); this.capsuleToggle?.focus();
+    };
+    private readonly resizeCapsule = () => {
+        const right = this.capsuleToggle?.getBoundingClientRect().right ?? 0;
+        this.host.style.setProperty('--_capsule-available-width', `${Math.max(0, right - 8)}px`);
+    };
 
     constructor(theme: Theme, actions: MessageToolbarAction[], opts?: {
         showStats?: boolean;
         themeOverrides?: UserThemeOverrides;
         variant?: 'default' | 'bare';
+        collapsible?: boolean;
     }) {
         this.appearance = createAppearanceSnapshot(theme, opts?.themeOverrides ?? {});
         this.actions = actions;
+        this.collapsible = opts?.collapsible === true;
         this.showStats = opts?.showStats ?? false;
         this.host = document.createElement('div');
         this.host.className = 'aimd-message-toolbar-host';
-        this.host.dataset.aimdVariant = opts?.variant ?? 'default';
+        this.host.dataset.aimdVariant = this.collapsible ? 'capsule' : opts?.variant ?? 'default';
+        if (this.collapsible) this.host.dataset.bookmarked = '0';
         this.host.setAttribute('data-aimd-theme', this.appearance.theme);
         this.shadow = this.host.attachShadow({ mode: 'open' });
         this.appearanceScope = AppearanceScope.forShadowRoot(this.shadow, { styleId: 'aimd-toolbar-tokens' });
@@ -91,6 +116,8 @@ export class MessageToolbar {
     }
 
     dispose(): void {
+        this.clearCapsuleCloseTimer();
+        this.setExpanded(false);
         this.activeTaskAbort?.abort();
         this.activeTaskAbort = null;
         this.taskProgressPanel?.dispose();
@@ -153,6 +180,61 @@ export class MessageToolbar {
         }
     }
 
+    setMessageMetadata(metadata: MessageMetadata | null): void {
+        const time = this.shadow.querySelector<HTMLTimeElement>('[data-role="message-time"]');
+        if (!time) return;
+        const value = metadata?.updatedAt ?? metadata?.createdAt;
+        if (value === this.lastTimestamp) return;
+        this.lastTimestamp = value;
+        const date = typeof value === 'number' ? new Date(value) : null;
+        time.hidden = !date || !Number.isFinite(date.getTime());
+        if (time.hidden || !date) { time.textContent = ''; time.removeAttribute('datetime'); return; }
+        time.dateTime = date.toISOString();
+        const effectiveLocale = getEffectiveLocale();
+        const locale = effectiveLocale === 'zh_CN' ? 'zh-CN' : effectiveLocale === 'en' ? 'en-US' : undefined;
+        const day = date.toLocaleDateString(locale, { month: '2-digit', day: '2-digit' });
+        const clock = date.toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit', hour12: false });
+        time.textContent = `${day} ${clock}`;
+    }
+
+    private setExpanded(expanded: boolean): void {
+        if (!this.collapsible || expanded === this.expanded) return;
+        this.expanded = expanded;
+        this.host.dataset.expanded = String(expanded);
+        this.capsuleToggle?.setAttribute('aria-expanded', String(expanded));
+        this.capsuleActions?.toggleAttribute('inert', !expanded);
+        this.capsuleActions?.setAttribute('aria-hidden', String(!expanded));
+        if (expanded) {
+            this.resizeCapsule();
+            document.addEventListener('pointerdown', this.collapseOutside, true);
+            window.addEventListener('keydown', this.collapseOnEscape, true);
+            window.addEventListener('resize', this.resizeCapsule);
+        } else {
+            this.clearCapsuleCloseTimer();
+            this.closeMenu(); this.closeHoverAction();
+            document.removeEventListener('pointerdown', this.collapseOutside, true);
+            window.removeEventListener('keydown', this.collapseOnEscape, true);
+            window.removeEventListener('resize', this.resizeCapsule);
+        }
+    }
+
+    private clearCapsuleCloseTimer(): void {
+        if (this.capsuleCloseTimer === null) return;
+        window.clearTimeout(this.capsuleCloseTimer);
+        this.capsuleCloseTimer = null;
+    }
+
+    private scheduleCapsuleClose(): void {
+        this.clearCapsuleCloseTimer();
+        if (!this.expanded) return;
+        this.capsuleCloseTimer = window.setTimeout(() => {
+            this.capsuleCloseTimer = null;
+            const capsule = this.capsuleToggle?.parentElement;
+            if (this.toolbarHovered || this.hoverActionPortalInside || (this.shadow.activeElement && capsule?.contains(this.shadow.activeElement))) return;
+            this.setExpanded(false);
+        }, 120);
+    }
+
     setActionActive(actionId: string, active: boolean): void {
         const btn = this.actionButtons.get(actionId);
         if (!btn) return;
@@ -162,6 +244,7 @@ export class MessageToolbar {
         // Only bookmark uses "primary when active" (legacy behavior).
         if (actionId === 'bookmark_toggle') {
             btn.classList.toggle('primary', active);
+            if (this.collapsible) this.host.dataset.bookmarked = active ? '1' : '0';
         }
     }
 
@@ -230,18 +313,46 @@ export class MessageToolbar {
             addActionButton(action, left);
         }
 
-        bar.append(left);
+        const metadataBox = document.createElement('div');
+        metadataBox.className = 'message-metadata';
+        if (this.collapsible) {
+            const capsule = document.createElement('div'); capsule.className = 'capsule';
+            bar.addEventListener('mouseenter', () => {
+                if (!this.supportsPointerHover()) return;
+                this.toolbarHovered = true;
+                this.clearCapsuleCloseTimer();
+                this.setExpanded(true);
+            });
+            bar.addEventListener('mouseleave', () => {
+                this.toolbarHovered = false;
+                this.scheduleCapsuleClose();
+            });
+            const drawer = document.createElement('div'); drawer.className = 'capsule-actions'; drawer.id = 'capsule-actions';
+            drawer.inert = true; drawer.setAttribute('aria-hidden', 'true');
+            drawer.append(left); this.capsuleActions = drawer;
+            const toggle = document.createElement('button'); toggle.type = 'button'; toggle.className = 'icon-btn capsule-toggle';
+            toggle.dataset.action = 'toggle-capsule'; toggle.setAttribute('aria-label', t('messageActions')); toggle.setAttribute('aria-expanded', 'false'); toggle.setAttribute('aria-controls', drawer.id);
+            toggle.append(createIcon(moreHorizontalIcon)); toggle.addEventListener('click', event => {
+                event.stopPropagation();
+                this.setExpanded(this.toolbarHovered && event.detail > 0 ? true : !this.expanded);
+            });
+            this.capsuleToggle = toggle; capsule.append(drawer, toggle); bar.append(capsule);
+        } else bar.append(left);
         if (this.showStats) {
-            addSeparator();
+            if (!this.collapsible) addSeparator();
             const stats = document.createElement('span');
             stats.className = 'stats';
             stats.dataset.role = 'stats';
             stats.dataset.empty = '0';
             stats.setAttribute('aria-label', t('wordCountLabel'));
             stats.textContent = t('loading');
-            bar.appendChild(stats);
+            (this.collapsible ? metadataBox : bar).appendChild(stats);
         }
 
+        if (this.collapsible) {
+            const time = document.createElement('time'); time.dataset.role = 'message-time'; time.hidden = true;
+            metadataBox.append(time); bar.append(metadataBox);
+        }
         const note = document.createElement('span');
         note.className = 'note';
         note.dataset.field = 'note';
@@ -309,16 +420,16 @@ export class MessageToolbar {
                 e.preventDefault();
                 e.stopPropagation();
                 try {
-                    this.setStatus('info', 'Working…');
+                    this.setStatus('info', t('loading'));
                     const res = await item.onClick();
                     if (!res) {
                         this.setStatus('idle', '');
                     } else if (res.ok) {
                         this.setStatus('idle', '');
-                        showToast({ text: res.message || 'Done', tone: 'success' });
+                        showToast({ text: res.message || t('operationCompleted'), tone: 'success' });
                     } else {
                         this.setStatus('idle', '');
-                        showToast({ text: res.message || 'Failed', tone: 'error' });
+                        showToast({ text: res.message || t('operationFailed'), tone: 'error' });
                     }
                 } finally {
                     window.setTimeout(() => this.setStatus('idle', ''), 1200);
@@ -369,7 +480,7 @@ export class MessageToolbar {
 
         try {
             btn.disabled = true;
-            this.setStatus('info', 'Working…');
+            this.setStatus('info', t('loading'));
             const res = await action.onClick();
             if (!res) {
                 this.setStatus('idle', '');
@@ -377,10 +488,10 @@ export class MessageToolbar {
             }
             if (res.ok) {
                 this.setStatus('idle', '');
-                showToast({ text: res.message || 'Done', tone: 'success' });
+                showToast({ text: res.message || t('operationCompleted'), tone: 'success' });
             } else {
                 this.setStatus('idle', '');
-                showToast({ text: res.message || 'Failed', tone: 'error' });
+                showToast({ text: res.message || t('operationFailed'), tone: 'error' });
             }
             // Momentary highlight on successful actions (legacy-like feedback without changing toggle semantics).
             if (res.ok) {
@@ -389,10 +500,10 @@ export class MessageToolbar {
             }
         } catch {
             this.setStatus('idle', '');
-            showToast({ text: 'Failed', tone: 'error' });
+            showToast({ text: t('operationFailed'), tone: 'error' });
         } finally {
             window.setTimeout(() => this.setStatus('idle', ''), 1200);
-            if (this.pending && action.disabledWhenPending) {
+            if (this.explicitlyDisabledActions.has(action.id) || (this.pending && action.disabledWhenPending)) {
                 btn.disabled = true;
             } else {
                 btn.disabled = false;
@@ -485,11 +596,13 @@ export class MessageToolbar {
             onClick: () => void this.handleHoverActionClick(action, anchor),
             onPointerEnter: () => {
                 this.hoverActionPortalInside = true;
+                this.clearCapsuleCloseTimer();
                 this.clearHoverActionCloseTimer();
             },
             onPointerLeave: () => {
                 this.hoverActionPortalInside = false;
                 this.scheduleHoverActionClose();
+                this.scheduleCapsuleClose();
             },
             onRequestClose: () => this.closeHoverAction(),
         });
@@ -511,14 +624,14 @@ export class MessageToolbar {
             } else if (!res) {
                 this.closeTaskProgress();
             } else if (res.ok) {
-                this.finishTaskProgress(res.message || 'Done');
+                this.finishTaskProgress(res.message || t('operationCompleted'));
                 button.setAttribute('data-flash', '1');
                 window.setTimeout(() => button.removeAttribute('data-flash'), 650);
             } else {
-                this.finishTaskProgress(res.message || 'Failed');
+                this.finishTaskProgress(res.message || t('operationFailed'));
             }
         } catch {
-            this.finishTaskProgress(abort.signal.aborted ? this.getTaskCancelledLabel() : 'Failed');
+            this.finishTaskProgress(abort.signal.aborted ? this.getTaskCancelledLabel() : t('operationFailed'));
         } finally {
             if (this.activeTaskAbort === abort) this.activeTaskAbort = null;
             if (this.pending && action.disabledWhenPending) {
@@ -746,10 +859,31 @@ export class MessageToolbar {
   border-color: color-mix(in srgb, var(--aimd-border-strong) 72%, transparent);
 }
 
+:host([data-aimd-variant="capsule"]) { margin-inline-start: auto; }
+:host([data-aimd-variant="capsule"]) .bar { padding: 0; gap: var(--aimd-space-3); border: none; background: transparent; box-shadow: none; }
+:host([data-aimd-variant="capsule"]) .icon-btn { border-radius: var(--aimd-radius-full); flex: none; }
+.capsule { position: relative; display: inline-flex; }
+.capsule-toggle { box-sizing: border-box; background: var(--aimd-workspace-card); border: 1px solid var(--aimd-workspace-border); box-shadow: var(--aimd-workspace-edge-shadow), var(--aimd-shadow-xs); z-index: var(--aimd-z-base); }
+:host([data-bookmarked="1"]:not([data-expanded="true"])) .capsule-toggle { background: var(--aimd-interactive-primary); color: var(--aimd-text-on-primary); box-shadow: none; }
+:host([data-bookmarked="1"]:not([data-expanded="true"])) .capsule-toggle:hover { background: var(--aimd-interactive-primary-hover); color: var(--aimd-text-on-primary); }
+.capsule-toggle svg { transition: transform var(--aimd-duration-base) var(--aimd-ease-out); }
+:host([data-expanded="true"]) .capsule-toggle svg { transform: rotate(90deg); }
+.capsule-actions { position: absolute; top: 0; bottom: 0; right: 100%; width: max-content; max-width: max(0px, calc(var(--_capsule-available-width) - var(--aimd-size-control-icon-toolbar))); display: flex; align-items: center; overflow: hidden; border: 1px solid var(--aimd-workspace-border); border-radius: var(--aimd-radius-full) 0 0 var(--aimd-radius-full); border-right: none; background: var(--aimd-workspace-card); box-shadow: var(--aimd-shadow-xs); clip-path: inset(0 0 0 100%); visibility: hidden; transition: clip-path var(--aimd-duration-base) var(--aimd-ease-out), visibility var(--aimd-duration-base); }
+:host([data-expanded="true"]) .capsule-toggle { border-left: none; border-radius: 0 var(--aimd-radius-full) var(--aimd-radius-full) 0; box-shadow: none; }
+:host([data-expanded="true"]) .capsule-actions { clip-path: inset(0); visibility: visible; }
+.capsule-actions { box-sizing: border-box; }
+.capsule-actions .group-left { min-width: 0; overflow-x: auto; scrollbar-width: none; gap: var(--aimd-space-1); }
+.message-metadata { display: flex; flex-direction: column; justify-content: center; align-items: flex-end; gap: 0; font-size: var(--aimd-text-xs); line-height: var(--aimd-leading-normal); color: var(--aimd-text-secondary); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.message-metadata time { font-size: calc(var(--aimd-text-xs) * 0.9); }
+.message-metadata .stats { min-width: 0; padding: 0; }
+.message-metadata time[hidden] { display: none; }
+
 @media (prefers-reduced-motion: reduce) {
   .bar,
   .icon-btn,
-  .menu-item {
+  .menu-item,
+  .capsule-actions,
+  .capsule-toggle svg {
     transition: none;
   }
 }

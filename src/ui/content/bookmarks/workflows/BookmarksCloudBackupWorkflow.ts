@@ -7,7 +7,7 @@ import {
 import type { ModalHost } from '../../components/ModalHost';
 import { t } from '../../components/i18n';
 import type { CloudBackupSettingsPanelActions } from '../ui/cloudBackup/CloudBackupSettingsPanel';
-import { buildImportMergeReviewModalBody } from '../ui/importMergeReview';
+import { appendLibraryImportSummary, buildImportMergeReviewModalBody } from '../ui/importMergeReview';
 
 type CloudBackupClient = typeof cloudBackupClient;
 
@@ -56,6 +56,7 @@ export class BookmarksCloudBackupWorkflow {
 
     constructor(private readonly options: {
         getModalHost: () => ModalHost | null;
+        onRestoreApplied?: () => Promise<void>;
         client?: CloudBackupClient;
     }) {
         this.client = options.client ?? cloudBackupClient;
@@ -74,7 +75,7 @@ export class BookmarksCloudBackupWorkflow {
                     title: tr('cloudBackupConnectConfirmTitle', 'Connect Google Drive?'),
                     message: tr(
                         'cloudBackupConnectConfirmDesc',
-                        'AI-MarkDone will open Google authorization so you can choose your own Drive. This feature is experimental; before backing up to Google Drive, we recommend exporting a local copy first. AI-MarkDone does not collect your Google account, token, password, or bookmarks.',
+                        'Connect Google Drive for backups of saved bookmarks, highlights, annotations and folders. Nothing uploads until you choose Back up now.',
                     ),
                     confirmText: tr('cloudBackupConnectConfirmAction', 'Continue'),
                     cancelText: tr('btnCancel', 'Cancel'),
@@ -120,7 +121,7 @@ export class BookmarksCloudBackupWorkflow {
             tr('cloudBackupProgressConfirmingAccess', 'Confirming Google Drive access...'),
             [
                 tr('cloudBackupProgressConfirmingAccess', 'Confirming Google Drive access...'),
-                tr('cloudBackupProgressPreparingBookmarks', 'Preparing local bookmarks...'),
+                tr('cloudBackupProgressPreparingBookmarks', 'Preparing your Library...'),
                 tr('cloudBackupProgressCreatingSnapshot', 'Creating a verified snapshot...'),
                 tr('cloudBackupProgressUploadingDrive', 'Uploading to Google Drive...'),
                 tr('cloudBackupProgressVerifyingUpload', 'Reading the file back for verification...'),
@@ -139,7 +140,7 @@ export class BookmarksCloudBackupWorkflow {
             kind: result.ok ? 'info' : 'error',
             title: result.ok ? tr('cloudBackupCompleteTitle', 'Backup complete') : tr('cloudBackupErrorTitle', 'Google Drive backup failed'),
             message: result.ok
-                ? tr('cloudBackupCompleteDesc', 'A verified bookmark snapshot was saved to your Google Drive.')
+                ? tr('cloudBackupCompleteDesc', 'A verified Library backup was saved to your Google Drive.')
                 : result.message,
             confirmText: tr('btnOk', 'OK'),
         });
@@ -174,7 +175,7 @@ export class BookmarksCloudBackupWorkflow {
             await this.modalHost?.alert({
                 kind: 'info',
                 title: tr('cloudBackupNoSnapshotsTitle', 'No Google Drive backups found'),
-                message: tr('cloudBackupNoSnapshotsDesc', 'Google Drive does not have any AI-MarkDone bookmark backups yet.'),
+                message: tr('cloudBackupNoSnapshotsDesc', 'Google Drive does not have any AI-MarkDone backups yet.'),
                 confirmText: tr('btnOk', 'OK'),
             });
             return;
@@ -215,7 +216,7 @@ export class BookmarksCloudBackupWorkflow {
         );
         let applied: Awaited<ReturnType<CloudBackupClient['applyRestore']>>;
         try {
-            applied = await this.client.applyRestore({ provider, snapshotId: selected.snapshotId, strategy: 'safeMerge' });
+            applied = await this.client.applyRestore({ provider, snapshotId: selected.snapshotId, strategy: 'safeMerge', payloadHash: preview.data.snapshot.payloadHash });
         } finally {
             applyProgress?.close();
         }
@@ -223,16 +224,20 @@ export class BookmarksCloudBackupWorkflow {
             await this.showError(applied.message);
             return;
         }
+        await this.options.onRestoreApplied?.();
         const result = applied.data ?? {};
         await this.modalHost?.alert({
             kind: 'info',
             title: tr('cloudBackupRestoreCompleteTitle', 'Restore complete'),
-            message: tr('cloudBackupRestoreCompleteDesc', 'Added $1 bookmark(s). Kept $2 local-only item(s), skipped $3 duplicate(s), and left $4 conflict(s) unchanged.', [
-                String(result.restored ?? 0),
-                String(result.localOnly ?? 0),
-                String(result.skippedDuplicates ?? 0),
-                String(result.conflicts ?? 0),
-            ]),
+            message: result.library
+                ? tr('cloudBackupLibraryRestoreCompleteDesc', 'Added $1 bookmarks, $2 highlights, $3 annotations and $4 folders. Local conflicts were kept.', [
+                    String(result.restored ?? 0), String(result.library.highlights?.added ?? 0),
+                    String(result.library.annotations?.added ?? 0), String(Number(result.library.bookmarkFolders?.added ?? 0) + Number(result.library.folders?.added ?? 0)),
+                ])
+                : tr('cloudBackupRestoreCompleteDesc', 'Added $1 bookmark(s). Kept $2 local-only item(s), skipped $3 duplicate(s), and left $4 conflict(s) unchanged.', [
+                    String(result.restored ?? 0), String(result.localOnly ?? 0),
+                    String(result.skippedDuplicates ?? 0), String(result.conflicts ?? 0),
+                ]),
             confirmText: tr('btnOk', 'OK'),
         });
     }
@@ -257,10 +262,19 @@ export class BookmarksCloudBackupWorkflow {
             folderCreateFailures: 0,
             warnings,
         });
+        const library = previewData?.library;
+        let libraryConflicts = 0;
+        if (library) {
+            libraryConflicts = appendLibraryImportSummary(review.body, library);
+        } else {
+            const note = document.createElement('p');
+            note.textContent = tr('cloudBackupLegacyScope', 'This older backup contains bookmarks only. Highlights, annotations and their folders will stay unchanged.');
+            review.body.append(note);
+        }
 
         return new Promise((resolve) => {
             void modal.showCustom({
-                kind: warnings.length > 0 ? 'warning' : review.kind,
+                kind: warnings.length > 0 || libraryConflicts > 0 ? 'warning' : review.kind,
                 title: tr('cloudBackupRestorePreviewKind', 'Safe merge preview'),
                 body: review.body,
                 footer: (footer, close) => {
@@ -378,7 +392,7 @@ export class BookmarksCloudBackupWorkflow {
             const description = document.createElement('p');
             description.textContent = tr(
                 'cloudBackupChooseSnapshotDesc',
-                'Choose the Google Drive backup to inspect. This step only previews a safe merge and does not change local bookmarks.',
+                'Choose a backup to preview the merge. No local data changes yet.',
             );
             let selectedId = snapshots[0]?.snapshotId ?? null;
             const list = document.createElement('div');
@@ -466,7 +480,7 @@ export class BookmarksCloudBackupWorkflow {
         title.textContent = 'Google Drive';
         const privacy = document.createElement('p');
         privacy.className = 'cloud-backup-settings-modal__privacy';
-        privacy.textContent = tr('cloudBackupPrivacyNote', 'AI-MarkDone does not collect your Google account, token, password, or bookmarks.');
+        privacy.textContent = tr('cloudBackupPrivacyNote', 'Saved bookmarks, highlights, annotations and folders are stored in your authorized Google Drive.');
         summary.append(title, privacy);
         body.appendChild(summary);
         const statusRow = document.createElement('div');
@@ -553,7 +567,7 @@ export class BookmarksCloudBackupWorkflow {
         const description = document.createElement('p');
         description.textContent = tr(
             'cloudBackupManageBackupsDesc',
-            'These are backup files AI-MarkDone created in your Google Drive. Moving one to trash never changes local bookmarks.',
+            'These are AI-MarkDone backups in your Google Drive. Moving one to trash leaves your local Library unchanged.',
         );
         const listRoot = document.createElement('div');
         listRoot.className = 'cloud-backup-manager-list';
@@ -598,7 +612,7 @@ export class BookmarksCloudBackupWorkflow {
                     const confirmed = await modal.confirm({
                         kind: 'warning',
                         title: tr('cloudBackupMoveToTrashConfirmTitle', 'Move backup to trash?'),
-                        message: tr('cloudBackupMoveToTrashConfirmDesc', 'This moves "$1" to Google Drive trash. Local bookmarks will not be changed.', [snapshot.name]),
+                        message: tr('cloudBackupMoveToTrashConfirmDesc', 'Move "$1" to Google Drive trash? Your local Library stays unchanged.', [snapshot.name]),
                         confirmText: tr('cloudBackupMoveToTrash', 'Move to trash'),
                         cancelText: tr('btnCancel', 'Cancel'),
                         danger: true,

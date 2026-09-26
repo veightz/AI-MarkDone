@@ -205,6 +205,26 @@ describe('commentAnchoring', () => {
         expect(resolved.unionRect).not.toBeNull();
     });
 
+    it('keeps wrapped selection lines as separate highlight rectangles', () => {
+        document.body.innerHTML = '<div id="root"><p>First line</p><p>Second line</p></div>';
+        const root = document.querySelector<HTMLElement>('#root')!;
+        const paragraphs = root.querySelectorAll('p');
+        const range = document.createRange();
+        range.setStart(paragraphs[0]!.firstChild!, 0);
+        range.setEnd(paragraphs[1]!.firstChild!, 6);
+        Object.assign(range, {
+            getClientRects: () => [
+                { left: 10, top: 10, width: 80, height: 18, right: 90, bottom: 28 },
+                { left: 10, top: 40, width: 54, height: 18, right: 64, bottom: 58 },
+            ],
+        });
+        Object.assign(root, { getBoundingClientRect: () => ({ left: 0, top: 0 }) });
+
+        const resolved = resolveSelectionLayout({ root, range, selectedUnits: [] });
+        expect(resolved.rects).toHaveLength(2);
+        expect(resolved.rects.map((rect) => rect.top)).toEqual([10, 40]);
+    });
+
     it('merges text and atomic-unit rects into a continuous highlight', () => {
         document.body.innerHTML = `
           <div id="root">
@@ -256,6 +276,20 @@ describe('commentAnchoring', () => {
 });
 
 describe('commentAnchoring page helpers', () => {
+    it('does not paint a selected citation control as another line of page text', () => {
+        document.body.innerHTML = '<div id="root"><p><span>Answer text</span><a data-testid="chatgpt-citation">Source</a></p></div>';
+        const root = document.querySelector<HTMLElement>('#root')!;
+        const citation = root.querySelector('a')!;
+        const range = document.createRange(); range.selectNodeContents(root.querySelector('p')!);
+        const rect = (left: number, top: number, width: number, height: number) => ({left, top, width, height, right:left+width, bottom:top+height, x:left, y:top, toJSON:()=>({})});
+        Object.assign(root, {getBoundingClientRect: () => rect(0, 0, 300, 100)});
+        Object.assign(citation, {getBoundingClientRect: () => rect(10, 40, 80, 12)});
+        Object.assign(range, {getClientRects: () => [rect(10, 10, 100, 16), rect(10, 40, 80, 12)]});
+        const layout = resolveSelectionLayout({root, range, selectedUnits: []});
+        expect(layout.rects).toHaveLength(1);
+        expect(layout.rects[0]).toMatchObject({left:10, top:10, width:100, height:16});
+    });
+
     it('capturePageCommentSelectors captures textQuote/textPosition/domRange with empty atomicRefs', () => {
         document.body.innerHTML = `<div id="root"><p>Hello <strong>world</strong> again</p></div>`;
         const root = document.querySelector<HTMLElement>('#root')!;

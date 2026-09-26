@@ -47,6 +47,51 @@ describe('ChatGPTPageIndex', () => {
         document.documentElement.innerHTML = '<head></head><body></body>';
     });
 
+    it('discovers current search-unit turns and mounts beside their assistant action controls', async () => {
+        const main = document.querySelector('main')!;
+        main.innerHTML = `
+            <div data-content-search-turn-key="round-1">
+              <div data-chatgpt-search-unit-key="round-1:0:user" data-chatgpt-search-message-ids="user-1">Prompt</div>
+              <div class="group flex flex-col pb-2 pt-2">
+                <div data-chatgpt-search-unit-key="round-1:2:assistant" data-chatgpt-search-message-ids="assistant-1 assistant-1">
+                  <div data-markdown-text-style="assistant-message">Answer</div>
+                </div>
+                <div class="turn-action-controls"><div><span><button aria-label="复制">Copy</button></span></div></div>
+              </div>
+            </div>`;
+        const [round] = collectChatGPTDomRoundRefs(adapter);
+        expect(round?.identity).toMatchObject({ roundId: 'round-1', userMessageId: 'user-1', assistantMessageId: 'assistant-1' });
+        expect(round?.assistantContentRootEl?.textContent).toBe('Answer');
+        expect(adapter.getToolbarAnchorElement(round!.assistantMessageEl)?.classList.contains('turn-action-controls')).toBe(true);
+        const host = document.createElement('div');
+        expect(adapter.injectToolbar(round!.assistantMessageEl, host)).toBe(true);
+        expect(host.parentElement?.classList.contains('turn-action-controls')).toBe(true);
+        expect(host.style.marginLeft).toBe('auto');
+    });
+
+    it('keeps old and current message shapes in one ordered surface during host transition', () => {
+        document.querySelector('main')!.insertAdjacentHTML('beforeend', `
+            <div data-content-search-turn-key="round-2">
+              <div data-chatgpt-search-unit-key="round-2:0:user" data-chatgpt-search-message-ids="user-2">Prompt 2</div>
+              <div class="group flex flex-col pb-2 pt-2">
+                <div data-chatgpt-search-unit-key="round-2:2:assistant" data-chatgpt-search-message-ids="assistant-2 assistant-2">
+                  <div data-markdown-text-style="assistant-message">Answer 2</div>
+                </div>
+                <div class="turn-action-controls"><button aria-label="复制">Copy</button></div>
+              </div>
+            </div>`);
+        const rounds = collectChatGPTDomRoundRefs(adapter);
+        expect(rounds.map((round) => round.identity.assistantMessageId)).toEqual([
+            'assistant-1', 'assistant-2',
+        ]);
+        for (const round of rounds) {
+            const toolbar = document.createElement('div');
+            expect(adapter.injectToolbar(round.assistantMessageEl, toolbar)).toBe(true);
+            expect(toolbar.closest('.turn-action-controls, .z-0.flex')).toBeTruthy();
+        }
+        expect(document.querySelectorAll('[data-aimd-role="message-toolbar"]')).toHaveLength(2);
+    });
+
     it('reuses one ordered DOM-round snapshot until the host page changes', async () => {
         const first = collectChatGPTDomRoundRefs(adapter);
         const unchanged = collectChatGPTDomRoundRefs(adapter);
