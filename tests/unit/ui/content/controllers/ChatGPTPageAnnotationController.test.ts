@@ -61,6 +61,10 @@ function dispatchPointerCancel(x: number, y: number): void {
     document.dispatchEvent(new MouseEvent('pointercancel', { bubbles: true, button: 0, clientX: x, clientY: y }));
 }
 
+function dispatchLostPointerCapture(x: number, y: number): void {
+    document.dispatchEvent(new MouseEvent('lostpointercapture', { bubbles: true, button: 0, clientX: x, clientY: y }));
+}
+
 function dispatchWindowBlur(): void {
     window.dispatchEvent(new Event('blur'));
 }
@@ -780,6 +784,53 @@ describe('ChatGPTPageAnnotationController', () => {
         controller.init();
         dispatchPointerDown(320, 240);
         dispatchPointerCancel(320, 240);
+        await flushSelectionFrame();
+
+        expect(selectionToolbarButton('page-selection-copy')).toBeTruthy();
+        expect(selectionToolbarButton('page-comment-add')).toBeTruthy();
+        controller.dispose();
+    });
+
+    it('recovers the toolbar when selection ends with lostpointercapture', async () => {
+        const message = mountMessage('<p>before <code>inline code</code> after</p>');
+        const root = message.querySelector('.markdown.prose') as HTMLElement;
+        const codeElement = message.querySelector('code') as HTMLElement;
+        const codeText = codeElement.firstChild as Text;
+        const range = document.createRange();
+        range.setStart(codeText, 0);
+        range.setEnd(codeText, codeText.data.length);
+        selectRange(range);
+        mockGeometry(root, codeElement, range);
+
+        const controller = new ChatGPTPageAnnotationController(new ChatGPTAdapter());
+        controller.init();
+        dispatchPointerDown(320, 240);
+        dispatchLostPointerCapture(320, 240);
+        await flushSelectionFrame();
+
+        expect(selectionToolbarButton('page-selection-copy')).toBeTruthy();
+        expect(selectionToolbarButton('page-comment-add')).toBeTruthy();
+        controller.dispose();
+    });
+
+    it('retries settling the toolbar when Selection is briefly empty on pointerup', async () => {
+        const message = mountMessage('<p>before <code>inline code</code> after</p>');
+        const root = message.querySelector('.markdown.prose') as HTMLElement;
+        const codeElement = message.querySelector('code') as HTMLElement;
+        const codeText = codeElement.firstChild as Text;
+        const range = document.createRange();
+        range.setStart(codeText, 0);
+        range.setEnd(codeText, codeText.data.length);
+        mockGeometry(root, codeElement, range);
+
+        const controller = new ChatGPTPageAnnotationController(new ChatGPTAdapter());
+        controller.init();
+        dispatchPointerDown(320, 240);
+        // Simulate ChatGPT clearing Selection for one frame around pointerup.
+        window.getSelection()?.removeAllRanges();
+        dispatchPointerUp(320, 240);
+        expect(selectionToolbarHost()).toBeNull();
+        selectRange(range);
         await flushSelectionFrame();
 
         expect(selectionToolbarButton('page-selection-copy')).toBeTruthy();

@@ -146,7 +146,7 @@ describe('ChatGPTMessageStepperController', () => {
         });
     });
 
-    it('opens on hover and focus, preserves action order, and closes with Escape or an outside pointer', async () => {
+    it('keeps the MarkDone page control always expanded without hover or Escape collapse', async () => {
         const onOpenBookmarksPanel = vi.fn();
         const controller = new ChatGPTMessageStepperController(adapter, { onOpenBookmarksPanel });
         controllers.push(controller);
@@ -154,30 +154,25 @@ describe('ChatGPTMessageStepperController', () => {
         const host = document.getElementById('aimd-chatgpt-message-stepper')!;
         const trigger = host.querySelector<HTMLButtonElement>('[data-action="open-bookmarks-panel"]')!;
         const actions = host.querySelector<HTMLElement>('.aimd-chatgpt-message-stepper__actions')!;
-        expect(trigger.getAttribute('aria-expanded')).toBe('false');
-        expect(actions.hasAttribute('inert')).toBe(true);
-        host.dispatchEvent(new Event('pointerenter'));
+        expect(host.dataset.expanded).toBe('1');
         expect(trigger.getAttribute('aria-expanded')).toBe('true');
         expect(actions.hasAttribute('inert')).toBe(false);
+        expect(actions.getAttribute('aria-hidden')).toBe('false');
         host.dispatchEvent(new Event('pointerleave'));
-        expect(trigger.getAttribute('aria-expanded')).toBe('false');
-        trigger.focus();
         expect(trigger.getAttribute('aria-expanded')).toBe('true');
+        expect(actions.hasAttribute('inert')).toBe(false);
         expect(actions.querySelector('[data-action="open-bookmarks-panel"]')).toBeNull();
         const bookmark = trigger;
         bookmark.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true }));
         bookmark.click();
         expect(onOpenBookmarksPanel).toHaveBeenCalledOnce();
         trigger.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
-        expect(document.activeElement).toBe(trigger);
-        expect(trigger.getAttribute('aria-expanded')).toBe('false');
-        trigger.click();
-        expect(trigger.getAttribute('aria-expanded')).toBe('false');
-        expect(onOpenBookmarksPanel).toHaveBeenCalledTimes(2);
-        host.dispatchEvent(new Event('pointerenter'));
         expect(trigger.getAttribute('aria-expanded')).toBe('true');
+        trigger.click();
+        expect(onOpenBookmarksPanel).toHaveBeenCalledTimes(2);
         document.body.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true }));
-        expect(trigger.getAttribute('aria-expanded')).toBe('false');
+        expect(trigger.getAttribute('aria-expanded')).toBe('true');
+        expect(actions.hasAttribute('inert')).toBe(false);
     });
 
     it('renders left and right message step buttons and routes clicks around the active round', async () => {

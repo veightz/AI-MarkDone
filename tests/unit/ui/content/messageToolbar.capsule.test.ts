@@ -12,47 +12,48 @@ function mount(onClick = vi.fn(async () => ({ ok: true as const }))) {
 afterEach(() => { mounted.splice(0).forEach(toolbar => { toolbar.dispose(); toolbar.getElement().remove(); }); });
 
 describe('message capsule entry', () => {
-    it('opens on hover and closes after the pointer leaves without requiring a click', async () => {
-        const { shadow, toggle } = mount();
-        const bar = shadow.querySelector<HTMLElement>('.bar')!;
+    it('keeps actions always visible without requiring hover or a click to expand', async () => {
+        const { shadow, toggle, action } = mount();
+        const host = shadow.host as HTMLElement;
         const drawer = shadow.querySelector<HTMLElement>('.capsule-actions')!;
 
-        bar.dispatchEvent(new MouseEvent('mouseenter'));
+        expect(host.dataset.expanded).toBe('true');
+        expect(host.dataset.alwaysExpanded).toBe('1');
         expect(toggle.getAttribute('aria-expanded')).toBe('true');
+        expect(toggle.hidden).toBe(true);
         expect(drawer.hasAttribute('inert')).toBe(false);
+        expect(drawer.getAttribute('aria-hidden')).toBe('false');
+        expect(action.isConnected).toBe(true);
 
-        bar.dispatchEvent(new MouseEvent('mouseleave'));
-        await vi.waitFor(() => expect(toggle.getAttribute('aria-expanded')).toBe('false'));
-        expect(drawer.hasAttribute('inert')).toBe(true);
+        shadow.querySelector<HTMLElement>('.bar')!.dispatchEvent(new MouseEvent('mouseleave'));
+        await Promise.resolve();
+        expect(host.dataset.expanded).toBe('true');
+        expect(drawer.hasAttribute('inert')).toBe(false);
     });
 
-    it('opens existing actions through its toggle and closes on Escape with focus restored', async () => {
+    it('exposes existing actions immediately and ignores Escape collapse', async () => {
         const click = vi.fn(async () => ({ ok: true as const }));
         const { shadow, toggle, action, toolbar } = mount(click);
         const drawer = shadow.querySelector<HTMLElement>('.capsule-actions')!;
-        expect(drawer.inert).toBe(true);
-        expect(toggle.getAttribute('aria-expanded')).toBe('false');
-        toolbar.setStats(['128 Chars']);
-        toggle.click();
         expect(drawer.hasAttribute('inert')).toBe(false);
+        expect(toggle.getAttribute('aria-expanded')).toBe('true');
+        toolbar.setStats(['128 Chars']);
         action.click(); await Promise.resolve();
         expect(click).toHaveBeenCalledOnce();
         window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
-        expect(drawer.hasAttribute('inert')).toBe(true);
-        expect(shadow.activeElement).toBe(toggle);
+        expect(drawer.hasAttribute('inert')).toBe(false);
         expect(shadow.querySelector('[data-role="stats"]')?.textContent).toBe('128 Chars');
     });
 
-    it('keeps an active operation alive when collapsed and preserves an explicit disabled state', async () => {
+    it('keeps an active operation alive and preserves an explicit disabled state', async () => {
         let complete!: (value: {ok: true}) => void;
         const click = vi.fn(() => new Promise<{ok: true}>(resolve => { complete = resolve; }));
-        const { toolbar, toggle, action } = mount(click);
-        toggle.click(); action.click();
+        const { toolbar, action } = mount(click);
+        action.click();
         document.body.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true, composed: true }));
-        expect(toggle.getAttribute('aria-expanded')).toBe('false');
+        expect((toolbar.getElement() as HTMLElement).dataset.expanded).toBe('true');
         toolbar.setActionDisabled('copy', true);
         complete({ok: true}); await Promise.resolve(); await Promise.resolve();
-        toggle.click();
         expect(action.disabled).toBe(true);
         expect(click).toHaveBeenCalledOnce();
     });

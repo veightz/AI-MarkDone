@@ -77,7 +77,6 @@ export class ChatGPTMessageStepperController {
     private suppressRestoredFocus = false;
     private drawerTrigger: HTMLButtonElement | null = null;
     private drawerActions: HTMLDivElement | null = null;
-    private pointerInside = false;
     private appearanceScope: AppearanceScope | null = null;
     private appearance: AppearanceSnapshot = createAppearanceSnapshot(this.resolveInitialTheme());
     private bookmarksPanelButton: HTMLButtonElement | null = null;
@@ -132,7 +131,7 @@ export class ChatGPTMessageStepperController {
         });
         this.refreshState();
         document.addEventListener('keydown', this.onKeyDownCapture, { capture: true });
-        document.addEventListener('pointerdown', this.onOutsidePointerDown, true);
+        // Always-visible page control: do not auto-collapse on outside pointer.
         this.unsubscribeSurface = this.surface.subscribeFrame(() => {
             this.activePositionTracker.invalidate();
             this.scheduleRefreshState();
@@ -143,7 +142,6 @@ export class ChatGPTMessageStepperController {
         if (!this.initialized) return;
         this.initialized = false;
         document.removeEventListener('keydown', this.onKeyDownCapture, { capture: true } as any);
-        document.removeEventListener('pointerdown', this.onOutsidePointerDown, true);
         this.unsubscribeActivePosition?.();
         this.unsubscribeActivePosition = null;
         this.unsubscribeSurface?.();
@@ -162,7 +160,6 @@ export class ChatGPTMessageStepperController {
         this.host = null;
         this.drawerTrigger = null;
         this.drawerActions = null;
-        this.pointerInside = false;
         this.bookmarksPanelButton = null;
         this.pageBookmarkButton = null;
         this.detachedReaderButton = null;
@@ -247,7 +244,7 @@ export class ChatGPTMessageStepperController {
         host.dataset.visible = '0';
 
         const bookmarksPanel = this.createButton('open-bookmarks-panel', this.getLabel('tabSettings', 'Settings'), () => {
-            this.suppressRestoredFocus = true; this.setDrawerOpen(false);
+            this.suppressRestoredFocus = true;
             void this.options.onOpenBookmarksPanel?.();
         }, createBrandIcon());
         const pageBookmark = this.createButton('toggle-page-bookmark', this.getLabel('chatgptPageControlBookmark', 'Bookmark current page'), () => {
@@ -283,28 +280,14 @@ export class ChatGPTMessageStepperController {
         trigger.setAttribute('aria-controls', drawerActions.id);
         // Put the disclosure first in keyboard order while keeping it at the right edge.
         host.append(trigger, drawerActions);
+        // Always-visible MarkDone page control: keep actions expanded; brand icon stays shown.
         host.addEventListener('pointerenter', () => {
-            this.pointerInside = true; this.suppressRestoredFocus = false;
+            this.suppressRestoredFocus = false;
             this.setDrawerOpen(true);
-        });
-        host.addEventListener('pointerleave', () => {
-            this.pointerInside = false;
-            if (!host.contains(document.activeElement)) this.setDrawerOpen(false);
         });
         host.addEventListener('focusin', () => {
             if (this.suppressRestoredFocus) { this.suppressRestoredFocus = false; return; }
             this.setDrawerOpen(true);
-        });
-        host.addEventListener('focusout', () => {
-            queueMicrotask(() => {
-                if (!this.pointerInside && !host.contains(document.activeElement)) this.setDrawerOpen(false);
-            });
-        });
-        host.addEventListener('keydown', (event) => {
-            if (event.key !== 'Escape') return;
-            event.preventDefault();
-            trigger.focus();
-            this.setDrawerOpen(false);
         });
         document.body.appendChild(host);
         this.host = host;
@@ -312,7 +295,7 @@ export class ChatGPTMessageStepperController {
         this.tooltipDelegate = new TooltipDelegate(host, { upgradeTitles: false });
         this.drawerActions = drawerActions;
         this.drawerTrigger = trigger;
-        this.setDrawerOpen(false);
+        this.setDrawerOpen(true);
         this.appearanceScope = AppearanceScope.forLightDomPortal(host, {
             selector: '.aimd-chatgpt-message-stepper',
             styleId: TOKEN_STYLE_ID,
@@ -495,25 +478,24 @@ export class ChatGPTMessageStepperController {
 .aimd-chatgpt-message-stepper__icon img { object-fit: contain; }
 .aimd-chatgpt-message-stepper__settings { display: none; }
 .aimd-chatgpt-message-stepper__settings svg { width: var(--_page-control-glyph); height: var(--_page-control-glyph); }
-.aimd-chatgpt-message-stepper[data-expanded="1"] .aimd-chatgpt-message-stepper__trigger>.aimd-chatgpt-message-stepper__icon { display: none; }
-.aimd-chatgpt-message-stepper[data-expanded="1"] .aimd-chatgpt-message-stepper__settings { display: inline-flex; }
+/* Always-visible: keep the MarkDone brand glyph; settings glyph stays decorative/hidden. */
+.aimd-chatgpt-message-stepper[data-expanded="1"] .aimd-chatgpt-message-stepper__trigger>.aimd-chatgpt-message-stepper__icon { display: inline-flex; }
+.aimd-chatgpt-message-stepper[data-expanded="1"] .aimd-chatgpt-message-stepper__settings { display: none; }
 .aimd-chatgpt-message-stepper__icon[data-direction="left"] {
   transform: scaleX(-1);
 }
 `;
     }
 
-    private setDrawerOpen(open: boolean): void {
+    private setDrawerOpen(_open: boolean): void {
         if (!this.host || !this.drawerActions || !this.drawerTrigger) return;
-        this.host.dataset.expanded = open ? '1' : '0';
-        this.drawerTrigger.setAttribute('aria-expanded', String(open));
-        this.drawerActions.setAttribute('aria-hidden', String(!open));
-        this.drawerActions.toggleAttribute('inert', !open);
+        // Always-visible: MarkDone page control stays expanded.
+        this.host.dataset.expanded = '1';
+        this.drawerTrigger.setAttribute('aria-expanded', 'true');
+        this.drawerActions.setAttribute('aria-hidden', 'false');
+        this.drawerActions.toggleAttribute('inert', false);
     }
 
-    private onOutsidePointerDown = (event: PointerEvent): void => {
-        if (this.host && !event.composedPath().includes(this.host)) this.setDrawerOpen(false);
-    };
 
     private scheduleRefreshState(): void {
         if (!this.initialized || this.refreshAnimationFrame !== null) return;

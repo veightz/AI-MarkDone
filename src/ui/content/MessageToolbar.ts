@@ -70,21 +70,16 @@ export class MessageToolbar {
     private lastTimestamp: number | undefined;
     private readonly collapsible: boolean;
     private expanded = false;
-    private toolbarHovered = false;
     private capsuleCloseTimer: number | null = null;
     private capsuleToggle: HTMLButtonElement | null = null;
     private capsuleActions: HTMLElement | null = null;
-    private readonly collapseOutside = (event: Event) => {
-        if (event.composedPath().includes(this.host) || this.hoverActionPortal?.containsEvent(event)) return;
-        this.setExpanded(false);
-    };
-    private readonly collapseOnEscape = (event: KeyboardEvent) => {
-        if (event.key !== 'Escape' || event.isComposing || !this.expanded) return;
-        event.preventDefault(); event.stopPropagation();
-        this.setExpanded(false); this.capsuleToggle?.focus();
-    };
+    // Capsule actions stay always visible (no telescope / auto-collapse).
+    private readonly collapseOutside = (_event: Event) => {};
+    private readonly collapseOnEscape = (_event: KeyboardEvent) => {};
     private readonly resizeCapsule = () => {
-        const right = this.capsuleToggle?.getBoundingClientRect().right ?? 0;
+        const right = this.capsuleActions?.getBoundingClientRect().right
+            ?? this.capsuleToggle?.getBoundingClientRect().right
+            ?? 0;
         this.host.style.setProperty('--_capsule-available-width', `${Math.max(0, right - 8)}px`);
     };
 
@@ -101,7 +96,13 @@ export class MessageToolbar {
         this.host = document.createElement('div');
         this.host.className = 'aimd-message-toolbar-host';
         this.host.dataset.aimdVariant = this.collapsible ? 'capsule' : opts?.variant ?? 'default';
-        if (this.collapsible) this.host.dataset.bookmarked = '0';
+        if (this.collapsible) {
+            this.host.dataset.bookmarked = '0';
+            // Always-visible capsule: actions stay expanded; no hover/click telescope.
+            this.expanded = true;
+            this.host.dataset.expanded = 'true';
+            this.host.dataset.alwaysExpanded = '1';
+        }
         this.host.setAttribute('data-aimd-theme', this.appearance.theme);
         this.shadow = this.host.attachShadow({ mode: 'open' });
         this.appearanceScope = AppearanceScope.forShadowRoot(this.shadow, { styleId: 'aimd-toolbar-tokens' });
@@ -198,24 +199,28 @@ export class MessageToolbar {
     }
 
     private setExpanded(expanded: boolean): void {
-        if (!this.collapsible || expanded === this.expanded) return;
-        this.expanded = expanded;
-        this.host.dataset.expanded = String(expanded);
-        this.capsuleToggle?.setAttribute('aria-expanded', String(expanded));
-        this.capsuleActions?.toggleAttribute('inert', !expanded);
-        this.capsuleActions?.setAttribute('aria-hidden', String(!expanded));
-        if (expanded) {
-            this.resizeCapsule();
-            document.addEventListener('pointerdown', this.collapseOutside, true);
-            window.addEventListener('keydown', this.collapseOnEscape, true);
-            window.addEventListener('resize', this.resizeCapsule);
-        } else {
+        if (!this.collapsible) return;
+        // Always-visible: never collapse the capsule entry.
+        if (!expanded) {
             this.clearCapsuleCloseTimer();
-            this.closeMenu(); this.closeHoverAction();
             document.removeEventListener('pointerdown', this.collapseOutside, true);
             window.removeEventListener('keydown', this.collapseOnEscape, true);
             window.removeEventListener('resize', this.resizeCapsule);
+            this.expanded = true;
+            this.host.dataset.expanded = 'true';
+            this.capsuleToggle?.setAttribute('aria-expanded', 'true');
+            this.capsuleActions?.toggleAttribute('inert', false);
+            this.capsuleActions?.setAttribute('aria-hidden', 'false');
+            return;
         }
+        if (expanded === this.expanded) return;
+        this.expanded = true;
+        this.host.dataset.expanded = 'true';
+        this.capsuleToggle?.setAttribute('aria-expanded', 'true');
+        this.capsuleActions?.toggleAttribute('inert', false);
+        this.capsuleActions?.setAttribute('aria-hidden', 'false');
+        this.resizeCapsule();
+        window.addEventListener('resize', this.resizeCapsule);
     }
 
     private clearCapsuleCloseTimer(): void {
@@ -225,14 +230,8 @@ export class MessageToolbar {
     }
 
     private scheduleCapsuleClose(): void {
+        // Always-visible capsule: pointer leave must not hide actions.
         this.clearCapsuleCloseTimer();
-        if (!this.expanded) return;
-        this.capsuleCloseTimer = window.setTimeout(() => {
-            this.capsuleCloseTimer = null;
-            const capsule = this.capsuleToggle?.parentElement;
-            if (this.toolbarHovered || this.hoverActionPortalInside || (this.shadow.activeElement && capsule?.contains(this.shadow.activeElement))) return;
-            this.setExpanded(false);
-        }, 120);
     }
 
     setActionActive(actionId: string, active: boolean): void {
@@ -317,26 +316,22 @@ export class MessageToolbar {
         metadataBox.className = 'message-metadata';
         if (this.collapsible) {
             const capsule = document.createElement('div'); capsule.className = 'capsule';
-            bar.addEventListener('mouseenter', () => {
-                if (!this.supportsPointerHover()) return;
-                this.toolbarHovered = true;
-                this.clearCapsuleCloseTimer();
-                this.setExpanded(true);
-            });
-            bar.addEventListener('mouseleave', () => {
-                this.toolbarHovered = false;
-                this.scheduleCapsuleClose();
-            });
             const drawer = document.createElement('div'); drawer.className = 'capsule-actions'; drawer.id = 'capsule-actions';
-            drawer.inert = true; drawer.setAttribute('aria-hidden', 'true');
+            drawer.setAttribute('aria-hidden', 'false');
             drawer.append(left); this.capsuleActions = drawer;
+            // Keep a stable landmark for tests/a11y, but do not use it to telescope.
             const toggle = document.createElement('button'); toggle.type = 'button'; toggle.className = 'icon-btn capsule-toggle';
-            toggle.dataset.action = 'toggle-capsule'; toggle.setAttribute('aria-label', t('messageActions')); toggle.setAttribute('aria-expanded', 'false'); toggle.setAttribute('aria-controls', drawer.id);
-            toggle.append(createIcon(moreHorizontalIcon)); toggle.addEventListener('click', event => {
-                event.stopPropagation();
-                this.setExpanded(this.toolbarHovered && event.detail > 0 ? true : !this.expanded);
-            });
-            this.capsuleToggle = toggle; capsule.append(drawer, toggle); bar.append(capsule);
+            toggle.dataset.action = 'toggle-capsule';
+            toggle.setAttribute('aria-label', t('messageActions'));
+            toggle.setAttribute('aria-expanded', 'true');
+            toggle.setAttribute('aria-controls', drawer.id);
+            toggle.hidden = true;
+            toggle.tabIndex = -1;
+            toggle.append(createIcon(moreHorizontalIcon));
+            this.capsuleToggle = toggle;
+            capsule.append(drawer, toggle);
+            bar.append(capsule);
+            this.setExpanded(true);
         } else bar.append(left);
         if (this.showStats) {
             if (!this.collapsible) addSeparator();
@@ -862,16 +857,10 @@ export class MessageToolbar {
 :host([data-aimd-variant="capsule"]) { margin-inline-start: auto; }
 :host([data-aimd-variant="capsule"]) .bar { padding: 0; gap: var(--aimd-space-3); border: none; background: transparent; box-shadow: none; }
 :host([data-aimd-variant="capsule"]) .icon-btn { border-radius: var(--aimd-radius-full); flex: none; }
-.capsule { position: relative; display: inline-flex; }
+.capsule { position: relative; display: inline-flex; align-items: center; }
 .capsule-toggle { box-sizing: border-box; background: var(--aimd-workspace-card); border: 1px solid var(--aimd-workspace-border); box-shadow: var(--aimd-workspace-edge-shadow), var(--aimd-shadow-xs); z-index: var(--aimd-z-base); }
-:host([data-bookmarked="1"]:not([data-expanded="true"])) .capsule-toggle { background: var(--aimd-interactive-primary); color: var(--aimd-text-on-primary); box-shadow: none; }
-:host([data-bookmarked="1"]:not([data-expanded="true"])) .capsule-toggle:hover { background: var(--aimd-interactive-primary-hover); color: var(--aimd-text-on-primary); }
-.capsule-toggle svg { transition: transform var(--aimd-duration-base) var(--aimd-ease-out); }
-:host([data-expanded="true"]) .capsule-toggle svg { transform: rotate(90deg); }
-.capsule-actions { position: absolute; top: 0; bottom: 0; right: 100%; width: max-content; max-width: max(0px, calc(var(--_capsule-available-width) - var(--aimd-size-control-icon-toolbar))); display: flex; align-items: center; overflow: hidden; border: 1px solid var(--aimd-workspace-border); border-radius: var(--aimd-radius-full) 0 0 var(--aimd-radius-full); border-right: none; background: var(--aimd-workspace-card); box-shadow: var(--aimd-shadow-xs); clip-path: inset(0 0 0 100%); visibility: hidden; transition: clip-path var(--aimd-duration-base) var(--aimd-ease-out), visibility var(--aimd-duration-base); }
-:host([data-expanded="true"]) .capsule-toggle { border-left: none; border-radius: 0 var(--aimd-radius-full) var(--aimd-radius-full) 0; box-shadow: none; }
-:host([data-expanded="true"]) .capsule-actions { clip-path: inset(0); visibility: visible; }
-.capsule-actions { box-sizing: border-box; }
+.capsule-toggle[hidden] { display: none !important; }
+.capsule-actions { position: static; width: max-content; max-width: none; display: flex; align-items: center; overflow: hidden; border: 1px solid var(--aimd-workspace-border); border-radius: var(--aimd-radius-full); background: var(--aimd-workspace-card); box-shadow: var(--aimd-shadow-xs); clip-path: none; visibility: visible; box-sizing: border-box; }
 .capsule-actions .group-left { min-width: 0; overflow-x: auto; scrollbar-width: none; gap: var(--aimd-space-1); }
 .message-metadata { display: flex; flex-direction: column; justify-content: center; align-items: flex-end; gap: 0; font-size: var(--aimd-text-xs); line-height: var(--aimd-leading-normal); color: var(--aimd-text-secondary); white-space: nowrap; font-variant-numeric: tabular-nums; }
 .message-metadata time { font-size: calc(var(--aimd-text-xs) * 0.9); }

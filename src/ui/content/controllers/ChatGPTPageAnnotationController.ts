@@ -222,6 +222,7 @@ export class ChatGPTPageAnnotationController {
         document.addEventListener('pointerdown', this.handlePointerDown, true);
         document.addEventListener('pointerup', this.handlePointerUp, true);
         document.addEventListener('pointercancel', this.handlePointerCancel, true);
+        document.addEventListener('lostpointercapture', this.handleLostPointerCapture, true);
         document.addEventListener('keydown', this.handleKeyDown, true);
         document.addEventListener('focusin', this.handleFocusIn, true);
         document.addEventListener('scroll', this.handleMarkerScroll, true);
@@ -239,6 +240,7 @@ export class ChatGPTPageAnnotationController {
         document.removeEventListener('pointerdown', this.handlePointerDown, true);
         document.removeEventListener('pointerup', this.handlePointerUp, true);
         document.removeEventListener('pointercancel', this.handlePointerCancel, true);
+        document.removeEventListener('lostpointercapture', this.handleLostPointerCapture, true);
         document.removeEventListener('keydown', this.handleKeyDown, true);
         document.removeEventListener('focusin', this.handleFocusIn, true);
         document.removeEventListener('scroll', this.handleMarkerScroll, true);
@@ -1191,6 +1193,14 @@ export class ChatGPTPageAnnotationController {
         this.settleToolbarFromPointer(event);
     };
 
+    private readonly handleLostPointerCapture = (event: PointerEvent): void => {
+        // Some ChatGPT interactions end a drag via lostpointercapture without a
+        // reliable pointerup on document. Reuse the cancel path so the toolbar
+        // still appears for a live selection.
+        if (!this.pointerSelectionActive) return;
+        this.handlePointerCancel(event);
+    };
+
     private settleToolbarFromPointer(event: PointerEvent): void {
         // refreshNow synchronously notifies the selection listener. Keep the
         // gesture active during that notification so the listener cannot open
@@ -1203,11 +1213,27 @@ export class ChatGPTPageAnnotationController {
         } finally {
             this.pointerSelectionActive = false;
         }
-        if (!frame) return;
-        const key = selectionKey(frame);
-        this.pointerAnchor = { x: event.clientX, y: event.clientY, key };
-        this.lastFrame = frame;
-        this.showToolbar(frame, key);
+        const openFrom = (next: ChatGPTPageSelectionFrame, x: number, y: number) => {
+            const key = selectionKey(next);
+            this.pointerAnchor = { x, y, key };
+            this.lastFrame = next;
+            this.showToolbar(next, key);
+        };
+        if (frame) {
+            openFrom(frame, event.clientX, event.clientY);
+            return;
+        }
+        // ChatGPT can briefly clear the native Selection around pointerup.
+        // Retry once on the next frame so intermittent misses recover.
+        const x = event.clientX;
+        const y = event.clientY;
+        window.requestAnimationFrame(() => {
+            if (!this.initialized || !this.selectionToolbarEnabled || this.mode === 'editing') return;
+            if (this.mode === 'actions') return;
+            const retry = this.selectionCoordinator.refreshNow();
+            if (!retry) return;
+            openFrom(retry, x, y);
+        });
     }
 
     private readonly handleKeyDown = (event: KeyboardEvent): void => {
