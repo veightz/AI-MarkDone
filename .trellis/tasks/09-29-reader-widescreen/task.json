@@ -21,6 +21,6 @@
   "children": [],
   "parent": null,
   "relatedFiles": [],
-  "notes": "排在常显、入口统一之后",
+  "notes": "排在 always-visible、reader-follow-viewport（含原入口统一）之后",
   "meta": {}
 }

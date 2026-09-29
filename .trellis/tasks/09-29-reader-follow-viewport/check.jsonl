@@ -1,0 +1,2 @@
+{"path":".trellis/spec/product/phase-boundary.md","reason":"Verify phase order and that this task remains the next reader work after always-visible"}
+{"path":".trellis/tasks/09-29-reader-follow-viewport/prd.md","reason":"Acceptance / non-goals / open questions for proposal confirmation before implementation"}

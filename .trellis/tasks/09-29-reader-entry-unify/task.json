@@ -21,6 +21,8 @@
   "children": [],
   "parent": null,
   "relatedFiles": [],
-  "notes": "排在常显之后",
-  "meta": {}
+  "notes": "SUPERSEDED/MERGED into 09-29-reader-follow-viewport (Violet viewport-follow + outline redesign). Do not implement separately.",
+  "meta": {
+    "supersededBy": "09-29-reader-follow-viewport"
+  }
 }

@@ -1,0 +1,38 @@
+{
+  "id": "reader-follow-viewport",
+  "name": "reader-follow-viewport",
+  "title": "阅读器跟随视口 + 文内大纲入口重设计",
+  "description": "阅读器主入口跟随当前视口内的助手回复（常驻「阅读器」chip），底栏分屏为次入口；回复内识别 1/2/3…/标题结构并在阅读器提供大纲跳转。合并原入口统一需求。",
+  "status": "planning",
+  "dev_type": null,
+  "scope": null,
+  "package": null,
+  "priority": "P0",
+  "creator": "veightz",
+  "assignee": "veightz",
+  "createdAt": "2026-09-29",
+  "completedAt": null,
+  "branch": null,
+  "base_branch": "main",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [],
+  "parent": null,
+  "relatedFiles": [
+    "src/ui/content/controllers/MessageToolbarOrchestrator.ts",
+    "src/ui/content/controllers/ChatGPTMessageStepperController.ts",
+    "src/ui/content/reader/ReaderPanel.ts",
+    "src/ui/content/reader/readerPanelTemplate.ts",
+    "src/ui/content/chatgptDirectory/ChatGPTDirectoryRail.ts",
+    "src/runtimes/content/entry.ts",
+    "src/services/semantic-content/SemanticContent.ts",
+    "public/_locales/zh_CN/messages.json"
+  ],
+  "notes": "Violet 锁定方向；提案确认前不写代码。原 09-29-reader-entry-unify 并入本单。",
+  "meta": {
+    "supersedes": ["09-29-reader-entry-unify"],
+    "productOwner": "Violet"
+  }
+}
