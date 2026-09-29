@@ -3,7 +3,7 @@
   "name": "reader-follow-viewport",
   "title": "阅读器跟随视口 + 文内大纲入口重设计",
   "description": "阅读器主入口跟随当前视口内的助手回复（常驻「阅读器」chip），底栏分屏为次入口；回复内识别 1/2/3…/标题结构并在阅读器提供大纲跳转。合并原入口统一需求。",
-  "status": "planning",
+  "status": "done",
   "dev_type": null,
   "scope": null,
   "package": null,
@@ -11,7 +11,7 @@
   "creator": "veightz",
   "assignee": "veightz",
   "createdAt": "2026-09-29",
-  "completedAt": null,
+  "completedAt": "2026-09-29",
   "branch": null,
   "base_branch": "main",
   "worktree_path": null,
@@ -23,16 +23,37 @@
   "relatedFiles": [
     "src/ui/content/controllers/MessageToolbarOrchestrator.ts",
     "src/ui/content/controllers/ChatGPTMessageStepperController.ts",
+    "src/ui/content/controllers/ChatGPTViewportReaderChipController.ts",
+    "src/ui/content/chatgptDirectory/primaryRead.ts",
     "src/ui/content/reader/ReaderPanel.ts",
     "src/ui/content/reader/readerPanelTemplate.ts",
     "src/ui/content/chatgptDirectory/ChatGPTDirectoryRail.ts",
     "src/runtimes/content/entry.ts",
     "src/services/semantic-content/SemanticContent.ts",
-    "public/_locales/zh_CN/messages.json"
+    "src/services/reader/readerSectionOutline.ts",
+    "src/services/renderer/renderMarkdown.ts",
+    "public/_locales/zh_CN/messages.json",
+    "public/_locales/en/messages.json"
   ],
-  "notes": "Violet 锁定方向；提案确认前不写代码。原 09-29-reader-entry-unify 并入本单。",
+  "notes": "Violet stamps locked 2026-09-29: A+narrow→B; bubble TR outside; keep toolbar reader backup; no 分屏 copy; primary=in-page ReaderPanel (respect defaultOpenMode); outline Arabic+一、 merged with headings; streaming not primary-read.",
   "meta": {
-    "supersedes": ["09-29-reader-entry-unify"],
-    "productOwner": "Violet"
+    "supersedes": [
+      "09-29-reader-entry-unify"
+    ],
+    "productOwner": "Violet",
+    "stamps": {
+      "chipPlacement": "A_primary_B_narrow_fallback",
+      "anchor": "bubble_top_right_outside",
+      "toolbarReader": "keep_backup",
+      "copy": "reader_brand_no_split_view",
+      "secondaryCopy": "阅读器 · 独立窗口 / Reader · detached window",
+      "primaryOpen": "in_page_ReaderPanel_respect_defaultOpenMode",
+      "outlineV1": [
+        "arabic_numbered",
+        "chinese_yi_dun",
+        "merge_headings"
+      ],
+      "streaming": "not_eligible_until_complete"
+    }
   }
 }

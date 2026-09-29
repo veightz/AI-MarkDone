@@ -1,2 +1,6 @@
-{"path":".trellis/spec/product/phase-boundary.md","reason":"Verify phase order and that this task remains the next reader work after always-visible"}
-{"path":".trellis/tasks/09-29-reader-follow-viewport/prd.md","reason":"Acceptance / non-goals / open questions for proposal confirmation before implementation"}
+{"path":"tests/unit/ui/content/chatgptDirectory.primaryRead.test.ts","reason":"primary-read overlap/nearest/hide/narrow"}
+{"path":"tests/unit/services/reader/readerSectionOutline.test.ts","reason":"outline merge + stamp"}
+{"path":"tests/unit/services/renderer/renderMarkdown.test.ts","reason":"heading+section outline"}
+{"path":"tests/unit/ui/content/controllers/ChatGPTMessageStepperController.test.ts","reason":"secondary copy"}
+{"path":"tests/unit/runtimes/content/entry.test.ts","reason":"chip mocked; runtime still boots"}
+{"path":"tests/unit/governance/i18n-keys.test.ts","reason":"i18n keys present"}

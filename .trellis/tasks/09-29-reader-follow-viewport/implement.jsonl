@@ -1,2 +1,15 @@
-{"path":".trellis/spec/product/phase-boundary.md","reason":"Product order: after always-visible, this follow-viewport + outline redesign is next; entry-unify merges here"}
-{"path":".trellis/tasks/09-29-reader-follow-viewport/prd.md","reason":"Full interaction proposal: viewport-follow chip, secondary bottom entry, intra-message outline"}
+{"path":".trellis/tasks/09-29-reader-follow-viewport/prd.md","reason":"Violet stamps locked; acceptance marked"}
+{"path":".trellis/tasks/09-29-reader-follow-viewport/task.json","reason":"status done + stamps meta"}
+{"path":".trellis/spec/product/phase-boundary.md","reason":"mark follow-viewport in progress/done narrative"}
+{"path":"src/ui/content/chatgptDirectory/primaryRead.ts","reason":"viewport primary-read resolution + narrow fallback"}
+{"path":"src/ui/content/controllers/ChatGPTViewportReaderChipController.ts","reason":"A chip + B narrow fallback; open in-page Reader"}
+{"path":"src/ui/content/controllers/MessageToolbarOrchestrator.ts","reason":"public openReaderForMessageElement for primary chip"}
+{"path":"src/runtimes/content/entry.ts","reason":"wire chip; detached prefers primary-read"}
+{"path":"src/services/reader/readerSectionOutline.ts","reason":"arabic + 一、 outline merge + stamp anchors"}
+{"path":"src/services/renderer/renderMarkdown.ts","reason":"merge section outline into reader outline"}
+{"path":"src/ui/content/reader/ReaderPanel.ts","reason":"jump/stamp outline-id anchors"}
+{"path":"src/ui/content/reader/readerPanelTemplate.ts","reason":"outline badge for numbered/chinese"}
+{"path":"src/contracts/semanticContent.ts","reason":"optional outline kind/badge"}
+{"path":"src/ui/content/controllers/ChatGPTMessageStepperController.ts","reason":"secondary label fallback without 分屏"}
+{"path":"public/_locales/zh_CN/messages.json","reason":"阅读器 · 独立窗口 branding"}
+{"path":"public/_locales/en/messages.json","reason":"Reader · detached window branding"}

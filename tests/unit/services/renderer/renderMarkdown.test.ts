@@ -201,6 +201,8 @@ describe('renderMarkdownToSanitizedHtml', () => {
                 text: 'Main Title',
                 start: headingUnits[0]?.start,
                 end: headingUnits[0]?.end,
+                kind: 'heading',
+                badge: 'H1',
             },
             {
                 id: headingUnits[1]?.id,
@@ -208,6 +210,8 @@ describe('renderMarkdownToSanitizedHtml', () => {
                 text: 'Setup config',
                 start: headingUnits[1]?.start,
                 end: headingUnits[1]?.end,
+                kind: 'heading',
+                badge: 'H2',
             },
             {
                 id: headingUnits[2]?.id,
@@ -215,6 +219,8 @@ describe('renderMarkdownToSanitizedHtml', () => {
                 text: 'Setup',
                 start: headingUnits[2]?.start,
                 end: headingUnits[2]?.end,
+                kind: 'heading',
+                badge: 'H3',
             },
             {
                 id: headingUnits[3]?.id,
@@ -222,10 +228,43 @@ describe('renderMarkdownToSanitizedHtml', () => {
                 text: 'Deep code title',
                 start: headingUnits[3]?.start,
                 end: headingUnits[3]?.end,
+                kind: 'heading',
+                badge: 'H6',
             },
         ]);
         expect(new Set(rendered.outlineItems.map((item) => item.id)).size).toBe(rendered.outlineItems.length);
         expect(headingUnits).toHaveLength(5);
+    });
+
+
+    it('merges arabic numbered and chinese section markers into the reader outline', () => {
+        const rendered = renderMarkdownForReader(
+            [
+                '## Overview',
+                '',
+                '1、背景说明很长很长',
+                '',
+                '2、实现细节',
+                '',
+                '一、准备',
+                '',
+                '二、执行',
+                '',
+                '普通段落不算大纲',
+            ].join('\n')
+        );
+
+        const badges = rendered.outlineItems.map((item) => item.badge);
+        expect(badges).toContain('H2');
+        expect(badges).toEqual(expect.arrayContaining(['1', '2', '一', '二']));
+        expect(rendered.outlineItems.some((item) => item.kind === 'numbered')).toBe(true);
+        expect(rendered.outlineItems.some((item) => item.kind === 'chinese-section')).toBe(true);
+        expect(rendered.outlineItems.some((item) => item.text.includes('普通段落'))).toBe(false);
+    });
+
+    it('does not emit a numbered outline for a single isolated marker', () => {
+        const rendered = renderMarkdownForReader('1、只有一项\n\n其余正文');
+        expect(rendered.outlineItems.some((item) => item.kind === 'numbered')).toBe(false);
     });
 
 });

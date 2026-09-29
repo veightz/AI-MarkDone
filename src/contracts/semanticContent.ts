@@ -104,6 +104,10 @@ export type SemanticOutlineItemV1 = Readonly<{
     text: string;
     start: number;
     end: number;
+    /** heading (default) | arabic numbered section | chinese 「一、」 style */
+    kind?: 'heading' | 'numbered' | 'chinese-section';
+    /** Compact rail badge, e.g. H2 / 1 / 一 */
+    badge?: string;
 }>;
 
 export type SemanticDiagnosticV1 = Readonly<{

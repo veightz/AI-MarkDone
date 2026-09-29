@@ -35,6 +35,7 @@ import {
     resolveSelectedAtomicUnitsFromRendered,
     type SelectedAtomicUnit,
 } from '../../../services/reader/atomicSelection';
+import { stampReaderSectionOutlineAnchors } from '../../../services/reader/readerSectionOutline';
 import { buildAtomicSelectionExport } from '../../../services/reader/atomicExport';
 import { isHighlightableTextSelection } from '../../../services/reader/highlightSelection';
 import {
@@ -1658,7 +1659,7 @@ export class ReaderPanel {
         const markdownRoot = this.getMarkdownRoot();
         if (!body || !markdownRoot) return;
 
-        const target = markdownRoot.querySelector<HTMLElement>(`[data-aimd-unit-id="${outlineId}"]`);
+        const target = this.queryOutlineAnchor(markdownRoot, outlineId);
         if (!target) return;
 
         const bodyRect = body.getBoundingClientRect();
@@ -1672,6 +1673,12 @@ export class ReaderPanel {
         body.scrollTop = top;
     }
 
+    private queryOutlineAnchor(markdownRoot: HTMLElement, outlineId: string): HTMLElement | null {
+        const safe = outlineId.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+        return markdownRoot.querySelector<HTMLElement>(`[data-aimd-unit-id="${safe}"]`)
+            ?? markdownRoot.querySelector<HTMLElement>(`[data-aimd-outline-id="${safe}"]`);
+    }
+
     private syncActiveOutlineFromScroll(): void {
         if (this.state.outlineItems.length < 2) return;
         const body = this.getReaderBody();
@@ -1683,7 +1690,7 @@ export class ReaderPanel {
         let activeId = this.state.outlineItems[0]?.id ?? '';
 
         for (const item of this.state.outlineItems) {
-            const heading = markdownRoot.querySelector<HTMLElement>(`[data-aimd-unit-id="${item.id}"]`);
+            const heading = this.queryOutlineAnchor(markdownRoot, item.id);
             if (!heading) continue;
             if (heading.getBoundingClientRect().top <= threshold) {
                 activeId = item.id;
@@ -2602,10 +2609,12 @@ export class ReaderPanel {
         if (this.state.renderedAtomicUnits.length < 1) {
             this.renderedAtomicElements = [];
             clearRenderedAtomicSelection(markdownRoot);
+            stampReaderSectionOutlineAnchors(markdownRoot, this.state.outlineItems);
             return;
         }
 
         this.renderedAtomicElements = annotateRenderedAtomicUnits(markdownRoot, this.state.renderedAtomicUnits);
+        stampReaderSectionOutlineAnchors(markdownRoot, this.state.outlineItems);
     }
 
     private applyAtomicSelectionState(): void {

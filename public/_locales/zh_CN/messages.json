@@ -36,8 +36,8 @@
         "description": "Accessible label for removing the current ChatGPT page bookmark"
     },
     "chatgptPageControlSplitView": {
-        "message": "在分屏中打开阅读器",
-        "description": "Accessible label for the detached Reader page control"
+        "message": "阅读器 · 独立窗口",
+        "description": "Accessible label for the detached Reader page control (secondary entry)"
     },
     "chatgptPageControlPrompts": {
         "message": "提示词",
@@ -596,7 +596,7 @@
         "description": "Message for readerDetachedNoticeResetLabel"
     },
     "readerDetachedNoticeResetDesc": {
-        "message": "重置后，下次从右下角 Split View 打开独立阅读器时会再次显示实验功能提示。",
+        "message": "重置后，下次从右下角打开独立窗口阅读器时会再次显示实验功能提示。",
         "description": "Message for readerDetachedNoticeResetDesc"
     },
     "appearanceSettingsLabel": {
@@ -1424,11 +1424,11 @@
         "description": "Message for chatgptShowPageBookmarkControlDesc"
     },
     "chatgptShowDetachedReaderControlLabel": {
-        "message": "独立阅读器 Split View",
+        "message": "阅读器 · 独立窗口",
         "description": "Message for chatgptShowDetachedReaderControlLabel"
     },
     "chatgptShowDetachedReaderControlDesc": {
-        "message": "在 ChatGPT 右下角控制区显示 Split View 按钮。",
+        "message": "在 ChatGPT 右下角控制区显示独立窗口阅读器按钮（次入口）。",
         "description": "Message for chatgptShowDetachedReaderControlDesc"
     },
     "chatgptShowPromptControlLabel": {

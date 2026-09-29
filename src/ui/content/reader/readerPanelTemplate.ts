@@ -85,10 +85,11 @@ function renderOutlineMarkup(params: {
     const label = getLabel('readerOutlineLabel', 'Markdown outline');
     const items = outlineItems.map((item) => {
         const level = Math.max(1, Math.min(6, Math.round(item.level)));
+        const badge = (item.badge || (item.kind === 'heading' || !item.kind ? `H${level}` : String(item.badge || level))).trim() || `H${level}`;
         const itemLabel = getLabel('readerOutlineGoToHeading', `Go to heading ${item.text}`, item.text);
         return `
-          <button class="reader-outline-rail__item" type="button" data-action="reader-outline-jump" data-outline-id="${escapeHtml(item.id)}" data-level="${level}" data-active="${item.id === activeOutlineId ? '1' : '0'}" aria-label="${escapeHtml(itemLabel)}" title="${escapeHtml(item.text)}">
-            <span class="reader-outline-rail__index" aria-hidden="true">H${level}</span>
+          <button class="reader-outline-rail__item" type="button" data-action="reader-outline-jump" data-outline-id="${escapeHtml(item.id)}" data-level="${level}" data-outline-kind="${escapeHtml(item.kind || 'heading')}" data-active="${item.id === activeOutlineId ? '1' : '0'}" aria-label="${escapeHtml(itemLabel)}" title="${escapeHtml(item.text)}">
+            <span class="reader-outline-rail__index" aria-hidden="true">${escapeHtml(badge)}</span>
             <span class="reader-outline-rail__label">${escapeHtml(item.text)}</span>
           </button>
         `;

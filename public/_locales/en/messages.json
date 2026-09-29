@@ -36,8 +36,8 @@
         "description": "Accessible label for removing the current ChatGPT page bookmark"
     },
     "chatgptPageControlSplitView": {
-        "message": "Open Reader in split view",
-        "description": "Accessible label for the detached Reader page control"
+        "message": "Reader · detached window",
+        "description": "Accessible label for the detached Reader page control (secondary entry)"
     },
     "chatgptPageControlPrompts": {
         "message": "Prompts",
@@ -596,7 +596,7 @@
         "description": "Message for readerDetachedNoticeResetLabel"
     },
     "readerDetachedNoticeResetDesc": {
-        "message": "Reset this to show the experimental notice again the next time Detached Reader opens from Split View.",
+        "message": "Reset this to show the experimental notice again the next time Detached Reader opens from the lower-right controls.",
         "description": "Message for readerDetachedNoticeResetDesc"
     },
     "appearanceSettingsLabel": {
@@ -1424,11 +1424,11 @@
         "description": "Message for chatgptShowPageBookmarkControlDesc"
     },
     "chatgptShowDetachedReaderControlLabel": {
-        "message": "Detached Reader Split View",
+        "message": "Reader · detached window",
         "description": "Message for chatgptShowDetachedReaderControlLabel"
     },
     "chatgptShowDetachedReaderControlDesc": {
-        "message": "Show the Split View button in the lower-right ChatGPT controls.",
+        "message": "Show the detached-window Reader button in the lower-right ChatGPT controls (secondary entry).",
         "description": "Message for chatgptShowDetachedReaderControlDesc"
     },
     "chatgptShowPromptControlLabel": {

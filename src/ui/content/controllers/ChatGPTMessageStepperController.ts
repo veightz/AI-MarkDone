@@ -252,7 +252,7 @@ export class ChatGPTMessageStepperController {
         }, bookmarkIcon);
         const previous = this.createButton('previous-message', this.getLabel('previousMessage', 'Previous message'), () => this.step(-1));
         const next = this.createButton('next-message', this.getLabel('nextMessage', 'Next message'), () => this.step(1));
-        const detachedReader = this.createButton('open-detached-reader', this.getLabel('chatgptPageControlSplitView', 'Open Reader in split view'), () => {
+        const detachedReader = this.createButton('open-detached-reader', this.getLabel('chatgptPageControlSplitView', 'Reader · detached window'), () => {
             void this.options.onOpenDetachedReader?.();
         }, splitViewIcon);
         const prompts = this.createButton('open-prompts', this.getLabel('chatgptPageControlPrompts', 'Prompts'), () => {
@@ -321,7 +321,7 @@ export class ChatGPTMessageStepperController {
     private syncControlLabels(): void {
         const labels: ReadonlyArray<[HTMLButtonElement | null, string]> = [
             [this.drawerTrigger, this.getLabel('tabSettings', 'Settings')],
-            [this.detachedReaderButton, this.getLabel('chatgptPageControlSplitView', 'Open Reader in split view')],
+            [this.detachedReaderButton, this.getLabel('chatgptPageControlSplitView', 'Reader · detached window')],
             [this.promptsButton, this.getLabel('chatgptPageControlPrompts', 'Prompts')],
             [this.messageNavigationButton, this.getLabel('chatgptRefreshMessageNavigation', 'Refresh message navigation')],
             [this.previousButton, this.getLabel('previousMessage', 'Previous message')],

@@ -199,6 +199,18 @@ const messageStepperSetDetachedReaderControlVisible = vi.fn();
 const messageStepperSetPromptControlVisible = vi.fn();
 const messageStepperSetPageBookmarked = vi.fn();
 const messageStepperSetAppearance = vi.fn();
+const viewportReaderChipInit = vi.fn();
+const viewportReaderChipDispose = vi.fn();
+const viewportReaderChipSetAppearance = vi.fn();
+const viewportReaderChipGetPrimaryReadTarget = vi.fn(() => null);
+const viewportReaderChipCtor = vi.fn(function () {
+    return {
+        init: viewportReaderChipInit,
+        dispose: viewportReaderChipDispose,
+        setAppearance: viewportReaderChipSetAppearance,
+        getPrimaryReadTarget: viewportReaderChipGetPrimaryReadTarget,
+    };
+});
 const messageStepperCtor = vi.fn(function () {
     return {
         init: messageStepperInit,
@@ -505,6 +517,10 @@ vi.mock('@/ui/content/controllers/ChatGPTComposerEditingController', () => ({
 
 vi.mock('@/ui/content/controllers/ChatGPTMessageStepperController', () => ({
     ChatGPTMessageStepperController: messageStepperCtor,
+}));
+
+vi.mock('@/ui/content/controllers/ChatGPTViewportReaderChipController', () => ({
+    ChatGPTViewportReaderChipController: viewportReaderChipCtor,
 }));
 
 vi.mock('@/drivers/content/prompts/promptLibraryClient', () => ({

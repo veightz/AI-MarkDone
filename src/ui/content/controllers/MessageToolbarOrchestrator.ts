@@ -994,6 +994,46 @@ export class MessageToolbarOrchestrator {
         return exportAction ? [exportAction] : [];
     }
 
+    /**
+     * Open the in-page Reader for a mounted assistant message (viewport chip / primary entry).
+     * Respects ReaderPanel defaultOpenMode (panel/fullscreen) via ReaderPanel.show.
+     */
+    async openReaderForMessageElement(messageElement: HTMLElement): Promise<{ ok: true } | { ok: false; message: string }> {
+        const guard = this.guardMessageReady(messageElement);
+        if (guard) return guard;
+        let conversationTarget = null as ConversationMessageActionTarget['conversationTarget'];
+        if (this.conversationSurface) {
+            const resolved = this.conversationSurface.materialization.resolveElement(messageElement);
+            if (resolved) {
+                const entry = this.conversationSurface.readFrame().obtainedTurns.find((candidate) => (
+                    candidate.target.turnId === resolved.turnId
+                    && candidate.target.assistantMessageId === resolved.assistantMessageId
+                ));
+                conversationTarget = entry?.target ?? resolved;
+            }
+        }
+        const target: ConversationMessageActionTarget = {
+            messageElement,
+            conversationTarget,
+        };
+        const content = await this.resolveReaderActionContent(target);
+        if (!content) return { ok: false, message: t('contentNotFound') };
+        const { items, startIndex, sourceRevision, usedLocalItem } = content;
+        if (!usedLocalItem && !this.isSourceRevisionCurrent(sourceRevision)) {
+            return { ok: false, message: t('contentNotFound') };
+        }
+        this.decorateReaderItems(items as Array<{ meta?: Record<string, unknown> }>);
+        await this.readerPanel.show(items, startIndex, this.appearance.theme, {
+            profile: 'conversation-reader',
+            annotationDocument: content.annotationDocument,
+            actions: this.getReaderActions(
+                messageElement,
+                conversationTarget,
+            ),
+        });
+        return { ok: true };
+    }
+
     private getPositionForMessage(messageElement: HTMLElement): number {
         const canonical = this.resolveCanonicalPosition(messageElement);
         if (canonical !== null) return canonical;

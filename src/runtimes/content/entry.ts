@@ -23,6 +23,7 @@ import { ChatGPTDirectoryController } from '../../ui/content/controllers/ChatGPT
 import { ChatGPTSendPositionRestoreController } from '../../ui/content/controllers/ChatGPTSendPositionRestoreController';
 import { ChatGPTComposerEditingController } from '../../ui/content/controllers/ChatGPTComposerEditingController';
 import { ChatGPTMessageStepperController } from '../../ui/content/controllers/ChatGPTMessageStepperController';
+import { ChatGPTViewportReaderChipController } from '../../ui/content/controllers/ChatGPTViewportReaderChipController';
 import { ChatGPTPromptAutocompleteController } from '../../ui/content/controllers/ChatGPTPromptAutocompleteController';
 import { ChatGPTOfficialNavigationVisibilityController } from '../../ui/content/controllers/ChatGPTOfficialNavigationVisibilityController';
 import { ChatGPTPageWidthController } from '../../ui/content/controllers/ChatGPTPageWidthController';
@@ -364,6 +365,16 @@ if (adapter) {
         conversationNavigation,
     });
     chatGptDirectory?.setPreviewActionsFactory?.((round) => messageToolbars.getDirectoryPreviewActions(round));
+    const chatGptViewportReaderChip = adapter.getPlatformId() === 'chatgpt' && chatGptConversationContentRuntime
+        ? new ChatGPTViewportReaderChipController({
+            surface: chatGptConversationContentRuntime.surface,
+            adapter,
+            activePositionTracker: chatGptActivePositionTracker ?? undefined,
+            onOpenReader: async (target) => {
+                await messageToolbars.openReaderForMessageElement(target.messageElement);
+            },
+        })
+        : null;
     const chatGptConversationReaderBinding = conversationContentSource
         ? new ChatGPTConversationReaderBinding({
             adapter,
@@ -505,7 +516,8 @@ if (adapter) {
         const confirmed = await confirmDetachedReaderExperimentIfNeeded();
         if (!confirmed) return;
 
-        const itemsResult = await collectFreshReaderContent(contentAdapter, null, {
+        const primary = chatGptViewportReaderChip?.getPrimaryReadTarget() ?? null;
+        const itemsResult = await collectFreshReaderContent(contentAdapter, primary?.messageElement ?? null, {
             conversationContentSource,
             conversationMaterialization,
             pageUrl: window.location.href,
@@ -559,6 +571,7 @@ if (adapter) {
             chatGptComposerEditing?.init();
             chatGptPromptAutocomplete?.init();
             chatGptMessageStepper?.init();
+            chatGptViewportReaderChip?.init();
             chatGptPageWidth?.init();
             syncChatGptBehaviorSettings(settingsClient.getCached()?.chatgptBehavior);
             chatGptConversationContentRuntime?.init();
@@ -635,6 +648,7 @@ if (adapter) {
         chatGptPromptAutocomplete?.setAppearance(nextSnapshot);
         chatGptComposerEditing?.setAppearance(nextSnapshot);
         chatGptMessageStepper?.setAppearance(nextSnapshot);
+        chatGptViewportReaderChip?.setAppearance(nextSnapshot);
         chatGptPageAnnotation?.setAppearance(nextSnapshot);
     };
 
@@ -668,6 +682,7 @@ if (adapter) {
         chatGptComposerEditing?.dispose();
         chatGptPromptAutocomplete?.dispose();
         chatGptMessageStepper?.dispose();
+        chatGptViewportReaderChip?.dispose();
         chatGptPageWidth?.dispose();
         chatGptPageAnnotation?.dispose();
         pageAnnotationEnabled = false;

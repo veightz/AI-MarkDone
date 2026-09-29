@@ -18,6 +18,7 @@ import {
     createCanonicalMarkdownSource,
     semanticContent,
 } from '../semantic-content/SemanticContent';
+import { mergeReaderSectionOutline } from '../reader/readerSectionOutline';
 
 export type MarkdownRenderOptions = {
     softBreaks?: boolean;
@@ -182,14 +183,20 @@ export function renderMarkdownForReader(markdown: string, options?: MarkdownRend
     const structure = compiled.status === 'ready'
         ? semanticContent.project(compiled.document, { kind: 'reader-structure' })
         : null;
+    const atomicUnits = structure?.status === 'ready' && structure.kind === 'reader-structure'
+        ? [...structure.units]
+        : [];
+    const headingOutline = structure?.status === 'ready' && structure.kind === 'reader-structure'
+        ? [...structure.outline]
+        : [];
     return {
         html: renderMarkdownToSanitizedHtml(markdownSource, options),
         markdownSource,
-        atomicUnits: structure?.status === 'ready' && structure.kind === 'reader-structure'
-            ? [...structure.units]
-            : [],
-        outlineItems: structure?.status === 'ready' && structure.kind === 'reader-structure'
-            ? [...structure.outline]
-            : [],
+        atomicUnits,
+        outlineItems: mergeReaderSectionOutline({
+            markdown: markdownSource,
+            headingOutline,
+            units: atomicUnits,
+        }),
     };
 }
