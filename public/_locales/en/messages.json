@@ -1,10 +1,10 @@
 {
     "extName": {
-        "message": "AI-MarkDone — ChatGPT Productivity Suite",
+        "message": "MarkDone (veightz)",
         "description": "Message for extName"
     },
     "extDescription": {
-        "message": "Supercharge your ChatGPT workflow: reader, bookmarks, Prompts, and Markdown/PDF/PNG export.",
+        "message": "Fork of AI-MarkDone (veightz): follow-viewport reader, outline jump. Do not enable with the store original.",
         "description": "Message for extDescription"
     },
     "popupSupportedSites": {

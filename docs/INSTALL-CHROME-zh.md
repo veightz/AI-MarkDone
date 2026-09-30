@@ -1,4 +1,4 @@
-# AI-MarkDone fork（Chrome）三步安装
+# MarkDone（veightz）Chrome 三步安装
 
 未上架开发包，不能用商店「一点安装」。按下面做即可。
 

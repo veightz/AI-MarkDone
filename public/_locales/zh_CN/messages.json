@@ -1,10 +1,10 @@
 {
     "extName": {
-        "message": "AI-MarkDone — ChatGPT Productivity Suite",
+        "message": "MarkDone（veightz）",
         "description": "Message for extName"
     },
     "extDescription": {
-        "message": "为 ChatGPT 工作流提速：阅读、书签、Prompts、备份与 Markdown/PDF/PNG 导出。",
+        "message": "基于 AI-MarkDone 的个人改版：阅读器跟人走、大纲跳段、宽屏等；与商店原版勿同时开启。",
         "description": "Message for extDescription"
     },
     "popupSupportedSites": {
