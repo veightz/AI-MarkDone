@@ -207,6 +207,14 @@
         "message": "Go to heading $1",
         "description": "Accessible label for jumping to a Reader markdown heading"
     },
+    "readerOutlinePin": {
+        "message": "Pin outline",
+        "description": "Tooltip and accessible name to pin the reader outline"
+    },
+    "readerOutlineDynamic": {
+        "message": "Dynamic scale",
+        "description": "Tooltip and accessible name to return the reader outline to dynamic scale"
+    },
     "readerStickyTitle": {
         "message": "Sticky",
         "description": "Title for the Reader temporary sticky excerpt workspace"

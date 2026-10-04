@@ -21,6 +21,7 @@ export type ReaderDisplayState = {
     outlineItems: readonly ReaderOutlineItem[];
     activeOutlineId: string;
     showOutlineInReader: boolean;
+    outlinePinned: boolean;
     userPromptDisplay: ReaderUserPromptDisplay;
     statusText: string;
 };
@@ -40,6 +41,7 @@ export type ReaderPanelViewModel = {
     outlineItems: readonly ReaderOutlineItem[];
     activeOutlineId: string;
     showOutlineRail: boolean;
+    outlinePinned: boolean;
     userPromptDisplay: ReaderUserPromptDisplay;
     statusText: string;
     showCopy: boolean;
@@ -69,6 +71,7 @@ export function createReaderPanelViewModel(params: {
         outlineItems: display.outlineItems,
         activeOutlineId: display.activeOutlineId,
         showOutlineRail: display.showOutlineInReader,
+        outlinePinned: display.outlinePinned,
         userPromptDisplay: display.userPromptDisplay,
         statusText: display.statusText,
         showCopy: workflow.options.showCopy,

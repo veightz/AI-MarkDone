@@ -453,6 +453,10 @@ describe('ReaderPanel navigation', () => {
 
             expect(rail).toBeTruthy();
             expect(rail?.getAttribute('aria-label')).toBeTruthy();
+            expect(rail?.getAttribute('data-pinned')).toBe('0');
+            const pin = shadow.querySelector<HTMLButtonElement>('[data-action="reader-outline-pin"]');
+            expect(pin?.getAttribute('aria-pressed')).toBe('false');
+            expect(pin?.getAttribute('title')).toBeTruthy();
             expect(buttons.map((button) => button.querySelector('.reader-outline-rail__index')?.textContent)).toEqual(['H1', 'H2', 'H3']);
             expect(buttons.map((button) => button.querySelector('.reader-outline-rail__label')?.textContent)).toEqual(['Overview', 'Details', 'Next steps']);
             expect(buttons.map((button) => button.dataset.level)).toEqual(['1', '2', '3']);
@@ -582,6 +586,49 @@ describe('ReaderPanel navigation', () => {
             expect(buttons[1]?.dataset.active).toBe('1');
         } finally {
             panel.hide();
+        }
+    });
+
+    it('pins the reader outline so it stays expanded and restores that choice', async () => {
+        const { resetReaderOutlinePinMemoryForTests, READER_OUTLINE_PIN_STORAGE_KEY } = await import('@/ui/content/reader/readerOutlinePinPreference');
+        resetReaderOutlinePinMemoryForTests();
+        const stored: Record<string, unknown> = {};
+        const storage = (await import('@/drivers/shared/browser')).browser.storage.local;
+        const get = storage.get;
+        const set = storage.set;
+        storage.get = async (key: string) => ({ [key]: stored[key] });
+        storage.set = async (items: Record<string, unknown>) => {
+            Object.assign(stored, items);
+        };
+
+        const panel = new ReaderPanel();
+        try {
+            await panel.show([{ id: 'a', userPrompt: 'Q1', content: '# First\n\n## Second' }], 0, 'light');
+            const host = document.querySelector('#aimd-reader-panel-host') as HTMLElement;
+            const shadow = host.shadowRoot as ShadowRoot;
+            const rail = () => shadow.querySelector<HTMLElement>('.reader-outline-rail');
+            const pin = () => shadow.querySelector<HTMLButtonElement>('[data-action="reader-outline-pin"]');
+
+            expect(rail()?.getAttribute('data-pinned')).toBe('0');
+            expect(pin()?.getAttribute('aria-pressed')).toBe('false');
+            expect(pin()?.getAttribute('aria-label')).toBe('Pin outline');
+
+            pin()?.click();
+            expect(rail()?.getAttribute('data-pinned')).toBe('1');
+            expect(pin()?.getAttribute('aria-pressed')).toBe('true');
+            expect(pin()?.dataset.active).toBe('1');
+            expect(pin()?.getAttribute('aria-label')).toBe('Dynamic scale');
+            expect(stored[READER_OUTLINE_PIN_STORAGE_KEY]).toBe(true);
+
+            pin()?.click();
+            expect(rail()?.getAttribute('data-pinned')).toBe('0');
+            expect(pin()?.getAttribute('aria-pressed')).toBe('false');
+            expect(stored[READER_OUTLINE_PIN_STORAGE_KEY]).toBe(false);
+        } finally {
+            panel.hide();
+            storage.get = get;
+            storage.set = set;
+            resetReaderOutlinePinMemoryForTests();
         }
     });
 });

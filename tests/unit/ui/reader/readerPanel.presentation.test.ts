@@ -937,6 +937,9 @@ describe('ReaderPanel presentation', () => {
         expect(outlineCss).toContain('.reader-outline-rail {');
         expect(outlineCss).toContain('.reader-outline-rail:hover,');
         expect(outlineCss).toContain('.reader-outline-rail:focus-within');
+        expect(outlineCss).toContain('.reader-outline-rail[data-pinned="1"]');
+        expect(outlineCss).toContain('.reader-outline-rail__pin[data-active="1"]');
+        expect(source).toContain('data-action="reader-outline-pin"');
         expect(outlineCss).toContain('.reader-outline-rail__item:focus-visible');
         expect(outlineCss).toContain('align-items: stretch;');
         expect(outlineCss).toContain('justify-content: flex-start;');

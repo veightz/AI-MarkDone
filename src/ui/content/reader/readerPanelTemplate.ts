@@ -11,6 +11,7 @@ import {
     messageSquareShareIcon,
     minimizeIcon,
     panelLeftIcon,
+    pinIcon,
     settingsIcon,
     trashIcon,
     xIcon,
@@ -37,6 +38,7 @@ type ReaderTemplateState = {
     outlineItems: readonly ReaderOutlineItem[];
     activeOutlineId: string;
     showOutlineRail: boolean;
+    outlinePinned: boolean;
     userPromptDisplay: ReaderUserPromptDisplay;
     statusText: string;
     showCopy: boolean;
@@ -77,12 +79,17 @@ function renderUserPromptMarkup(display: ReaderUserPromptDisplay): string {
 function renderOutlineMarkup(params: {
     outlineItems: readonly ReaderOutlineItem[];
     activeOutlineId: string;
+    outlinePinned: boolean;
     getLabel: (key: string, fallback: string, substitutions?: string | string[]) => string;
 }): string {
-    const { outlineItems, activeOutlineId, getLabel } = params;
+    const { outlineItems, activeOutlineId, outlinePinned, getLabel } = params;
     if (outlineItems.length < 2) return '';
 
     const label = getLabel('readerOutlineLabel', 'Markdown outline');
+    const pinned = outlinePinned === true;
+    const pinLabel = pinned
+        ? getLabel('readerOutlineDynamic', 'Dynamic scale')
+        : getLabel('readerOutlinePin', 'Pin outline');
     const items = outlineItems.map((item) => {
         const level = Math.max(1, Math.min(6, Math.round(item.level)));
         const badge = (item.badge || (item.kind === 'heading' || !item.kind ? `H${level}` : String(item.badge || level))).trim() || `H${level}`;
@@ -96,8 +103,12 @@ function renderOutlineMarkup(params: {
     }).join('');
 
     return `
-      <nav class="reader-outline-rail" aria-label="${escapeHtml(label)}">
+      <nav class="reader-outline-rail" data-pinned="${pinned ? '1' : '0'}" aria-label="${escapeHtml(label)}">
         <div class="reader-outline-rail__list">
+          <div class="reader-outline-rail__header">
+            <span class="reader-outline-rail__title">${escapeHtml(label)}</span>
+            <button class="reader-outline-rail__pin" type="button" data-action="reader-outline-pin" data-active="${pinned ? '1' : '0'}" aria-pressed="${pinned ? 'true' : 'false'}" aria-label="${escapeHtml(pinLabel)}" title="${escapeHtml(pinLabel)}">${iconMarkup(pinIcon)}</button>
+          </div>
           ${items}
         </div>
       </nav>
@@ -215,6 +226,7 @@ export function getReaderPanelHtml(params: {
     ${hasOutline ? renderOutlineMarkup({
         outlineItems: state.outlineItems,
         activeOutlineId: state.activeOutlineId,
+        outlinePinned: state.outlinePinned,
         getLabel,
     }) : ''}
   </div>

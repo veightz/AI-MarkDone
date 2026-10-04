@@ -1,0 +1,60 @@
+{
+  "id": "reader-outline-pin",
+  "name": "reader-outline-pin",
+  "title": "阅读器右侧大纲钉住 / 动态缩放",
+  "description": "阅读器内结构大纲增加钉住开关：动态保持自动收起，钉住后滚动时保持展开，并记住上次选择。",
+  "status": "done",
+  "dev_type": null,
+  "scope": null,
+  "package": null,
+  "priority": "P1",
+  "creator": "veightz",
+  "assignee": "veightz",
+  "createdAt": "2026-10-04",
+  "completedAt": "2026-10-04",
+  "branch": null,
+  "base_branch": "main",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [],
+  "parent": null,
+  "relatedFiles": [
+    "src/ui/content/reader/readerPanelTemplate.ts",
+    "src/ui/content/reader/readerPanelContent.css",
+    "src/ui/content/reader/ReaderPanel.ts",
+    "src/ui/content/reader/ReaderViewModel.ts",
+    "src/ui/content/reader/readerOutlinePinPreference.ts",
+    "public/_locales/zh_CN/messages.json",
+    "public/_locales/en/messages.json"
+  ],
+  "notes": "Planning: pin only reader-outline-rail (not ChatGPTDirectoryRail). Default dynamic. Persist via extension storage.local. Done: header pin toggle, data-pinned keeps expanded CSS, zh_CN/en tooltips.",
+  "meta": {
+    "productOwner": "Violet",
+    "planning": {
+      "target": "reader-outline-rail",
+      "not": "ChatGPTDirectoryRail",
+      "default": "dynamic",
+      "persistence": "browser.storage.local aimdReaderOutlinePinned"
+    },
+    "stamps": {
+      "states": [
+        "dynamic",
+        "pinned"
+      ],
+      "default": "dynamic",
+      "toggle": "outline panel header pin",
+      "copy": {
+        "zh_CN": [
+          "钉住大纲",
+          "动态缩放"
+        ],
+        "en": [
+          "Pin outline",
+          "Dynamic scale"
+        ]
+      }
+    }
+  }
+}

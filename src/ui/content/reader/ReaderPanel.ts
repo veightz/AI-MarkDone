@@ -93,6 +93,7 @@ import type {
 } from './ReaderPanelContracts';
 import { ReaderWorkflow } from './ReaderWorkflow';
 import { createReaderPanelViewModel } from './ReaderViewModel';
+import { hydrateReaderOutlinePinned, writeReaderOutlinePinned } from './readerOutlinePinPreference';
 import {
     getReaderScrollPositionKey,
     readReaderScrollProgress,
@@ -202,6 +203,7 @@ export class ReaderPanel {
     private readerBodyEl: HTMLElement | null = null;
     private onReaderBodyScroll: (() => void) | null = null;
     private outlineScrollFrame: number | null = null;
+    private outlinePinned = false;
     private readerScrollRestoreFrame: number | null = null;
     private restoringReaderScrollPosition = false;
     private readonly readerScrollProgress = new Map<string, number>();
@@ -450,6 +452,8 @@ export class ReaderPanel {
             trapTabWithin: this.overlaySession?.surfaceRoot.querySelector<HTMLElement>('.panel-window') ?? this.overlaySession?.host ?? undefined,
         });
 
+        this.outlinePinned = await hydrateReaderOutlinePinned();
+        if (generation !== this.showGeneration) return;
         await this.renderCurrentContent();
         if (this.workflow.options.profile === 'conversation-reader' && this.overlaySession) {
             void showChangelogNoticeIfNeeded({
@@ -720,6 +724,9 @@ export class ReaderPanel {
                 if (outlineId) this.jumpToOutline(outlineId);
                 return;
             }
+            case 'reader-outline-pin':
+                this.toggleOutlinePin();
+                return;
             case 'reader-copy':
                 await this.copyCurrent();
                 return;
@@ -1218,6 +1225,7 @@ export class ReaderPanel {
                 outlineItems: this.state.outlineItems,
                 activeOutlineId: this.state.activeOutlineId,
                 showOutlineInReader: this.state.showOutlineInReader,
+                outlinePinned: this.outlinePinned,
                 userPromptDisplay: this.state.userPromptDisplay,
                 statusText: this.state.statusText,
             },
@@ -1652,6 +1660,12 @@ export class ReaderPanel {
             this.outlineScrollFrame = null;
             this.syncActiveOutlineFromScroll();
         });
+    }
+
+    private toggleOutlinePin(): void {
+        this.outlinePinned = !this.outlinePinned;
+        void writeReaderOutlinePinned(this.outlinePinned);
+        if (this.state.visible) this.render();
     }
 
     private jumpToOutline(outlineId: string): void {

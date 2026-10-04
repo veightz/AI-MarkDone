@@ -25,6 +25,7 @@ describe('ReaderViewModel', () => {
                 outlineItems: [{ id: 'heading-a', level: 1, text: 'Answer', start: 0, end: 6 }],
                 activeOutlineId: 'heading-a',
                 showOutlineInReader: true,
+                outlinePinned: false,
                 userPromptDisplay: { truncated: false, full: 'B', head: '', middle: '', tail: '' },
                 statusText: 'Ready',
             },

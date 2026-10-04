@@ -266,8 +266,75 @@
 }
 
 .reader-outline-rail:hover,
-.reader-outline-rail:focus-within {
+.reader-outline-rail:focus-within,
+.reader-outline-rail[data-pinned="1"] {
   width: min(28em, calc(100% - var(--aimd-space-6)));
+}
+
+.reader-outline-rail__header {
+  display: none;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--aimd-space-2);
+  width: 100%;
+  min-height: var(--aimd-size-control-compact);
+  margin-bottom: var(--aimd-space-1);
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: color-mix(in srgb, var(--aimd-bg-surface) 94%, transparent);
+}
+
+.reader-outline-rail:hover .reader-outline-rail__header,
+.reader-outline-rail:focus-within .reader-outline-rail__header,
+.reader-outline-rail[data-pinned="1"] .reader-outline-rail__header {
+  display: flex;
+}
+
+.reader-outline-rail__title {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--aimd-text-secondary);
+  font-size: var(--aimd-text-sm);
+  font-weight: var(--aimd-font-medium);
+}
+
+.reader-outline-rail__pin {
+  all: unset;
+  box-sizing: border-box;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: var(--aimd-size-control-icon-panel);
+  height: var(--aimd-size-control-icon-panel);
+  border-radius: var(--aimd-radius-md);
+  color: var(--aimd-text-tertiary);
+}
+
+.reader-outline-rail__pin:hover,
+.reader-outline-rail__pin:focus-visible {
+  color: var(--aimd-text-primary);
+  background: var(--aimd-interactive-selected);
+}
+
+.reader-outline-rail__pin[data-active="1"] {
+  color: var(--aimd-bg-surface);
+  background: var(--aimd-interactive-primary);
+}
+
+.reader-outline-rail__pin[data-active="1"]:hover,
+.reader-outline-rail__pin[data-active="1"]:focus-visible {
+  color: var(--aimd-bg-surface);
+  background: var(--aimd-interactive-primary);
+}
+
+.reader-outline-rail__pin:focus-visible {
+  outline: 2px solid var(--aimd-focus-ring);
+  outline-offset: 2px;
 }
 
 .reader-outline-rail__list {
@@ -292,7 +359,8 @@
 }
 
 .reader-outline-rail:hover .reader-outline-rail__list,
-.reader-outline-rail:focus-within .reader-outline-rail__list {
+.reader-outline-rail:focus-within .reader-outline-rail__list,
+.reader-outline-rail[data-pinned="1"] .reader-outline-rail__list {
   padding: var(--aimd-space-2);
   background: color-mix(in srgb, var(--aimd-bg-surface) 94%, transparent);
   border-color: color-mix(in srgb, var(--aimd-border-subtle) 72%, transparent);
@@ -373,7 +441,8 @@
 }
 
 .reader-outline-rail:hover .reader-outline-rail__item,
-.reader-outline-rail:focus-within .reader-outline-rail__item {
+.reader-outline-rail:focus-within .reader-outline-rail__item,
+.reader-outline-rail[data-pinned="1"] .reader-outline-rail__item {
   grid-template-columns: 2.75em minmax(0, 1fr);
   justify-items: start;
   min-height: var(--aimd-size-control-compact);
@@ -382,14 +451,17 @@
 }
 
 .reader-outline-rail:hover .reader-outline-rail__item::after,
-.reader-outline-rail:focus-within .reader-outline-rail__item::after {
+.reader-outline-rail:focus-within .reader-outline-rail__item::after,
+.reader-outline-rail[data-pinned="1"] .reader-outline-rail__item::after {
   display: none;
 }
 
 .reader-outline-rail:hover .reader-outline-rail__index,
 .reader-outline-rail:hover .reader-outline-rail__label,
 .reader-outline-rail:focus-within .reader-outline-rail__index,
-.reader-outline-rail:focus-within .reader-outline-rail__label {
+.reader-outline-rail:focus-within .reader-outline-rail__label,
+.reader-outline-rail[data-pinned="1"] .reader-outline-rail__index,
+.reader-outline-rail[data-pinned="1"] .reader-outline-rail__label {
   max-width: 22em;
   opacity: 1;
 }
@@ -966,6 +1038,8 @@
   .reader-sticky-shell,
   .reader-outline-rail,
   .reader-outline-rail__list,
+  .reader-outline-rail__header,
+  .reader-outline-rail__pin,
   .reader-outline-rail__item,
   .reader-outline-rail__item::after,
   .reader-outline-rail__index,
@@ -976,9 +1050,14 @@
 
 @supports not (background: color-mix(in srgb, white 10%, transparent)) {
   .reader-outline-rail:hover .reader-outline-rail__list,
-  .reader-outline-rail:focus-within .reader-outline-rail__list {
+  .reader-outline-rail:focus-within .reader-outline-rail__list,
+  .reader-outline-rail[data-pinned="1"] .reader-outline-rail__list {
     background: var(--aimd-bg-primary);
     border-color: var(--aimd-border-subtle);
+  }
+
+  .reader-outline-rail__header {
+    background: var(--aimd-bg-primary);
   }
 
   .reader-outline-rail__item::after {

@@ -207,6 +207,14 @@
         "message": "跳转到标题 $1",
         "description": "Accessible label for jumping to a Reader markdown heading"
     },
+    "readerOutlinePin": {
+        "message": "钉住大纲",
+        "description": "Tooltip and accessible name to pin the reader outline"
+    },
+    "readerOutlineDynamic": {
+        "message": "动态缩放",
+        "description": "Tooltip and accessible name to return the reader outline to dynamic scale"
+    },
     "readerStickyTitle": {
         "message": "Sticky",
         "description": "Title for the Reader temporary sticky excerpt workspace"
