@@ -15,6 +15,11 @@ import {
 } from '../chatgptDirectory/navigation';
 import { ChatGPTActivePositionTracker } from './ChatGPTActivePositionTracker';
 import { TooltipDelegate, showEphemeralTooltip } from '../../../utils/tooltip';
+import { showToast } from '../../../utils/toast';
+import {
+    softRefreshChatGPTMessageNavigation,
+} from '../../../drivers/content/chatgpt/softMessageNavigationRefresh';
+import type { ChatGPTOfficialNavigationSnapshot } from '../../../drivers/content/chatgpt/ChatGPTOfficialNavigation';
 import type { ConversationNavigationPortV1 } from '../../../contracts/conversationNavigation';
 import {
     AIMD_CONVERSATION_SURFACE_CONSUMER_ATTRIBUTE,
@@ -103,7 +108,14 @@ export class ChatGPTMessageStepperController {
             onOpenBookmarksPanel?: () => Promise<void> | void;
             onOpenDetachedReader?: () => Promise<void> | void;
             onOpenPrompts?: (anchor: HTMLElement) => Promise<void> | void;
+            /**
+             * Explicit full-page fallback. Not invoked by the primary click.
+             * Primary click rescans mounted DOM via PageIndex + surface.
+             */
             onRefreshMessageNavigation?: () => Promise<void> | void;
+            /** Shared PageIndex. Omitted in tests that only mock the surface. */
+            pageIndex?: { invalidate(): void } | null;
+            readOfficialNavigation?: () => ChatGPTOfficialNavigationSnapshot;
             onTogglePageBookmark?: (url: string) => Promise<PageBookmarkMutationResult> | PageBookmarkMutationResult;
             onRefreshPageBookmarkState?: (url: string) => Promise<PageBookmarkStatusResult> | PageBookmarkStatusResult;
             surface: ConversationSurfacePortV1;
@@ -263,7 +275,7 @@ export class ChatGPTMessageStepperController {
             'chatgpt-refresh-message-navigation',
             this.getLabel('chatgptRefreshMessageNavigation', 'Refresh message navigation'),
             () => {
-                void this.options.onRefreshMessageNavigation?.();
+                this.softRefreshMessageNavigation();
             },
             refreshCwIcon,
         );
@@ -311,6 +323,39 @@ export class ChatGPTMessageStepperController {
         this.syncNavigationVisibility();
         this.syncPageBookmarkButton();
         this.syncAuxiliaryButtonVisibility();
+    }
+
+    /**
+     * Primary 「刷新消息导航」: rescan mounted DOM and recompute message nav
+     * plus the directory outline from the existing projection. Full reload
+     * stays a secondary toast action when virtualized turns are still missing.
+     */
+    private softRefreshMessageNavigation(): void {
+        const { gaps } = softRefreshChatGPTMessageNavigation({
+            pageIndex: this.options.pageIndex,
+            surface: this.surface,
+            readOfficialNavigation: this.options.readOfficialNavigation,
+        });
+        this.activePositionTracker.invalidate();
+        this.refreshState();
+        if (!gaps) return;
+        const hardRefresh = this.options.onRefreshMessageNavigation;
+        showToast({
+            text: this.getLabel(
+                'chatgptSoftNavRefreshGap',
+                'Some messages are not mounted yet. Scroll a little, then refresh again.',
+            ),
+            tone: 'info',
+            durationMs: 8000,
+            action: hardRefresh
+                ? {
+                    label: this.getLabel('chatgptHardRefreshMessageNavigation', 'Full page refresh'),
+                    onClick: () => {
+                        void hardRefresh();
+                    },
+                }
+                : undefined,
+        });
     }
 
     private getLabel(key: string, fallback: string): string {

@@ -59,6 +59,7 @@ import {
     loadAndNormalize,
 } from '../../core/settings/migrations';
 import { withChatGPTMessageNavigationTrigger } from '../../drivers/content/chatgpt/chatgptRoute';
+import { getChatGPTPageIndex } from '../../drivers/content/chatgpt/domConversationDiscovery';
 import type { UserThemeOverrides } from '../../style/tokens';
 import { areAppearanceSnapshotsEqual, createAppearanceSnapshot, resolveAppearanceTheme, type AppearanceSnapshot } from '../../style/appearance';
 import { getFormulaOnlyPlatformProfile, startFormulaOnlyRuntime } from './formulaOnlyRuntime';
@@ -257,6 +258,10 @@ if (adapter) {
             onOpenBookmarksPanel: () => bookmarksPanel.show({tab:'settings'}),
             onOpenDetachedReader: () => openDetachedReaderFromStepper(),
             onOpenPrompts: (anchor) => chatGptPromptAutocomplete?.openManager(anchor),
+            pageIndex: getChatGPTPageIndex(adapter),
+            // Secondary only. The stepper's primary click soft-rescans PageIndex
+            // and the mounted surface. This reloads with an empty ?message= when
+            // virtualized turns are still missing and the user asks for it.
             onRefreshMessageNavigation: () => {
                 window.location.assign(withChatGPTMessageNavigationTrigger(window.location.href));
             },

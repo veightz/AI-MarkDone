@@ -1471,6 +1471,14 @@
         "message": "刷新消息导航",
         "description": "Message for chatgptRefreshMessageNavigation"
     },
+    "chatgptSoftNavRefreshGap": {
+        "message": "有些消息还没挂到页面上。请稍微滚动后再刷新。",
+        "description": "软刷新后仍有未挂载消息时的提示"
+    },
+    "chatgptHardRefreshMessageNavigation": {
+        "message": "仍可整页刷新",
+        "description": "消息导航软刷新失败后的整页刷新"
+    },
     "chatgptNavigationSeekStepLabel": {
         "message": "目录跳转速度",
         "description": "Message for chatgptNavigationSeekStepLabel"

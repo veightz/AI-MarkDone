@@ -49,4 +49,19 @@ describe('showToast', () => {
 
         document.body.innerHTML = '';
     });
+
+    it('renders an optional action and dismisses when that action is clicked', () => {
+        const onClick = vi.fn();
+        showToast({
+            text: 'Scroll a little',
+            action: { label: 'Full page refresh', onClick },
+        });
+        const action = document.querySelector<HTMLButtonElement>('.aimd-toast__action');
+        expect(document.querySelector('.aimd-toast__text')?.textContent).toBe('Scroll a little');
+        expect(action?.textContent).toBe('Full page refresh');
+        action?.click();
+        expect(onClick).toHaveBeenCalledTimes(1);
+        expect(document.querySelector('.aimd-toast')).toBeNull();
+        document.body.innerHTML = '';
+    });
 });

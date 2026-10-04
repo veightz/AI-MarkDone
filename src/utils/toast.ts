@@ -8,6 +8,11 @@ export type ShowToastParams = {
     text: string;
     tone?: ToastTone;
     durationMs?: number;
+    /** Optional secondary control. The toast stays clickable until it dismisses. */
+    action?: {
+        label: string;
+        onClick: () => void;
+    };
 };
 
 let removalTimer: number | null = null;
@@ -42,6 +47,28 @@ function getToastCss(): string {
   white-space: normal;
   overflow-wrap: anywhere;
   animation: aimdToastLifecycle var(--_toast-duration) var(--aimd-ease-out) forwards;
+}
+.aimd-toast:has(.aimd-toast__action) {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--aimd-space-2);
+  pointer-events: auto;
+}
+.aimd-toast__action {
+  all: unset;
+  box-sizing: border-box;
+  cursor: pointer;
+  pointer-events: auto;
+  color: var(--aimd-toast-text);
+  font: inherit;
+  font-weight: var(--aimd-font-semibold, 600);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.aimd-toast__action:focus-visible {
+  outline: 2px solid var(--aimd-focus-ring);
+  outline-offset: 2px;
 }
 @keyframes aimdToastLifecycle {
   0% { opacity: 0; transform: translateY(-12px); }
@@ -102,7 +129,28 @@ export function showToast(params: ShowToastParams): void {
     toast.setAttribute('role', 'status');
     toast.setAttribute('aria-live', 'polite');
     toast.style.setProperty('--_toast-duration', `${durationMs}ms`);
-    toast.textContent = text;
+    const actionLabel = params.action?.label.trim() ?? '';
+    if (!actionLabel) {
+        toast.textContent = text;
+    } else {
+        const label = document.createElement('span');
+        label.className = 'aimd-toast__text';
+        label.textContent = text;
+        const action = document.createElement('button');
+        action.type = 'button';
+        action.className = 'aimd-toast__action';
+        action.textContent = actionLabel;
+        action.addEventListener('click', () => {
+            params.action?.onClick();
+            if (removalTimer !== null) {
+                window.clearTimeout(removalTimer);
+                removalTimer = null;
+            }
+            if (toast.parentElement === viewport) toast.remove();
+            if (!viewport.firstElementChild) viewport.remove();
+        });
+        toast.append(label, action);
+    }
     viewport.appendChild(toast);
 
     removalTimer = window.setTimeout(() => {

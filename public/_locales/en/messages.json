@@ -1471,6 +1471,14 @@
         "message": "Refresh message navigation",
         "description": "Message for chatgptRefreshMessageNavigation"
     },
+    "chatgptSoftNavRefreshGap": {
+        "message": "Some messages are not mounted yet. Scroll a little, then refresh again.",
+        "description": "Toast when soft message-nav refresh still sees unmounted turns"
+    },
+    "chatgptHardRefreshMessageNavigation": {
+        "message": "Full page refresh",
+        "description": "Secondary action to reload the page for message navigation"
+    },
     "chatgptNavigationSeekStepLabel": {
         "message": "Directory navigation speed",
         "description": "Message for chatgptNavigationSeekStepLabel"

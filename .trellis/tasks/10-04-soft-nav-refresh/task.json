@@ -1,0 +1,49 @@
+{
+  "id": "soft-nav-refresh",
+  "name": "soft-nav-refresh",
+  "title": "刷新消息导航改为软刷新",
+  "description": "底栏刷新默认重扫已挂载 DOM，空洞时提示滚动，整页刷新仅作次要操作。",
+  "status": "done",
+  "dev_type": null,
+  "scope": null,
+  "package": null,
+  "priority": "P1",
+  "creator": "veightz",
+  "assignee": "veightz",
+  "createdAt": "2026-10-04",
+  "completedAt": "2026-10-04",
+  "branch": null,
+  "base_branch": "main",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [],
+  "parent": null,
+  "relatedFiles": [
+    "src/drivers/content/chatgpt/softMessageNavigationRefresh.ts",
+    "src/ui/content/controllers/ChatGPTMessageStepperController.ts",
+    "src/runtimes/content/entry.ts",
+    "src/utils/toast.ts",
+    "public/_locales/zh_CN/messages.json",
+    "public/_locales/en/messages.json"
+  ],
+  "notes": "Primary click: pageIndex.invalidate + surface.refreshSurface. Full ?message= reload only from the gap toast action.",
+  "meta": {
+    "productOwner": "Violet",
+    "stamps": {
+      "default": "soft",
+      "fallback": "仍可整页刷新",
+      "copy": {
+        "zh_CN": [
+          "有些消息还没挂到页面上。请稍微滚动后再刷新。",
+          "仍可整页刷新"
+        ],
+        "en": [
+          "Some messages are not mounted yet. Scroll a little, then refresh again.",
+          "Full page refresh"
+        ]
+      }
+    }
+  }
+}

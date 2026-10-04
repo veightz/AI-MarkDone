@@ -255,9 +255,15 @@ describe('ChatGPTMessageStepperController', () => {
         );
     });
 
-    it('exposes a message-navigation refresh action instead of the retired top-scroll action', async () => {
+    it('soft-rescans mounted DOM on refresh instead of reloading the page', async () => {
         const onRefreshMessageNavigation = vi.fn(async () => undefined);
-        const controller = new ChatGPTMessageStepperController(adapter, { onRefreshMessageNavigation });
+        const pageIndex = { invalidate: vi.fn() };
+        surface.refreshSurface.mockClear();
+        const controller = new ChatGPTMessageStepperController(adapter, {
+            onRefreshMessageNavigation,
+            pageIndex,
+            readOfficialNavigation: () => ({ ready: false, expectedTurnCount: 0 }),
+        });
         controllers.push(controller);
         controller.init();
 
@@ -265,10 +271,80 @@ describe('ChatGPTMessageStepperController', () => {
         const button = host.querySelector<HTMLButtonElement>('[data-action="chatgpt-refresh-message-navigation"]');
 
         expect(button).toBeTruthy();
+        expect(button?.getAttribute('aria-label')).toBe('Refresh message navigation');
         expect(host.querySelector('[data-action="chatgpt-scroll-to-top"]')).toBeNull();
         button?.click();
         await Promise.resolve();
+        expect(pageIndex.invalidate).toHaveBeenCalledTimes(1);
+        expect(surface.refreshSurface).toHaveBeenCalledTimes(1);
+        expect(onRefreshMessageNavigation).not.toHaveBeenCalled();
+        expect(document.querySelector('.aimd-toast')).toBeNull();
+    });
+
+    it('offers a full-page refresh only when the soft scan still has unmounted gaps', async () => {
+        const onRefreshMessageNavigation = vi.fn(async () => undefined);
+        const pageIndex = { invalidate: vi.fn() };
+        const anchor = document.createElement('div');
+        const gappedSurface = {
+            readFrame: () => ({
+                frameToken: 'frame:gap',
+                surfaceToken: 'surface:gap',
+                contentKind: 'ready' as const,
+                document: surfaceDocument,
+                snapshot: null,
+                projectionId: 'projection:gap',
+                contentToken: 'content:gap',
+                obtainedTurns: [{
+                    status: 'obtained' as const,
+                    turn: {
+                        key: 'turn-1',
+                        ordinal: 1,
+                        identity: { turnId: 'round-1', userMessageId: 'user-1', assistantMessageId: 'message-1' },
+                        userText: 'Prompt 1',
+                        assistantMarkdown: 'Answer 1',
+                    },
+                    target: {
+                        documentKey: surfaceDocument.key,
+                        turnId: 'round-1',
+                        userMessageId: 'user-1',
+                        assistantMessageId: 'message-1',
+                    },
+                    materialization: null,
+                }],
+                pendingSurfaces: [],
+            }),
+            subscribeFrame: (listener: () => void) => {
+                listener();
+                return () => undefined;
+            },
+            refreshSurface: vi.fn(),
+            materialization: {} as any,
+        };
+        const controller = new ChatGPTMessageStepperController(adapter, {
+            surface: gappedSurface,
+            onRefreshMessageNavigation,
+            pageIndex,
+            readOfficialNavigation: () => ({ ready: true, expectedTurnCount: 4 }),
+        });
+        controllers.push(controller);
+        controller.init();
+
+        document.querySelector<HTMLButtonElement>('[data-action="chatgpt-refresh-message-navigation"]')?.click();
+        await Promise.resolve();
+
+        expect(pageIndex.invalidate).toHaveBeenCalledTimes(1);
+        expect(gappedSurface.refreshSurface).toHaveBeenCalledTimes(1);
+        expect(onRefreshMessageNavigation).not.toHaveBeenCalled();
+        expect(anchor.isConnected).toBe(false);
+        const toast = document.querySelector('.aimd-toast');
+        expect(toast?.querySelector('.aimd-toast__text')?.textContent).toBe(
+            'Some messages are not mounted yet. Scroll a little, then refresh again.',
+        );
+        const action = toast?.querySelector<HTMLButtonElement>('.aimd-toast__action');
+        expect(action?.textContent).toBe('Full page refresh');
+        action?.click();
         expect(onRefreshMessageNavigation).toHaveBeenCalledTimes(1);
+        expect(document.querySelector('.aimd-toast')).toBeNull();
     });
 
     it('keeps page bookmarks unavailable without an id and restores them after identity promotion', async () => {
