@@ -13,16 +13,17 @@
    任务：`09-29-reader-follow-viewport`（Violet stamps 已锁定）。  
    侧轨目录条**不作**阅读器主触发。
 3. **阅读器宽屏选项** — 参照飞书文档：可切换加宽/铺满，默认勿锁死窄栏、少留白。  
-   任务：`09-29-reader-widescreen`（排在 follow-viewport 之后）。
+   任务：`09-29-reader-widescreen`（排在 follow-viewport 之后；可与油猴并行评估是否进 Lite）。
 4. **大纲钉住** — **已完成**（`10-04-reader-outline-pin` / fork-6.0.0-dev.4）。
 5. **刷新消息导航软刷新** — **已完成**（`10-04-soft-nav-refresh` / fork-6.0.0-dev.5）。
 
-## 分发 / 更新（已定方向）
+## 分发 / 更新（已定方向 · 2026-10-08 修订）
 
 - **自托管 CRX + `update_url`**：探路结束（`10-08-self-hosted-chrome-update`）。可行性 partial；**不作**个人 Mac/Windows 主更新方案。
-- **下一步（盖章）**：**Chrome 商店未列出（Unlisted）** — 装一次后商店自动更新。任务：`10-08-chrome-store-unlisted`（材料 + 人工上架清单）。解压 zip **保留**开发/应急。
-- **油猴 Lite**：**不开**（等商店通路通了再评估）。
-- 商店上传包须 **去掉上游 `key`**，由 CWS 分配新扩展 ID；Drive OAuth 需换绑（见 `docs/chrome-store/EXTENSION-ID-AND-KEY.md`）。
+- **Chrome 商店未列出（Unlisted / CWS Unlisted）**：**暂停**。用户暂不付一次性开发者注册费（约 USD $5）。材料仍保留在 `docs/chrome-store/` 与任务 `10-08-chrome-store-unlisted`（status=paused）。以后要自动更新再重启。
+- **下一步（盖章 · Violet + User）**：**油猴 Userscript Lite** — 日常阅读能力，Tampermonkey 装一次后走 raw GitHub `@updateURL`（同 Sensebook）。任务：`10-08-userscript-lite`。
+- **解压 Chrome zip**：保留开发 / 应急；全功能仍靠扩展。
+- Lite **不做**：Drive 备份、background service worker、完整书签/提示词库、商店打包、多 runtime。
 
 ## 待用户继续丢的边界
 

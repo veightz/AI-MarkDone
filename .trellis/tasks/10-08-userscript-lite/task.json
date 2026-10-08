@@ -1,0 +1,51 @@
+{
+  "id": "userscript-lite",
+  "name": "userscript-lite",
+  "title": "MarkDone Userscript Lite（油猴日用子集）",
+  "description": "Tampermonkey Lite：视口跟随阅读器、大纲钉住、软刷新消息导航；raw GitHub 自动更新。不做 Drive/background/全功能。",
+  "status": "in_progress",
+  "dev_type": null,
+  "scope": null,
+  "package": null,
+  "priority": "P0",
+  "creator": "veightz",
+  "assignee": "veightz",
+  "createdAt": "2026-10-08",
+  "completedAt": null,
+  "branch": null,
+  "base_branch": "main",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [],
+  "parent": null,
+  "relatedFiles": [
+    ".trellis/tasks/10-08-userscript-lite/prd.md",
+    ".trellis/spec/product/phase-boundary.md",
+    "userscript/markdone-lite.user.js",
+    "docs/userscript-lite/INSTALL-zh.md"
+  ],
+  "notes": "Violet+User 2026-10-08: Unlisted paused (no $5 yet); Userscript Lite next. Prefer thin wrappers over ripping extension. Out: Drive, SW, full bookmarks.",
+  "meta": {
+    "productOwner": "Violet",
+    "distribution": "tampermonkey-raw-github",
+    "installUrl": "https://raw.githubusercontent.com/veightz/AI-MarkDone/main/userscript/markdone-lite.user.js",
+    "reuse": "thin-dom-reimpl-no-shared-package-yet",
+    "inScope": [
+      "viewport-follow-reader-chip",
+      "outline-pin",
+      "soft-nav-refresh"
+    ],
+    "outOfScope": [
+      "drive-backup",
+      "background-sw",
+      "full-bookmarks",
+      "cws-unlisted",
+      "self-hosted-crx"
+    ],
+    "pauses": [
+      "10-08-chrome-store-unlisted"
+    ]
+  }
+}

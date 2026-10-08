@@ -3,7 +3,7 @@
   "name": "chrome-store-unlisted",
   "title": "Chrome 商店未列出发布材料与上架清单",
   "description": "准备 unlisted CWS 文案、权限说明、隐私政策、去 key 上传包；账号登录/截图/隐私 URL 托管需人工。",
-  "status": "in_progress",
+  "status": "paused",
   "dev_type": null,
   "scope": null,
   "package": null,
@@ -32,7 +32,7 @@
     "config/extension/chromeWebStore.ts",
     "scripts/package-chrome-store-unlisted.sh"
   ],
-  "notes": "Violet stamped: unlisted CWS. Unpacked zip stays for dev/emergency. Userscript Lite not started. Do not attempt CWS login from group chat.",
+  "notes": "Paused 2026-10-08: User will not pay CWS $5 developer fee yet. Materials kept in docs/chrome-store/. Resume when ready for Unlisted. Userscript Lite (10-08-userscript-lite) is the active distribution path.",
   "meta": {
     "productOwner": "Violet",
     "distribution": "chrome-web-store-unlisted",
@@ -41,6 +41,8 @@
       "dashboard-login",
       "screenshots",
       "privacy-policy-public-url"
-    ]
+    ],
+    "pausedAt": "2026-10-08",
+    "pauseReason": "no-developer-fee-yet"
   }
 }
