@@ -1,0 +1,46 @@
+{
+  "id": "chrome-store-unlisted",
+  "name": "chrome-store-unlisted",
+  "title": "Chrome 商店未列出发布材料与上架清单",
+  "description": "准备 unlisted CWS 文案、权限说明、隐私政策、去 key 上传包；账号登录/截图/隐私 URL 托管需人工。",
+  "status": "in_progress",
+  "dev_type": null,
+  "scope": null,
+  "package": null,
+  "priority": "P1",
+  "creator": "veightz",
+  "assignee": "veightz",
+  "createdAt": "2026-10-08",
+  "completedAt": null,
+  "branch": null,
+  "base_branch": "main",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [],
+  "parent": null,
+  "relatedFiles": [
+    ".trellis/tasks/10-08-chrome-store-unlisted/prd.md",
+    ".trellis/spec/product/phase-boundary.md",
+    "docs/chrome-store/STORE-LISTING-zh.md",
+    "docs/chrome-store/STORE-LISTING-en.md",
+    "docs/chrome-store/PERMISSIONS.md",
+    "docs/chrome-store/PRIVACY-POLICY.md",
+    "docs/chrome-store/EXTENSION-ID-AND-KEY.md",
+    "manifest.chrome.json",
+    "config/extension/chromeWebStore.ts",
+    "scripts/package-chrome-store-unlisted.sh"
+  ],
+  "notes": "Violet stamped: unlisted CWS. Unpacked zip stays for dev/emergency. Userscript Lite not started. Do not attempt CWS login from group chat.",
+  "meta": {
+    "productOwner": "Violet",
+    "distribution": "chrome-web-store-unlisted",
+    "humanGates": [
+      "developer-account",
+      "dashboard-login",
+      "screenshots",
+      "privacy-policy-public-url"
+    ]
+  }
+}
