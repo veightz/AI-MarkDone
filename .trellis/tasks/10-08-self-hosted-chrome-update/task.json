@@ -1,0 +1,35 @@
+{
+  "id": "self-hosted-chrome-update",
+  "name": "self-hosted-chrome-update",
+  "title": "自托管 Chrome 自动更新探路",
+  "description": "评估 update_url + CRX + GitHub Releases；不实现。结论：partial，Mac/Windows 个人机不建议当主方案。",
+  "status": "done",
+  "dev_type": null,
+  "scope": null,
+  "package": null,
+  "priority": "P1",
+  "creator": "veightz",
+  "assignee": "veightz",
+  "createdAt": "2026-10-08",
+  "completedAt": "2026-10-08",
+  "branch": null,
+  "base_branch": "main",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [],
+  "parent": null,
+  "relatedFiles": [
+    ".trellis/tasks/10-08-self-hosted-chrome-update/prd.md",
+    ".trellis/spec/product/phase-boundary.md",
+    "manifest.chrome.json",
+    "docs/INSTALL-CHROME-zh.md"
+  ],
+  "notes": "Research only. Recommend unlisted CWS or keep unpacked; userscript Lite later. Do not implement CRX pipeline yet.",
+  "meta": {
+    "productOwner": "Violet",
+    "feasibility": "partial",
+    "recommend": "no-go-as-primary-for-personal-mac-windows"
+  }
+}
