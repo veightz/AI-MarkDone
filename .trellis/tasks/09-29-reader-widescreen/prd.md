@@ -17,3 +17,10 @@
 ## 非目标
 
 入口/跟随视口见 `09-29-reader-follow-viewport`（已合并原入口统一）；本单只做宽度，且排在其后。
+
+## 决策：Lite（油猴）是否包含宽屏 — ✅ 已定：包含（2026-10-10，User 拍板）
+
+- 页面宽度：右下 **↔ 宽度** 按钮 / Lite 菜单，标准 → 较宽（≤1200px）→ 铺满；`GM_setValue`（回退 `localStorage`）键 `mdlitePageWidth`；`html[data-mdlite-width]` + 样式规则，SPA 切换 / 重渲染后由 watchdog 补回。
+- 选择器沿用扩展 `ChatGPTPageWidthController`（`max-w-(--thread-content-max-width)` 等），同时覆盖 `--thread-content-max-width` 变量。
+- Lite 阅读器侧栏自身宽度：头部「宽度·标准/较宽/铺满」，键 `mdliteReaderWidth`。
+- 扩展端阅读器宽屏仍按本单原排期，不受影响。

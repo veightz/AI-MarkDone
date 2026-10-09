@@ -20,7 +20,10 @@
 | --- | --- | --- |
 | 视口跟随阅读器 chip | `ChatGPTViewportReaderChipController` | 页内薄实现：挂主读助手气泡；窄屏 fixed 回退 |
 | 文内大纲 + 钉住 | `reader-outline-rail` + `readerOutlinePinPreference` | Lite 面板内大纲；钉住偏好用 `GM_setValue` / `localStorage` |
+| 页面宽度（宽屏） | `ChatGPTPageWidthController` / `09-29-reader-widescreen` | 2026-10-10 加入：标准/较宽/铺满，FAB 按钮 + Lite 菜单；`GM_*` 持久化 |
 | 软刷新消息导航 | `softRefreshChatGPTMessageNavigation` | 不 `location.assign`；重扫已挂载助手轮次；缺洞 toast + 可选整页兜底 |
+
+入口：右下 FAB「📖 阅读器 / ↔ 宽度 / Lite ☰」，Lite 菜单汇总全部能力（2026-10-10，修复用户只看到软刷新的问题；同时补新 DOM `data-chatgpt-search-unit-key` 选择器）。
 
 ## 非目标（Out）
 

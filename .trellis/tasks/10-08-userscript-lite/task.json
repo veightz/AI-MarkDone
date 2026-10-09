@@ -2,7 +2,7 @@
   "id": "userscript-lite",
   "name": "userscript-lite",
   "title": "MarkDone Userscript Lite（油猴日用子集）",
-  "description": "Tampermonkey Lite：视口跟随阅读器、大纲钉住、软刷新消息导航；raw GitHub 自动更新。不做 Drive/background/全功能。",
+  "description": "Tampermonkey Lite：视口跟随阅读器、大纲钉住、页面宽度、软刷新消息导航；raw GitHub 自动更新。不做 Drive/background/全功能。",
   "status": "in_progress",
   "dev_type": null,
   "scope": null,
@@ -35,6 +35,7 @@
     "inScope": [
       "viewport-follow-reader-chip",
       "outline-pin",
+      "page-width-toggle",
       "soft-nav-refresh"
     ],
     "outOfScope": [

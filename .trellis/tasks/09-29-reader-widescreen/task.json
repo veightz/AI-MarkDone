@@ -20,7 +20,17 @@
   "subtasks": [],
   "children": [],
   "parent": null,
-  "relatedFiles": [],
-  "notes": "排在 always-visible、reader-follow-viewport（含原入口统一）之后",
-  "meta": {}
+  "relatedFiles": [
+    "userscript/markdone-lite.user.js",
+    "src/ui/content/controllers/ChatGPTPageWidthController.ts"
+  ],
+  "notes": "排在 always-visible、reader-follow-viewport（含原入口统一）之后；2026-10-10 决定：宽屏纳入 MarkDone Lite（油猴）——页面宽度 标准/较宽/铺满 + Lite 阅读器宽度切换，已在 userscript/markdone-lite.user.js 交付。扩展端阅读器宽屏仍按本单排期。",
+  "meta": {
+    "liteDecision": {
+      "decided": "2026-10-10",
+      "included": true,
+      "by": "User",
+      "where": "userscript/markdone-lite.user.js"
+    }
+  }
 }
