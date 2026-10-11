@@ -3,7 +3,7 @@
 // @namespace    https://github.com/veightz/AI-MarkDone
 // @updateURL    https://raw.githubusercontent.com/veightz/AI-MarkDone/main/userscript/markdone-lite.user.js
 // @downloadURL  https://raw.githubusercontent.com/veightz/AI-MarkDone/main/userscript/markdone-lite.user.js
-// @version      0.1.202610100130
+// @version      0.1.202610111806
 // @description  ChatGPT 日用子集：视口跟随阅读器、大纲钉住、页面宽度、软刷新消息导航（非全功能扩展）
 // @author       veightz
 // @match        *://chatgpt.com/*
@@ -26,7 +26,7 @@
   if (window.__mdliteBooted) return;
   window.__mdliteBooted = true;
 
-  var VERSION = '0.1.202610100130';
+  var VERSION = '0.1.202610111806';
   var NS = 'mdlite';
   var PIN_KEY = 'mdliteReaderOutlinePinned';
   var NARROW_PX = 720;
@@ -216,19 +216,89 @@
   var outlinePinned = storeGet(PIN_KEY, false) === true;
 
   // ---- styles ----
-  // Page-width selectors: extension ChatGPTPageWidthController + older Tailwind shapes.
+  // Page-width: mirror extension ChatGPTPageWidthController + 2026 ChatGPT CSS vars.
+  // ChatGPT drives column width via per-element --thread-content-max-width (and
+  // --thread-content-width for tables). Absolute px / none beats min(1200px,100%),
+  // which collapses to the already-narrow containing block and looks like a no-op.
   var PAGE_WIDTH_SELECTORS = [
+    '[class*="thread-content-max-width"]',
     '[class*="max-w-(--thread-content-max-width)"]',
     '[class*="max-w-[var(--thread-content-max-width)]"]',
-    'main .text-token-text-primary > div > div',
+    '.text-token-text-primary > div > div',
     'main [class*="xl:max-w-[48rem]"]',
     'main [class*="md:max-w-3xl"]',
+    '.text-base.mx-auto',
   ];
-  function widthRule(mode, value) {
-    var sel = PAGE_WIDTH_SELECTORS.map(function (x) {
-      return 'html[data-mdlite-width="' + mode + '"] ' + x;
-    }).join(',');
-    return sel + '{max-width:' + value + '!important;--thread-content-max-width:' + value + '!important}';
+  var PAGE_WIDTH_CSS_TARGETS = [
+    '[class*="thread-content-max-width"]',
+    '[class*="max-w-(--thread-content-max-width)"]',
+    '[class*="max-w-[var(--thread-content-max-width)]"]',
+    '.text-token-text-primary > div > div',
+    'main [class*="xl:max-w-[48rem]"]',
+    'main [class*="md:max-w-3xl"]',
+    '.text-base.mx-auto',
+    'form[data-type="unified-composer"]',
+    'form:has(#prompt-textarea)',
+    'form:has([data-testid="composer"])',
+  ];
+  var WIDTH_PX = { wide: 1200, full: null };
+  var widthStyleEl = null;
+  var widthFoundCache = false;
+
+  function findWidthContainers() {
+    var seen = [];
+    var pushUnique = function (node) {
+      if (!node || seen.indexOf(node) >= 0) return;
+      seen.push(node);
+    };
+    for (var i = 0; i < PAGE_WIDTH_SELECTORS.length; i++) {
+      try {
+        document.querySelectorAll(PAGE_WIDTH_SELECTORS[i]).forEach(pushUnique);
+      } catch (_) { /* invalid selector in older engines — ignore */ }
+    }
+    // Prefer nodes that actually constrain width (pixel max-width or the CSS var class).
+    var constraining = seen.filter(function (el) {
+      var cls = typeof el.className === 'string' ? el.className : '';
+      if (cls.indexOf('thread-content-max-width') >= 0) return true;
+      var mw = window.getComputedStyle(el).maxWidth;
+      var n = Number.parseFloat(mw);
+      return mw && mw !== 'none' && mw !== '100%' && Number.isFinite(n) && n > 0 && n < window.innerWidth;
+    });
+    return constraining.length ? constraining : seen;
+  }
+
+  function hasWidthContainer() {
+    var nodes = findWidthContainers();
+    widthFoundCache = nodes.length > 0;
+    return widthFoundCache;
+  }
+
+  function buildWidthCss(mode) {
+    if (mode === 'normal') return '';
+    var value = mode === 'full' ? 'none' : WIDTH_PX.wide + 'px';
+    var varValue = mode === 'full' ? '100%' : WIDTH_PX.wide + 'px';
+    var targets = PAGE_WIDTH_CSS_TARGETS.join(',');
+    // Direct rules (no html[] prefix): same reliability as ChatGPTPageWidthController —
+    // SPA can strip dataset flags; style text is what must keep working.
+    var rules = [
+      ':root,html,body,main{--thread-content-max-width:' + varValue + '!important;--thread-content-width:' + varValue + '!important}',
+      targets + '{--thread-content-max-width:' + varValue + '!important;--thread-content-width:' + varValue + '!important;max-width:' + value + '!important}',
+    ];
+    if (mode === 'full') rules.push(targets + '{width:100%!important}');
+    return rules.join('');
+  }
+
+  function ensureWidthStyle() {
+    if (widthStyleEl && widthStyleEl.isConnected) return widthStyleEl;
+    var existing = document.getElementById(NS + '-width-style');
+    if (existing) {
+      widthStyleEl = existing;
+      return widthStyleEl;
+    }
+    widthStyleEl = document.createElement('style');
+    widthStyleEl.id = NS + '-width-style';
+    document.documentElement.appendChild(widthStyleEl);
+    return widthStyleEl;
   }
 
   function ensureStyle() {
@@ -309,8 +379,6 @@
       'box-shadow:0 8px 24px rgba(0,0,0,.25)}',
       P + '-toast button{border:0;border-radius:6px;padding:4px 8px;cursor:pointer;',
       'background:#fff;color:#111;font:12px/1.2 system-ui,sans-serif}',
-      widthRule('wide', 'min(1200px, 100%)'),
-      widthRule('full', '100%'),
       dark('html.dark'),
       '@media (prefers-color-scheme: dark){' + dark('html:not(.light)') + '}',
     ].join('');
@@ -322,9 +390,12 @@
     var html = document.documentElement;
     if (pageWidth === 'normal') {
       if (html.hasAttribute('data-mdlite-width')) html.removeAttribute('data-mdlite-width');
-    } else if (html.getAttribute('data-mdlite-width') !== pageWidth) {
+    } else {
       html.setAttribute('data-mdlite-width', pageWidth);
     }
+    var style = ensureWidthStyle();
+    style.textContent = buildWidthCss(pageWidth);
+    hasWidthContainer();
   }
   function setPageWidth(mode, silent) {
     pageWidth = normWidth(mode);
@@ -333,7 +404,10 @@
     syncFab();
     syncMenu();
     scheduleChip();
-    if (!silent) toast('页面宽度：' + WIDTH_LABEL[pageWidth], { durationMs: 1800 });
+    if (!silent) {
+      var note = pageWidth === 'normal' ? '' : (widthFoundCache ? '' : '（未找到宽度容器，若没变宽请截图）');
+      toast('页面宽度：' + WIDTH_LABEL[pageWidth] + note, { durationMs: 1800 });
+    }
   }
 
   // ---- reader panel ----
@@ -707,9 +781,11 @@
     menu.appendChild(mkBtn('🔄 软刷新导航', '重扫已挂载消息，不整页刷新', softRefresh));
     menu.appendChild(document.createElement('hr'));
     var info = document.createElement('small');
+    var widthOk = hasWidthContainer();
     info.textContent =
       'Lite v' + VERSION + ' · 检测到 ' + assistantRoots().length + ' 条助手回复' +
-      (document.querySelector(PAGE_WIDTH_SELECTORS.join(',')) ? '' : ' · 未找到宽度容器');
+      (widthOk ? ' · 宽度容器已命中' : ' · 未找到宽度容器') +
+      ' · 宽度=' + WIDTH_LABEL[pageWidth];
     menu.appendChild(info);
   }
 
