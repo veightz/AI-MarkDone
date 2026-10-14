@@ -3,7 +3,7 @@
 // @namespace    https://github.com/veightz/AI-MarkDone
 // @updateURL    https://raw.githubusercontent.com/veightz/AI-MarkDone/main/userscript/markdone-lite.user.js
 // @downloadURL  https://raw.githubusercontent.com/veightz/AI-MarkDone/main/userscript/markdone-lite.user.js
-// @version      0.1.202610111806
+// @version      0.1.202610141220
 // @description  ChatGPT 日用子集：视口跟随阅读器、大纲钉住、页面宽度、软刷新消息导航（非全功能扩展）
 // @author       veightz
 // @match        *://chatgpt.com/*
@@ -26,7 +26,7 @@
   if (window.__mdliteBooted) return;
   window.__mdliteBooted = true;
 
-  var VERSION = '0.1.202610111806';
+  var VERSION = '0.1.202610141220';
   var NS = 'mdlite';
   var PIN_KEY = 'mdliteReaderOutlinePinned';
   var NARROW_PX = 720;
@@ -94,9 +94,80 @@
   ].join(',');
   var CONTENT_SELECTOR =
     '.markdown.prose, [data-markdown-text-style="assistant-message"], .markdown, .prose, [class*="markdown"]';
+  var ACTIVE_PAGE_ATTR = 'data-app-shell-active-page';
+
+  // Thin active-main resolver (upstream idea only — not a port of its TS module).
+  // Prefer the unique main under data-app-shell-active-page="true"; else first visible main.
+  var cachedActiveMain = null;
+  var cachedActiveEpoch = 0;
+
+  function isDisplayed(el) {
+    if (!(el instanceof HTMLElement) || !el.isConnected) return false;
+    try {
+      if (window.getComputedStyle(el).display === 'none') return false;
+    } catch (_) {
+      return false;
+    }
+    var rect = el.getBoundingClientRect();
+    return Number.isFinite(rect.width) && Number.isFinite(rect.height);
+  }
+
+  function resolveActiveMain() {
+    var owners = document.querySelectorAll('[' + ACTIVE_PAGE_ATTR + ']');
+    if (owners.length > 0) {
+      var active = [];
+      for (var i = 0; i < owners.length; i++) {
+        var o = owners[i];
+        if (o instanceof HTMLElement && o.getAttribute(ACTIVE_PAGE_ATTR) === 'true') active.push(o);
+      }
+      if (active.length === 1) {
+        var owner = active[0];
+        var nested = false;
+        for (var j = 0; j < owners.length; j++) {
+          var other = owners[j];
+          if (other !== owner && (owner.contains(other) || other.contains(owner))) {
+            nested = true;
+            break;
+          }
+        }
+        if (!nested) {
+          var mains = owner.matches('main') ? [owner] : Array.prototype.slice.call(owner.querySelectorAll('main'));
+          if (mains.length === 1 && mains[0] instanceof HTMLElement) {
+            cachedActiveMain = mains[0];
+            return cachedActiveMain;
+          }
+        }
+      }
+    }
+    var allMains = document.querySelectorAll('main');
+    for (var k = 0; k < allMains.length; k++) {
+      var m = allMains[k];
+      if (isDisplayed(m)) {
+        cachedActiveMain = m;
+        return cachedActiveMain;
+      }
+    }
+    cachedActiveMain = allMains[0] instanceof HTMLElement ? allMains[0] : null;
+    return cachedActiveMain;
+  }
+
+  function getActiveMain() {
+    if (cachedActiveMain && cachedActiveMain.isConnected) {
+      // Re-check marker still matches when present.
+      var owner = cachedActiveMain.closest('[' + ACTIVE_PAGE_ATTR + ']');
+      if (!owner || owner.getAttribute(ACTIVE_PAGE_ATTR) === 'true') return cachedActiveMain;
+    }
+    return resolveActiveMain();
+  }
+
+  function invalidateActiveMain() {
+    cachedActiveMain = null;
+    cachedActiveEpoch += 1;
+  }
 
   function assistantRoots() {
-    var nodes = document.querySelectorAll(ASSISTANT_SELECTOR);
+    var scope = getActiveMain() || document;
+    var nodes = scope.querySelectorAll(ASSISTANT_SELECTOR);
     var out = [];
     for (var i = 0; i < nodes.length; i++) {
       var n = nodes[i];
@@ -113,7 +184,8 @@
 
   function collectRounds() {
     var roots = assistantRoots();
-    var stopVisible = !!document.querySelector('button[data-testid="stop-button"]');
+    var scope = getActiveMain() || document;
+    var stopVisible = !!scope.querySelector('button[data-testid="stop-button"]');
     var rounds = [];
     for (var i = 0; i < roots.length; i++) {
       var root = roots[i];
@@ -249,13 +321,25 @@
     var seen = [];
     var pushUnique = function (node) {
       if (!node || seen.indexOf(node) >= 0) return;
+      // Prefer containers inside the active main when one exists.
+      var active = getActiveMain();
+      if (active && node instanceof HTMLElement && !active.contains(node) && node !== active) {
+        // Allow form/composer nodes that sit outside main but still drive width.
+        var tag = (node.tagName || '').toLowerCase();
+        if (tag !== 'form' && !node.closest('form')) return;
+      }
       seen.push(node);
     };
+    var scope = getActiveMain() || document;
     for (var i = 0; i < PAGE_WIDTH_SELECTORS.length; i++) {
       try {
-        document.querySelectorAll(PAGE_WIDTH_SELECTORS[i]).forEach(pushUnique);
+        scope.querySelectorAll(PAGE_WIDTH_SELECTORS[i]).forEach(pushUnique);
       } catch (_) { /* invalid selector in older engines — ignore */ }
     }
+    // Composer often lives outside main — still scan document for form targets.
+    try {
+      document.querySelectorAll('form[data-type="unified-composer"], form:has(#prompt-textarea), form:has([data-testid="composer"])').forEach(pushUnique);
+    } catch (_) { /* :has unsupported — ignore */ }
     // Prefer nodes that actually constrain width (pixel max-width or the CSS var class).
     var constraining = seen.filter(function (el) {
       var cls = typeof el.className === 'string' ? el.className : '';
@@ -655,8 +739,9 @@
   var lastRoundCount = 0;
 
   function softRefresh() {
-    // Lite: rescan mounted assistants and refresh chip; no location.assign.
+    // Lite: rescan assistants inside the active main only; no location.assign.
     closeMenu();
+    invalidateActiveMain();
     var before = lastRoundCount;
     bound = null;
     pending = null;
@@ -782,8 +867,10 @@
     menu.appendChild(document.createElement('hr'));
     var info = document.createElement('small');
     var widthOk = hasWidthContainer();
+    var activeMain = getActiveMain();
     info.textContent =
       'Lite v' + VERSION + ' · 检测到 ' + assistantRoots().length + ' 条助手回复' +
+      (activeMain ? ' · 已锁定当前页 main' : ' · 未找到 active main') +
       (widthOk ? ' · 宽度容器已命中' : ' · 未找到宽度容器') +
       ' · 宽度=' + WIDTH_LABEL[pageWidth];
     menu.appendChild(info);
@@ -816,6 +903,7 @@
     applyPageWidth();
     if (location.href !== lastHref) {
       lastHref = location.href;
+      invalidateActiveMain();
       bound = null;
       pending = null;
       closeMenu();
@@ -845,7 +933,16 @@
       }
     });
     var moTimer = 0;
-    var mo = new MutationObserver(function () {
+    var mo = new MutationObserver(function (mutations) {
+      var surfaceChanged = false;
+      for (var i = 0; i < mutations.length; i++) {
+        var m = mutations[i];
+        if (m.type === 'attributes' && m.attributeName === ACTIVE_PAGE_ATTR) {
+          surfaceChanged = true;
+          break;
+        }
+      }
+      if (surfaceChanged) invalidateActiveMain();
       scheduleChip();
       if (moTimer) return;
       moTimer = setTimeout(function () {
@@ -853,9 +950,19 @@
         ensureAll();
       }, 250);
     });
-    mo.observe(document.documentElement, { childList: true, subtree: true });
+    mo.observe(document.documentElement, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: [ACTIVE_PAGE_ATTR],
+    });
     setInterval(ensureAll, 1500);
-    console.info('[MarkDone Lite]', VERSION, 'booted;', assistantRoots().length, 'assistant nodes; width=' + pageWidth);
+    var am = getActiveMain();
+    console.info(
+      '[MarkDone Lite]', VERSION, 'booted;',
+      assistantRoots().length, 'assistant nodes; width=' + pageWidth + ';',
+      'activeMain=', am ? (am.id || am.tagName) : 'none',
+    );
   }
 
   if (document.readyState === 'loading') {
