@@ -9,10 +9,48 @@ import {
     createLazyReaderPanel,
     createLazyRunFormulaAssetAction,
     createLazySaveMessagesDialog,
+    createLazyReaderRichAssetSessions,
 } from '@/runtimes/content/lazyContentFeatures';
 import { createAppearanceSnapshot } from '@/style/appearance';
 
 describe('lazy content features', () => {
+    it('loads source asset ownership only on prepare and never for startup or unloaded teardown', async () => {
+        const manager = { prepare: vi.fn(async () => ({ version: 1 as const, leaseId: null, refs: [] })), release: vi.fn(async () => undefined), dispose: vi.fn(async () => undefined) };
+        const createReaderRichAssetSessions = vi.fn(async () => manager);
+        const disposeRichContentResources = vi.fn();
+        const importer = vi.fn(async () => ({ setContentFeatureLocale: vi.fn(), createReaderRichAssetSessions, disposeRichContentResources }));
+        const proxy = createLazyReaderRichAssetSessions(new ContentFeatureModuleLoader(importer as any));
+        await proxy.release('session-1', 'lease-1');
+        await proxy.dispose();
+        expect(importer).not.toHaveBeenCalled();
+        const item = { id: 'item', userPrompt: '', content: 'Body' };
+        await proxy.prepare('session-1', item, 'https://chatgpt.com/c/1', 'lease-1');
+        expect(importer).toHaveBeenCalledTimes(1);
+        expect(createReaderRichAssetSessions).toHaveBeenCalledTimes(1);
+        expect(manager.prepare).toHaveBeenCalledWith('session-1', item, 'https://chatgpt.com/c/1', 'lease-1');
+        await proxy.release('session-1', 'lease-1');
+        await proxy.dispose();
+        expect(manager.release).toHaveBeenCalledWith('session-1', 'lease-1');
+        expect(manager.dispose).toHaveBeenCalledTimes(1);
+        expect(disposeRichContentResources).toHaveBeenCalledTimes(1);
+        expect(importer).toHaveBeenCalledTimes(1);
+    });
+
+    it.each(['release', 'dispose'] as const)('fences a queued asset prepare when %s happens during the feature import', async (action) => {
+        let finish!: (value: unknown) => void;
+        const manager = { prepare: vi.fn(), release: vi.fn(), dispose: vi.fn() };
+        const createReaderRichAssetSessions = vi.fn(async () => manager);
+        const importer = vi.fn(() => new Promise(resolve => { finish = resolve; }));
+        const proxy = createLazyReaderRichAssetSessions(new ContentFeatureModuleLoader(importer as any));
+        const result = proxy.prepare('session-1', { id: 'item', userPrompt: '', content: 'Body' }, 'https://chatgpt.com/c/1', 'lease-1');
+        if (action === 'release') await proxy.release('session-1', 'lease-1');
+        else await proxy.dispose();
+        finish({ setContentFeatureLocale: vi.fn(), createReaderRichAssetSessions, disposeRichContentResources: vi.fn() });
+        await expect(result).rejects.toMatchObject({ name: 'AbortError' });
+        expect(manager.prepare).not.toHaveBeenCalled();
+        expect(importer).toHaveBeenCalledTimes(1);
+    });
+
     it('forwards the settings destination through the real lazy panel entry', async () => {
         const show = vi.fn(async () => undefined);
         const loader = new ContentFeatureModuleLoader(vi.fn(async () => ({setContentFeatureLocale:vi.fn(),createBookmarksPanel:()=>({show,isVisible:()=>true,toggle:vi.fn(),hide:vi.fn()})})) as any);

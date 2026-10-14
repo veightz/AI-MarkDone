@@ -1,4 +1,5 @@
 import type { Theme } from '../../../core/types/theme';
+import { DEFAULT_CONTENT_CLEANUP_SETTINGS, type ContentCleanupSettings } from '../../../core/settings/content';
 import {
     DEFAULT_EXPORT_SETTINGS,
     resolvePngExportPixelRatio,
@@ -13,14 +14,18 @@ import {
 import type { SiteAdapter } from '../../../drivers/content/adapters/base';
 import type { ConversationContentSourceV1 } from '../../../contracts/conversationContent';
 import type { ConversationMaterializationPortV1, ConversationTargetV1 } from '../../../contracts/conversationMaterialization';
+import { freezeRichBlocks } from '../../../contracts/richContent';
 import { buildConversationMetadata } from '../../../drivers/content/conversation/metadata';
 import { subscribeLocaleChange, t } from '../components/i18n';
-import type { ExportProgressEvent, TranslateFn, SaveFormat } from '../../../services/export/saveMessagesTypes';
+import type { ChatTurn, ExportProgressEvent, TranslateFn, SaveFormat } from '../../../services/export/saveMessagesTypes';
 import {
     exportTurnsMarkdown,
+    exportTurnsMarkdownZip,
     exportTurnsPdf,
     exportTurnsPng,
+    type ExportOptions,
 } from '../../../services/export/saveMessagesFacade';
+import { showToast } from '../../../utils/toast';
 import {
     collectFreshReaderContent,
     readerItemsToChatTurns,
@@ -52,12 +57,15 @@ type State = {
     progressValue: number | null;
     renderProgressText: string;
     renderProgressValue: number | null;
+    visuals: 'include' | 'placeholder';
+    resultText: string;
 };
 
 export class SaveMessagesDialog {
     private overlaySession: OverlaySession | null = null;
     private adapter: SiteAdapter | null = null;
-    private turns: Array<{ user: string; assistant: string; index: number }> = [];
+    private turns: ChatTurn[] = [];
+    private contentCleanup: ContentCleanupSettings = DEFAULT_CONTENT_CLEANUP_SETTINGS;
     private metadata: { url: string; exportedAt: string; title: string; count: number; platform: string } | null = null;
     private tooltipDelegate: TooltipDelegate | null = null;
     private unsubscribeLocale: (() => void) | null = null;
@@ -80,11 +88,14 @@ export class SaveMessagesDialog {
         progressValue: null,
         renderProgressText: '',
         renderProgressValue: null,
+        visuals: 'include',
+        resultText: '',
     };
     private closing = false;
     private motionNeedsOpen = false;
     private readonly focusLifecycle = new SurfaceFocusLifecycle();
-    private pngExportAbort: AbortController | null = null;
+    private exportAbort: AbortController | null = null;
+    private operationGeneration = 0;
 
     isOpen(): boolean {
         return Boolean(this.overlaySession);
@@ -93,6 +104,10 @@ export class SaveMessagesDialog {
     setExportSettings(settings: ExportSettings): void {
         this.resolvedPngWidth = resolvePngExportWidth(settings);
         this.resolvedPngPixelRatio = resolvePngExportPixelRatio(settings);
+    }
+
+    setContentCleanupSettings(settings: ContentCleanupSettings): void {
+        this.contentCleanup = { ...settings };
     }
 
     setMarkdownFormulaFormat(format: FormulaSourceFormat): void {
@@ -116,6 +131,9 @@ export class SaveMessagesDialog {
             currentReaderItem?: ReaderItem | null;
         }
     ): Promise<boolean> {
+        const generation = ++this.operationGeneration;
+        this.exportAbort?.abort();
+        this.exportAbort = null;
         this.focusLifecycle.capture();
         this.adapter = adapter;
         this.setAppearance(createAppearanceSnapshot(theme, this.appearance.overrides));
@@ -147,8 +165,13 @@ export class SaveMessagesDialog {
             return false;
         }
         const turns = await readerItemsToChatTurns(items);
+        if (generation !== this.operationGeneration) return false;
         const metadata = buildConversationMetadata(adapter, turns.length);
-        this.turns = turns;
+        this.turns = turns.map(turn => Object.freeze({
+            ...turn,
+            ...(turn.richBlocks ? { richBlocks: freezeRichBlocks(turn.richBlocks) } : {}),
+            ...(turn.richImages ? { richImages: Object.freeze(turn.richImages.map(image => Object.freeze({ ...image }))) } : {}),
+        }));
         this.metadata = metadata;
         this.state.turnsCount = turns.length;
         this.state.selected = this.getInitialSelectedTurns(turns.length, startIndex);
@@ -158,6 +181,8 @@ export class SaveMessagesDialog {
         this.state.progressValue = null;
         this.state.renderProgressText = '';
         this.state.renderProgressValue = null;
+        this.state.visuals = 'include';
+        this.state.resultText = '';
         if (this.overlaySession && this.closing) {
             this.overlaySession.cancelSurfaceClose();
         }
@@ -171,7 +196,8 @@ export class SaveMessagesDialog {
 
     close(): void {
         if (this.closing) return;
-        this.pngExportAbort?.abort();
+        this.exportAbort?.abort();
+        this.operationGeneration += 1;
         const panel = this.overlaySession?.surfaceRoot.querySelector<HTMLElement>('.panel-window');
         const backdrop = this.overlaySession?.backdropRoot.querySelector<HTMLElement>('.panel-stage__overlay');
         if (this.overlaySession && panel) {
@@ -273,6 +299,7 @@ export class SaveMessagesDialog {
         }
 
         const action = actionEl.dataset.action;
+        if (this.state.saving && !['close-panel', 'cancel-png-export', 'cancel-export'].includes(action ?? '')) return;
         switch (action) {
             case 'close-panel':
                 this.close();
@@ -297,11 +324,17 @@ export class SaveMessagesDialog {
                 }
                 return;
             }
+            case 'set-visuals': {
+                this.state.visuals = actionEl.dataset.visuals === 'placeholder' ? 'placeholder' : 'include';
+                this.render();
+                return;
+            }
             case 'save-turns':
                 await this.save();
                 return;
             case 'cancel-png-export':
-                this.cancelPngExport();
+            case 'cancel-export':
+                this.cancelExport();
                 return;
             default:
                 return;
@@ -338,10 +371,11 @@ export class SaveMessagesDialog {
         this.render();
     }
 
-    private cancelPngExport(): void {
-        this.pngExportAbort?.abort();
-        if (this.state.format === 'png' && this.state.saving) {
-            this.state.progressText = this.getLabel('pngExportCancelled', 'PNG export cancelled');
+    private cancelExport(): void {
+        this.exportAbort?.abort();
+        if (this.state.saving) {
+            this.state.progressText = this.getLabel('messageExportCancelled', 'Export cancelled');
+            this.state.resultText = this.state.progressText;
             this.state.renderProgressText = '';
             this.state.renderProgressValue = null;
             this.render();
@@ -356,44 +390,76 @@ export class SaveMessagesDialog {
         const turns = this.turns;
         const metadata = this.metadata;
         const format = this.state.format;
+        const generation = this.operationGeneration;
+        const abort = new AbortController();
+        const current = () => generation === this.operationGeneration;
+        this.exportAbort = abort;
 
         this.state.saving = true;
-        this.state.progressText = '';
+        this.state.progressText = format === 'markdown' ? '' : this.getLabel('messageExportPreparing', 'Preparing content $1', ['0/1']);
         this.state.progressValue = null;
         this.state.renderProgressText = '';
         this.state.renderProgressValue = null;
+        this.state.resultText = '';
         this.render();
-        const pngAbort = format === 'png' ? new AbortController() : null;
-        this.pngExportAbort = pngAbort;
+
+        const options: ExportOptions = {
+            t: this.exportT,
+            contentCleanup: { ...this.contentCleanup },
+            markdownFormulaFormat: this.markdownFormulaFormat,
+            visuals: this.state.visuals,
+            signal: abort.signal,
+            onProgress: event => {
+                if (!current() || abort.signal.aborted) return;
+                if (format === 'png') this.applyPngProgress(event);
+                else this.applyExportProgress(event);
+                if (this.overlaySession && !this.closing) this.render();
+            },
+        };
 
         try {
             const res =
                 format === 'pdf'
-                    ? await (async () => {
-                          this.finishClose();
-                          return exportTurnsPdf(turns, selectedIndices, metadata, { t: this.exportT });
-                      })()
-                    : format === 'png'
-                    ? await exportTurnsPng(turns, selectedIndices, metadata, {
-                          t: this.exportT,
-                          png: { width: this.resolvedPngWidth, pixelRatio: this.resolvedPngPixelRatio },
-                          signal: pngAbort?.signal,
-                          onProgress: (event) => {
-                              this.applyPngProgress(event);
-                              if (this.overlaySession && !this.closing) this.render();
+                    ? await exportTurnsPdf(turns, selectedIndices, metadata, {
+                          ...options,
+                          onPrepared: () => {
+                              // Resource preparation remains cancellable; remove the shell only when native print is about to start.
+                              if (current() && !abort.signal.aborted) this.finishClose();
                           },
                       })
-                    : await exportTurnsMarkdown(turns, selectedIndices, metadata, {
-                          t: this.exportT,
-                          markdownFormulaFormat: this.markdownFormulaFormat,
-                      });
+                    : format === 'png'
+                    ? await exportTurnsPng(turns, selectedIndices, metadata, {
+                          ...options,
+                          png: { width: this.resolvedPngWidth, pixelRatio: this.resolvedPngPixelRatio },
+                      })
+                    : format === 'markdown-zip'
+                    ? await exportTurnsMarkdownZip(turns, selectedIndices, metadata, options)
+                    : await exportTurnsMarkdown(turns, selectedIndices, metadata, options);
 
-            if (!res.ok) return;
-            if (format !== 'pdf') this.close();
+            if (!current()) return;
+            if (!res.ok) {
+                this.state.resultText = res.cancelled || abort.signal.aborted
+                    ? this.getLabel('messageExportCancelled', 'Export cancelled')
+                    : this.getLabel('messageExportFailed', 'Export failed. Please try again.');
+                if (!this.overlaySession && !res.cancelled) showToast({ text: this.state.resultText, tone: 'error' });
+                return;
+            }
+            if (res.richContent?.placeholders && options.visuals !== 'placeholder') {
+                const summary = this.getLabel('messageExportRichFallback', 'Included $1 images; $2 rich blocks use text placeholders.', [String(res.richContent.included), String(res.richContent.placeholders)]);
+                if (this.overlaySession) this.state.resultText = summary;
+                else showToast({ text: summary, tone: 'info' });
+            } else if (format === 'pdf') this.finishClose();
+            else this.close();
+        } catch {
+            if (current()) this.state.resultText = abort.signal.aborted
+                ? this.getLabel('messageExportCancelled', 'Export cancelled')
+                : this.getLabel('messageExportFailed', 'Export failed. Please try again.');
         } finally {
-            this.state.saving = false;
-            if (this.pngExportAbort === pngAbort) this.pngExportAbort = null;
-            if (this.overlaySession && !this.closing) this.render();
+            if (current()) {
+                this.state.saving = false;
+                if (this.exportAbort === abort) this.exportAbort = null;
+                if (this.overlaySession && !this.closing) this.render();
+            }
         }
     }
 
@@ -403,6 +469,7 @@ export class SaveMessagesDialog {
         const selectMessagesLabel = this.getLabel('selectMessagesLabel', 'Select messages');
         const formatLabel = this.getLabel('formatLabel', 'Format');
         const markdownLabel = this.getLabel('formatMarkdown', 'Markdown');
+        const zipLabel = this.getLabel('formatMarkdownZip', 'Markdown offline bundle (ZIP)');
         const pdfLabel = this.getLabel('formatPdf', 'PDF');
         const pngLabel = this.getLabel('formatPng', 'PNG');
         const selectAllLabel = this.getLabel('selectAll', 'Select all');
@@ -411,10 +478,12 @@ export class SaveMessagesDialog {
         const saveLabel = this.state.saving ? this.getLabel('saving', 'Saving') : this.getLabel('btnSave', 'Save');
         const cancelLabel = this.getLabel('btnCancel', 'Cancel');
         const countLabel = this.getSelectedCountLabel();
-        const showProgress = this.state.format === 'png'
-            && this.state.saving
+        const showProgress = this.state.saving
             && (Boolean(this.state.progressText) || Boolean(this.state.renderProgressText));
-        const showCancel = this.state.format === 'png' && this.state.saving;
+        const showCancel = this.state.saving;
+        const showVisuals = ['pdf', 'png'].includes(this.state.format)
+            && [...this.state.selected].some(index => Boolean(this.turns[index]?.richBlocks?.length));
+        const disabled = this.state.saving ? 'disabled' : '';
         const totalProgressValue = this.state.progressValue ?? 0;
         const renderProgressValue = this.state.renderProgressValue ?? 0;
 
@@ -433,15 +502,24 @@ export class SaveMessagesDialog {
     <div class="message-grid">
       ${this.turns.map((turn, index) => {
           const active = this.state.selected.has(index) ? '1' : '0';
-          return `<button class="message-chip" data-action="toggle-turn" data-index="${index}" data-active="${active}" data-tooltip="${escapeHtml(turn.user)}" data-tooltip-title="${index + 1}" data-tooltip-variant="preview">${index + 1}</button>`;
+          return `<button class="message-chip aimd-material-choice" data-action="toggle-turn" data-index="${index}" data-active="${active}" aria-pressed="${active === '1'}" ${disabled} data-tooltip="${escapeHtml(turn.user)}" data-tooltip-title="${index + 1}" data-tooltip-variant="preview">${index + 1}</button>`;
       }).join('')}
     </div>
     <div class="section-label">${escapeHtml(formatLabel)}</div>
-    <div class="segmented">
-      <button data-action="set-format" data-format="markdown" data-active="${this.state.format === 'markdown' ? '1' : '0'}" aria-label="${escapeHtml(markdownLabel)}">${iconMarkup(fileCodeIcon)}<span>${escapeHtml(markdownLabel)}</span></button>
-      <button data-action="set-format" data-format="pdf" data-active="${this.state.format === 'pdf' ? '1' : '0'}" aria-label="${escapeHtml(pdfLabel)}">${iconMarkup(fileTextIcon)}<span>${escapeHtml(pdfLabel)}</span></button>
-      <button data-action="set-format" data-format="png" data-active="${this.state.format === 'png' ? '1' : '0'}" aria-label="${escapeHtml(pngLabel)}">${iconMarkup(imageIcon)}<span>${escapeHtml(pngLabel)}</span></button>
+    <div class="segmented format-options aimd-material-segmented" role="group" aria-label="${escapeHtml(formatLabel)}">
+      <button class="aimd-material-choice" data-action="set-format" data-format="markdown" data-active="${this.state.format === 'markdown' ? '1' : '0'}" aria-pressed="${this.state.format === 'markdown'}" ${disabled} aria-label="${escapeHtml(markdownLabel)}">${iconMarkup(fileCodeIcon)}<span>${escapeHtml(markdownLabel)}</span></button>
+      <button class="aimd-material-choice" data-action="set-format" data-format="markdown-zip" data-active="${this.state.format === 'markdown-zip' ? '1' : '0'}" aria-pressed="${this.state.format === 'markdown-zip'}" ${disabled} aria-label="${escapeHtml(zipLabel)}">${iconMarkup(fileCodeIcon)}<span>${escapeHtml(zipLabel)}</span></button>
+      <button class="aimd-material-choice" data-action="set-format" data-format="pdf" data-active="${this.state.format === 'pdf' ? '1' : '0'}" aria-pressed="${this.state.format === 'pdf'}" ${disabled} aria-label="${escapeHtml(pdfLabel)}">${iconMarkup(fileTextIcon)}<span>${escapeHtml(pdfLabel)}</span></button>
+      <button class="aimd-material-choice" data-action="set-format" data-format="png" data-active="${this.state.format === 'png' ? '1' : '0'}" aria-pressed="${this.state.format === 'png'}" ${disabled} aria-label="${escapeHtml(pngLabel)}">${iconMarkup(imageIcon)}<span>${escapeHtml(pngLabel)}</span></button>
     </div>
+    ${showVisuals ? `<div class="rich-content-options" data-role="rich-content-options">
+      <div class="section-label">${escapeHtml(this.getLabel('messageExportRichLabel', 'Charts and rich content'))}</div>
+      <div class="segmented aimd-material-segmented" role="group" aria-label="${escapeHtml(this.getLabel('messageExportRichLabel', 'Charts and rich content'))}">
+        <button class="aimd-material-choice" data-action="set-visuals" data-visuals="include" data-active="${this.state.visuals === 'include' ? '1' : '0'}" aria-pressed="${this.state.visuals === 'include'}" ${disabled}>${escapeHtml(this.getLabel('messageExportRichInclude', 'Include images'))}</button>
+        <button class="aimd-material-choice" data-action="set-visuals" data-visuals="placeholder" data-active="${this.state.visuals === 'placeholder' ? '1' : '0'}" aria-pressed="${this.state.visuals === 'placeholder'}" ${disabled}>${escapeHtml(this.getLabel('messageExportRichPlaceholder', 'Use text placeholders'))}</button>
+      </div>
+    </div>` : ''}
+    ${this.state.resultText ? `<div class="export-result workflow-dialog__status" data-role="export-result" role="status" aria-live="polite">${escapeHtml(this.state.resultText)}</div>` : ''}
     ${showProgress ? `
     <div class="progress-panel">
       ${this.state.renderProgressText ? `
@@ -461,13 +539,13 @@ export class SaveMessagesDialog {
   </div>
   <div class="panel-footer panel-footer--between">
     <div class="button-row">
-      <button class="secondary-btn secondary-btn--compact" data-action="select-all-turns">${escapeHtml(selectAllLabel)}</button>
-      <button class="secondary-btn secondary-btn--compact" data-action="invert-turns">${escapeHtml(invertSelectionLabel)}</button>
-      <button class="secondary-btn secondary-btn--compact secondary-btn--ghost" data-action="deselect-all-turns">${escapeHtml(deselectAllLabel)}</button>
+      <button class="secondary-btn secondary-btn--compact" data-action="select-all-turns" ${disabled}>${escapeHtml(selectAllLabel)}</button>
+      <button class="secondary-btn secondary-btn--compact" data-action="invert-turns" ${disabled}>${escapeHtml(invertSelectionLabel)}</button>
+      <button class="secondary-btn secondary-btn--compact secondary-btn--ghost" data-action="deselect-all-turns" ${disabled}>${escapeHtml(deselectAllLabel)}</button>
     </div>
     <div class="footer-cluster workflow-dialog__actions">
       <div class="counter">${escapeHtml(countLabel)}</div>
-      ${showCancel ? `<button class="secondary-btn secondary-btn--compact secondary-btn--ghost" data-action="cancel-png-export">${escapeHtml(cancelLabel)}</button>` : ''}
+      ${showCancel ? `<button class="secondary-btn secondary-btn--compact secondary-btn--ghost" data-action="${this.state.format === 'png' ? 'cancel-png-export' : 'cancel-export'}">${escapeHtml(cancelLabel)}</button>` : ''}
       <button class="secondary-btn secondary-btn--compact secondary-btn--primary" data-action="save-turns" ${this.state.selected.size === 0 || this.state.saving ? 'disabled' : ''}>${escapeHtml(saveLabel)}</button>
     </div>
   </div>
@@ -491,6 +569,23 @@ export class SaveMessagesDialog {
         const translated = t('selectedCountMessages', [count, total]);
         if (!translated || translated === 'selectedCountMessages') return `${count}/${total} selected`;
         return translated;
+    }
+
+    private applyExportProgress(event: ExportProgressEvent): void {
+        const count = `${event.completed}/${event.total}`;
+        if (event.phase === 'preparing' || event.phase === 'rendering') {
+            this.state.progressText = this.getLabel('messageExportPreparing', `Preparing content ${count}`, [count]);
+            this.state.progressValue = event.total > 0 ? Math.min(90, Math.round(event.completed / event.total * 90)) : 0;
+        } else if (event.phase === 'zipping') {
+            this.state.progressText = this.getLabel('messageExportPackaging', 'Packaging offline bundle');
+            this.state.progressValue = 95;
+        } else if (event.phase === 'downloading') {
+            this.state.progressText = this.getLabel('pngExportDownloading', 'Downloading export');
+            this.state.progressValue = 98;
+        } else {
+            this.state.progressText = this.getLabel('messageExportReady', 'Export ready');
+            this.state.progressValue = 100;
+        }
     }
 
     private applyPngProgress(event: ExportProgressEvent): void {

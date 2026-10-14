@@ -1,5 +1,6 @@
 import { getPanelChromeCss } from '../components/styles/panelChromeCss';
 import { getWorkflowDialogChromeCss } from '../components/styles/workflowDialogChromeCss';
+import { getSurfaceMaterialCss } from '../components/styles/surfaceMaterialCss';
 
 export function getSaveMessagesDialogCss(): string {
     return `
@@ -75,40 +76,21 @@ ${getWorkflowDialogChromeCss()}
   width: 42px;
   min-width: 42px;
   height: 34px;
-  border-radius: var(--aimd-radius-md);
-  border: 1px solid var(--aimd-border-default);
   display: inline-flex;
   align-items: center;
   justify-content: center;
   font-size: var(--aimd-text-xs);
-  color: var(--aimd-text-primary);
-  background: transparent;
-}
-
-.message-chip:hover {
-  background: var(--aimd-button-secondary-hover);
-}
-
-.message-chip[data-active="1"] {
-  background: var(--aimd-interactive-primary);
-  border-color: transparent;
-  color: var(--aimd-text-on-primary);
-}
-
-.message-chip[data-active="1"]:hover {
-  background: var(--aimd-interactive-primary-hover);
 }
 
 .segmented {
   display: grid;
   grid-auto-flow: column;
   grid-auto-columns: 1fr;
-  border: 1px solid var(--aimd-border-default);
-  border-radius: var(--aimd-radius-lg);
-  overflow: hidden;
+  gap: var(--aimd-space-1);
+  padding: var(--aimd-space-1);
 }
 
-.segmented button {
+.segmented :where(button) {
   all: unset;
   box-sizing: border-box;
   cursor: pointer;
@@ -120,26 +102,32 @@ ${getWorkflowDialogChromeCss()}
   gap: var(--aimd-space-2);
   padding: 0 var(--aimd-space-4);
   font-size: var(--aimd-text-sm);
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.format-options {
+  grid-auto-flow: row;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.format-options button {
+  padding: var(--aimd-space-2) var(--aimd-space-3);
+}
+
+.rich-content-options {
+  display: grid;
+  gap: var(--aimd-space-2);
+  margin-top: var(--aimd-space-4);
+}
+
+.rich-content-options button {
+  padding: var(--aimd-space-2) var(--aimd-space-3);
+}
+
+.export-result {
+  margin-top: var(--aimd-space-4);
   color: var(--aimd-text-secondary);
-  border-right: 1px solid var(--aimd-border-default);
-}
-
-.segmented button:last-child {
-  border-right: none;
-}
-
-.segmented button:hover {
-  background: var(--aimd-button-secondary-hover);
-  color: var(--aimd-text-primary);
-}
-
-.segmented button[data-active="1"] {
-  background: var(--aimd-interactive-primary);
-  color: var(--aimd-text-on-primary);
-}
-
-.segmented button[data-active="1"]:hover {
-  background: var(--aimd-interactive-primary-hover);
 }
 
 .segmented .aimd-icon,
@@ -168,14 +156,14 @@ ${getWorkflowDialogChromeCss()}
   height: var(--aimd-space-2);
   overflow: hidden;
   border-radius: var(--aimd-radius-full);
-  background: color-mix(in srgb, var(--aimd-bg-secondary) 76%, var(--aimd-border-default));
+  background: var(--aimd-workspace-surface);
 }
 
 .progress-fill {
   position: absolute;
   inset: 0 auto 0 0;
   border-radius: inherit;
-  background: linear-gradient(90deg, var(--aimd-interactive-primary), var(--aimd-interactive-primary-hover));
+  background: var(--aimd-interactive-primary);
 }
 
 .panel-footer--between {
@@ -221,5 +209,6 @@ ${getWorkflowDialogChromeCss()}
     justify-content: space-between;
   }
 }
+${getSurfaceMaterialCss()}
 `;
 }

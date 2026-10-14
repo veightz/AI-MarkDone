@@ -2,6 +2,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+const releaseVersion: string = JSON.parse(fs.readFileSync(path.resolve(process.cwd(), 'package.json'), 'utf8')).version;
+
 vi.mock('@/drivers/shared/clients/bookmarksClient', () => ({
     bookmarksClient: {
         getChangelogNotice: vi.fn(async () => ({
@@ -87,10 +89,10 @@ describe('ReaderPanel presentation', () => {
         vi.mocked(bookmarksClient.getChangelogNotice).mockResolvedValueOnce({
             ok: true,
             data: {
-                pendingVersion: '6.0.0',
+                pendingVersion: releaseVersion,
                 lastShownVersion: null,
                 reason: 'update',
-                previousVersion: '5.4.1',
+                previousVersion: '6.0.0',
             },
         } as any);
         const panel = new ReaderPanel();
@@ -105,17 +107,17 @@ describe('ReaderPanel presentation', () => {
             const shadow = host.shadowRoot as ShadowRoot;
             const modal = shadow.querySelector<HTMLElement>('.mock-modal');
 
-            expect(modal?.querySelector('.mock-modal__title-copy strong')?.textContent).toBe("What's new in AI-MarkDone 6.0.0");
-            expect(modal?.textContent).toContain('2026-09-25');
-            expect(modal?.textContent).toContain('three highlight colors');
-            expect(modal?.textContent).toContain('Input Enhancement options have moved into Settings');
+            expect(modal?.querySelector('.mock-modal__title-copy strong')?.textContent).toBe(`What's new in AI-MarkDone ${releaseVersion}`);
+            expect(modal?.textContent).toContain('2026-10-13');
+            expect(modal?.textContent).toContain('movable in-page window');
+            expect(modal?.textContent).toContain('code fences');
             expect(Array.from(modal?.querySelectorAll<HTMLButtonElement>('.mock-modal__button') ?? []).map((button) => button.textContent)).toEqual(['OK']);
 
             const okButton = modal?.querySelector<HTMLButtonElement>('.mock-modal__button');
             okButton?.click();
             await Promise.resolve();
 
-            expect(bookmarksClient.ackChangelogNotice).toHaveBeenCalledWith('6.0.0');
+            expect(bookmarksClient.ackChangelogNotice).toHaveBeenCalledWith(releaseVersion);
         } finally {
             panel.hide();
         }
@@ -195,7 +197,7 @@ describe('ReaderPanel presentation', () => {
             expect(headerMeta).toBeTruthy();
             expect(headerTitle?.textContent).toBeTruthy();
             expect(pageCounter?.textContent).toBe('1/1');
-            expect(userSection?.textContent).toContain('User');
+            expect(userSection?.textContent).toContain('Question');
             expect(userSection?.textContent).toContain(longPrompt);
             expect(assistantSection?.textContent).toContain('AI');
             expect(markdownRoot?.textContent).toContain('md1');
@@ -481,6 +483,7 @@ describe('ReaderPanel presentation', () => {
 
             expect(onChange).toHaveBeenCalledWith({ bodyFontSizePx: 17 });
             expect(shell.getAttribute('style')).toContain('--aimd-reader-markdown-body-size: 17px');
+            expect(settingsPanel.isConnected).toBe(true);
 
             const contentWidth = settingsPanel.querySelector<HTMLInputElement>('[data-role="reader-settings-content-width"]')!;
             expect(contentWidth.type).toBe('range');
@@ -496,6 +499,7 @@ describe('ReaderPanel presentation', () => {
 
             expect(onChange).toHaveBeenCalledWith({ contentMaxWidthPx: 1540 });
             expect(settingsPanel.querySelector<HTMLElement>('[data-role="reader-settings-content-width-value"]')?.textContent).toBe('1540px');
+            expect(settingsPanel.isConnected).toBe(true);
 
             settingsPanel.querySelector<HTMLButtonElement>('[data-action="reader-settings-detached-notice-reset"]')!.click();
             await Promise.resolve();
@@ -578,18 +582,30 @@ describe('ReaderPanel presentation', () => {
             const shadow = host.shadowRoot as ShadowRoot;
             const settingsTrigger = shadow.querySelector<HTMLButtonElement>('[data-action="reader-settings"]')!;
             settingsTrigger.focus();
+            settingsTrigger.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true, composed: true }));
             settingsTrigger.click();
 
             const settingsPanel = shadow.querySelector<HTMLElement>('.reader-settings-popover--display')!;
-            expect(settingsPanel.dataset.aimdSurfaceProfile).toBe('panel');
+            expect(settingsPanel.dataset.aimdSurfaceProfile).toBe('anchored');
+            expect(settingsPanel.classList.contains('aimd-material-surface')).toBe(true);
+            expect(settingsPanel.querySelector('.panel-header.aimd-material-chrome')).toBeTruthy();
             expect(settingsPanel.getAttribute('role')).toBe('dialog');
-            expect(settingsPanel.getAttribute('aria-modal')).toBe('true');
+            expect(settingsPanel.getAttribute('aria-modal')).toBe('false');
 
             const templateTrigger = settingsPanel.querySelector<HTMLButtonElement>('[data-action="reader-settings-comment-template"]')!;
             templateTrigger.focus();
+            templateTrigger.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true, composed: true }));
             templateTrigger.click();
             const templatePanel = shadow.querySelector<HTMLElement>('.reader-settings-popover--template')!;
             expect(templatePanel.dataset.aimdSurfaceProfile).toBe('panel');
+            const templateEditor = templatePanel.querySelector<HTMLElement>('[data-role="commentTemplate"]')!;
+            expect(templatePanel.classList.contains('aimd-material-surface')).toBe(true);
+            expect(templateEditor.classList.contains('aimd-material-field')).toBe(true);
+            expect(templatePanel.querySelector('[data-role="preview"].aimd-material-field')).toBeTruthy();
+            templateEditor.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true, composed: true }));
+            expect(templatePanel.isConnected).toBe(true);
+            templateEditor.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', isComposing: true, bubbles: true, composed: true, cancelable: true }));
+            expect(templatePanel.isConnected).toBe(true);
 
             templatePanel.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
             expect(shadow.querySelector('.reader-settings-popover--template')).toBeNull();

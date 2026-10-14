@@ -9,6 +9,7 @@ import { AIMD_VIEWPORT_RESIZE_IDLE_EVENT } from '@/ui/content/controllers/Viewpo
 import { setLocale } from '@/ui/content/components/i18n';
 import { ChatGPTConversationSurface } from '@/drivers/content/chatgpt/ChatGPTConversationSurface';
 import type { ConversationSurfacePortV1 } from '@/contracts/conversationSurface';
+import { richSvgBlock } from '../../../../helpers/richContentFixtures';
 import {
     createConversationContentSource,
     readyConversationState,
@@ -17,7 +18,10 @@ import {
 const navigationMocks = vi.hoisted(() => ({
     scrollToBookmarkTargetWithRetry: vi.fn(),
     highlightNavigationTarget: vi.fn(),
+    showToast: vi.fn(),
 }));
+
+vi.mock('@/utils/toast', () => ({ showToast: navigationMocks.showToast }));
 
 vi.mock('@/drivers/content/bookmarks/navigation', () => ({
     scrollToBookmarkTargetWithRetry: navigationMocks.scrollToBookmarkTargetWithRetry,
@@ -364,6 +368,22 @@ describe('ChatGPTDirectoryController', () => {
         controller.dispose();
     });
 
+    it.each(['failed', 'rejected'] as const)('reports an unsuccessful real directory click (%s)', async (kind) => {
+        navigationMocks.showToast.mockClear();
+        const adapter = new ChatGPTTestAdapter();
+        const navigation = { navigate: vi.fn(() => kind === 'rejected'
+            ? Promise.reject(new Error('navigation unavailable'))
+            : Promise.resolve({ ok: false as const, reason: 'hydration-timeout' as const })), cancelActive: vi.fn() };
+        const controller = createDirectoryController(adapter, { subscribe: vi.fn(() => () => undefined) }, null, { navigation });
+        (controller as any).ensureRail();
+        setCanonicalSnapshot(adapter, buildSnapshot());
+        controller.render();
+        document.getElementById('aimd-chatgpt-directory-rail')!.shadowRoot!
+            .querySelector<HTMLButtonElement>('.rail__item')!.click();
+        await vi.advanceTimersByTimeAsync(0);
+        expect(navigationMocks.showToast).toHaveBeenCalledWith(expect.objectContaining({ tone: 'error' }));
+    });
+
     it('routes an unmounted round click through its persistent host slot when turn wrappers repeat the slot marker', async () => {
         document.body.innerHTML = `
           <main>
@@ -632,6 +652,7 @@ describe('ChatGPTDirectoryController', () => {
 
         list?.dispatchEvent(new Event('pointerleave', { bubbles: true }));
 
+        vi.advanceTimersByTime(400);
         expect(list?.dataset.hasHover).toBe('0');
         expect(items.every((item) => item.dataset.proximity === undefined)).toBe(true);
     });
@@ -755,6 +776,7 @@ describe('ChatGPTDirectoryController', () => {
         expect(preview?.textContent?.match(/First question/g)).toHaveLength(1);
 
         list?.dispatchEvent(new Event('pointerleave', { bubbles: true }));
+        vi.advanceTimersByTime(400);
         expect(preview?.dataset.open).toBe('0');
     });
 
@@ -828,6 +850,7 @@ describe('ChatGPTDirectoryController', () => {
         expect(document.getElementById('aimd-chatgpt-directory-preview')?.dataset.open).toBe('1');
 
         list?.dispatchEvent(new Event('pointerleave', { bubbles: true }));
+        vi.advanceTimersByTime(400);
         expect(list?.dataset.expanded).toBe('0');
         expect(list?.dataset.hasHover).toBe('0');
     });
@@ -904,6 +927,37 @@ describe('ChatGPTDirectoryController', () => {
             .toContain('Updated assistant-only content');
     });
 
+    it('projects assistant-only rich placeholders for labels and previews without altering canonical targets', async () => {
+        const adapter = new ChatGPTTestAdapter();
+        const state = readyConversationState(buildSnapshot());
+        const first = state.snapshot.turns[0]!;
+        const source = createConversationContentSource({ ...state, snapshot: { ...state.snapshot, turns: [
+            { ...first, userText: '', identity: { ...first.identity, userMessageId: null }, assistantMarkdown: '![Diagram](aimd-rich:block-1)', assistantRichBlocks: [richSvgBlock({ fallbackMarkdown: 'Diagram preview is available as an image.' })] },
+            state.snapshot.turns[1]!,
+        ] } });
+        const surface = new ChatGPTConversationSurface({ adapter, content: source });
+        const navigate = vi.fn(async () => ({ ok: false, reason: 'target-unresolved' }));
+        const controller = new ChatGPTDirectoryController(adapter, null, { surface, navigation: { navigate } as any });
+        directorySurfaces.add(surface);
+        directoryControllers.add(controller);
+        controller.init('light');
+        controller.setDisplayMode('expanded');
+        controller.render();
+        const shadow = document.getElementById('aimd-chatgpt-directory-rail')!.shadowRoot!;
+        const items = Array.from(shadow.querySelectorAll<HTMLButtonElement>('.rail__item'));
+        expect(items.map(item => item.dataset.position)).toEqual(['1', '2']);
+        expect(items[0]?.textContent).toContain('Diagram preview');
+        expect(items[0]?.getAttribute('aria-label')).not.toContain('aimd-rich:');
+        items[0]!.dispatchEvent(new Event('pointerover', { bubbles: true }));
+        const preview = document.getElementById('aimd-chatgpt-directory-preview')!;
+        expect(preview.textContent).toContain('Diagram preview');
+        expect(preview.textContent).not.toContain('aimd-rich:');
+        items[0]!.click();
+        await Promise.resolve();
+        expect(navigate).toHaveBeenCalledWith(expect.objectContaining({ assistantMessageId: first.identity.assistantMessageId, position: first.ordinal }), expect.any(Object));
+        expect(source.read().snapshot?.turns[0]?.assistantMarkdown).toBe('![Diagram](aimd-rich:block-1)');
+    });
+
     it('shows the same bounded preview in expanded mode and preserves Unicode characters', () => {
         const rail = new ChatGPTDirectoryRail('light', () => undefined);
         const longText = `${'中'.repeat(210)}🧭`;
@@ -949,6 +1003,7 @@ describe('ChatGPTDirectoryController', () => {
     it('keeps the preview action toolbar interactive while moving from a directory item', async () => {
         const onReader = vi.fn(async () => ({ ok: true as const, message: 'opened' }));
         const rail = new ChatGPTDirectoryRail('light', () => undefined);
+        rail.setDisplayMode('expanded');
         rail.setPreviewActionsFactory(() => [{
             id: 'reader',
             label: 'Reader',
@@ -972,6 +1027,13 @@ describe('ChatGPTDirectoryController', () => {
         const preview = document.getElementById('aimd-chatgpt-directory-preview');
         item?.dispatchEvent(new Event('pointerover', { bubbles: true }));
         list?.dispatchEvent(new Event('pointerleave', { bubbles: true }));
+        expect(list?.dataset.expanded).toBe('1');
+        preview?.dispatchEvent(new Event('pointerenter', { bubbles: true }));
+        vi.advanceTimersByTime(500);
+        expect(list?.dataset.expanded).toBe('1');
+        preview?.dispatchEvent(new Event('pointerleave', { bubbles: true }));
+        vi.advanceTimersByTime(200);
+        expect(list?.dataset.expanded).toBe('1');
         preview?.dispatchEvent(new Event('pointerenter', { bubbles: true }));
 
         const actionButton = preview?.querySelector<HTMLElement>('.aimd-message-toolbar-host')?.shadowRoot
@@ -1938,6 +2000,29 @@ describe('ChatGPTDirectoryRail active following', () => {
         document.body.innerHTML = '';
     });
 
+    it('docks the same navigation buttons outside the centered list and keeps their click behavior', () => {
+        const rail = new ChatGPTDirectoryRail('light', vi.fn());
+        rail.ensureAttached();
+        const previous = document.createElement('button');
+        const next = document.createElement('button');
+        previous.dataset.action = 'previous-message';
+        next.dataset.action = 'next-message';
+        previous.disabled = true;
+        const onNext = vi.fn();
+        next.addEventListener('click', onNext);
+        rail.setNavigationControls(previous, next);
+        const shell = rail.getElement().shadowRoot!.querySelector('.rail')!;
+        const controls = rail.getElement().shadowRoot!.querySelector('.rail__navigation-controls')!;
+        expect(shell.contains(controls)).toBe(false);
+        expect(controls.firstElementChild).toBe(previous);
+        expect(controls.lastElementChild).toBe(next);
+        expect(previous.disabled).toBe(true);
+        next.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true }));
+        next.click();
+        expect(onNext).toHaveBeenCalledOnce();
+        rail.dispose();
+    });
+
     it('centers the active item by scrolling only the rail list', () => {
         const rail = new ChatGPTDirectoryRail('light', vi.fn());
         document.body.appendChild(rail.getElement());
@@ -1954,6 +2039,24 @@ describe('ChatGPTDirectoryRail active following', () => {
         expect(list.scrollTop).toBe(135);
         expect(scrollIntoView).not.toHaveBeenCalled();
         rail.dispose();
+    });
+
+    it('follows the current position after late history supplies its previously missing row', () => {
+        const rail = new ChatGPTDirectoryRail('light', vi.fn());
+        document.body.append(rail.getElement());
+        const list = rail.getElement().shadowRoot!.querySelector<HTMLElement>('.rail__list')!;
+        Object.defineProperties(list, { clientHeight: { value: 100 }, scrollHeight: { value: 400 } });
+        const top = vi.spyOn(HTMLElement.prototype, 'offsetTop', 'get').mockImplementation(function () { return this.dataset.position === '2' ? 180 : 0; });
+        const height = vi.spyOn(HTMLElement.prototype, 'offsetHeight', 'get').mockReturnValue(10);
+        try {
+            rail.setActivePosition(2);
+            rail.setRounds(buildSnapshot().rounds);
+            expect(list.scrollTop).toBe(135);
+        } finally {
+            rail.dispose();
+            top.mockRestore();
+            height.mockRestore();
+        }
     });
 
     it('does not auto-scroll the rail while the user is interacting with it', () => {

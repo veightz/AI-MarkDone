@@ -3,6 +3,25 @@ import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 describe('ChatGPT performance benchmark contract', () => {
+    it('checks the selected atom before comment focus and closes the actual annotation editor', () => {
+        const source = readFileSync(resolve('scripts/benchmark-chatgpt-runtime.ts'), 'utf8');
+        const selected = source.indexOf('const selectedCount =');
+        const openComment = source.indexOf('await page.locator(\'[data-action="page-comment-add"]\').click()');
+        const focusInput = source.indexOf('await commentEditor.locator(\'[data-role="input"]\').click()');
+        const clearSelection = source.indexOf('const clearedCount =');
+        const closeEditor = source.indexOf('await commentEditor.locator(\'[data-action="close"]\').click(');
+        expect(selected).toBeGreaterThan(0);
+        expect(openComment).toBeGreaterThan(selected);
+        expect(focusInput).toBeGreaterThan(openComment);
+        expect(clearSelection).toBeGreaterThan(focusInput);
+        expect(closeEditor).toBeGreaterThan(clearSelection);
+        expect(source).toContain("await commentEditor.waitFor({ state: 'detached'");
+        expect(source).not.toContain('reader-comment-cancel');
+        expect(source).toContain('selectionContract.selectedCount < 1');
+        expect(source).toContain('selectionContract.clearedCount !== 0');
+        expect(source).toContain('selectionAttributeWrites > 2');
+    });
+
     it('collects renderer garbage before recording comparable heap usage', () => {
         const source = readFileSync(resolve('scripts/benchmark-chatgpt-runtime.ts'), 'utf8');
 

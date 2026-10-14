@@ -1,3 +1,5 @@
+import type { RichContentBindingV1, RichContentReplacementV1 } from './richContent';
+
 /**
  * Provider-neutral semantic content contract.
  *
@@ -156,9 +158,18 @@ export type SemanticProjectionRequestV1 =
     | Readonly<{ kind: 'canonical-markdown' }>
     | Readonly<{ kind: 'markdown-fragment'; selection: SemanticSelectionV1 }>
     | Readonly<{ kind: 'plain-text' }>
-    | Readonly<{ kind: 'reader-structure' }>;
+    | Readonly<{ kind: 'reader-structure' }>
+    | Readonly<{ kind: 'rich-content'; replacements: readonly RichContentReplacementV1[] }>;
 
 export type SemanticProjectionOutcomeV1 =
+    | Readonly<{
+        status: 'ready';
+        kind: 'rich-content';
+        revision: string;
+        markdown: string;
+        bindings: readonly RichContentBindingV1[];
+        diagnostics: readonly SemanticDiagnosticV1[];
+    }>
     | Readonly<{
         status: 'ready';
         kind: 'canonical-markdown' | 'markdown-fragment';

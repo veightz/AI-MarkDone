@@ -5,6 +5,7 @@ export function getReferenceTokenCss(theme: Theme): string {
 
     return `
 :host {
+  --aimd-ref-color-neutral-black: #000000;
   --aimd-ref-color-highlight-blue: ${isDark ? '#344B63' : '#DCE9F6'};
   --aimd-ref-color-highlight-yellow: ${isDark ? '#554D32' : '#F5EBBF'};
   --aimd-ref-color-highlight-red: ${isDark ? '#593E42' : '#F2DCD9'};
@@ -30,12 +31,12 @@ export function getReferenceTokenCss(theme: Theme): string {
   --aimd-ref-color-neutral-alpha-22: ${isDark ? 'rgba(255,255,255,0.22)' : 'rgba(0,0,0,0.22)'};
   --aimd-ref-color-black-alpha-06: rgba(0,0,0,0.06);
   --aimd-ref-color-white-alpha-16: rgba(255,255,255,0.16);
-  --aimd-ref-color-brand-600: #2563eb;
-  --aimd-ref-color-brand-700: #1d4ed8;
+  --aimd-ref-color-brand-600: #3b5bdb;
+  --aimd-ref-color-brand-700: #304bc0;
   --aimd-ref-color-neutral-white: #ffffff;
-  --aimd-ref-color-brand-alpha-12: ${isDark ? 'rgba(37, 99, 235, 0.18)' : 'rgba(37, 99, 235, 0.12)'};
-  --aimd-ref-color-brand-alpha-28: ${isDark ? 'rgba(37, 99, 235, 0.36)' : 'rgba(37, 99, 235, 0.28)'};
-  --aimd-ref-color-brand-alpha-35: rgba(37,99,235,0.35);
+  --aimd-ref-color-brand-alpha-12: ${isDark ? 'rgba(59, 91, 219, 0.18)' : 'rgba(59, 91, 219, 0.12)'};
+  --aimd-ref-color-brand-alpha-28: ${isDark ? 'rgba(59, 91, 219, 0.36)' : 'rgba(59, 91, 219, 0.28)'};
+  --aimd-ref-color-brand-alpha-35: rgba(59,91,219,0.35);
   --aimd-ref-color-bookmark-rainbow-rose: #f43f5e;
   --aimd-ref-color-bookmark-rainbow-amber: #f59e0b;
   --aimd-ref-color-bookmark-rainbow-emerald: #10b981;
@@ -51,7 +52,6 @@ export function getReferenceTokenCss(theme: Theme): string {
   --aimd-ref-shadow-xs: ${isDark ? '0 1px 2px rgba(0,0,0,0.55)' : '0 1px 2px rgba(0,0,0,0.12)'};
   --aimd-ref-shadow-sm: ${isDark ? '0 6px 16px rgba(0,0,0,0.52)' : '0 4px 12px rgba(0,0,0,0.12)'};
   --aimd-ref-shadow-lg: ${isDark ? '0 14px 34px rgba(0,0,0,0.68)' : '0 22px 56px rgba(148,163,184,0.24)'};
-  --aimd-ref-shadow-xl: ${isDark ? '0 18px 60px rgba(0,0,0,0.66)' : '0 28px 80px rgba(148,163,184,0.28)'};
   --aimd-ref-shadow-focus: ${isDark ? '0 0 0 2px rgba(26,115,232,0.38)' : '0 0 0 2px rgba(59,130,246,0.20)'};
 
   --aimd-ref-type-size-075: 12px;

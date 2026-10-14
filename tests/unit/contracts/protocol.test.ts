@@ -176,6 +176,14 @@ describe('protocol', () => {
         })).toBe(false);
     });
 
+    it('requires versioned bounded detached asset requests and lease release', () => {
+        const base = { v: PROTOCOL_VERSION, id: createRequestId(), type: 'readerSession:assets', payload: { version: 1, sessionId: 'reader_1', itemId: 'item-1', blockVersions: [{ blockId: 'block-1', visualDigest: 'visual-1' }] } };
+        expect(isExtRequest(base)).toBe(true);
+        expect(isExtRequest({ ...base, payload: { ...base.payload, version: 2 } })).toBe(false);
+        expect(isExtRequest({ ...base, payload: { ...base.payload, itemId: '' } })).toBe(false);
+        expect(isExtRequest({ ...base, type: 'readerSession:releaseAssets', payload: { version: 1, sessionId: 'reader_1', leaseId: 'lease-1' } })).toBe(true);
+    });
+
     it('validates annotation CRUD and navigation messages', () => {
         const annotation = {
             id: 'a1',

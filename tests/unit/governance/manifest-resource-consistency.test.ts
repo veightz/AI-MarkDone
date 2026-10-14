@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { extensionIconFiles, safariExcludedIconFiles, safariExcludedLocaleMessageKeys } from '../../../config/extension/surface';
 import { CHATGPT_HOST_PATTERNS, SUPPORTED_HOST_PATTERNS } from '../../../config/extension/hosts';
 
 type ChromeManifest = {
@@ -43,38 +42,16 @@ describe('manifest resource consistency', () => {
         expect(chromeResources).toContain('content-features.js');
         expect(chromeResources).toContain('content-feature-chunks/*.js');
         expect(chromeResources).toContain('export-renderer.html');
+        expect(chromeResources).toContain('rich-asset-relay.html');
+        expect(chromeResources).not.toContain('rich-asset-relay.js');
         expect(chromeResources).not.toContain('export-renderer.js');
         expect(chromeResources).not.toContain('export-renderer-chunks/*.js');
         expect(chromeResources).not.toContain('png-encoder-worker.js');
     });
 
-    it('keeps Safari App Store resources on a strict allowlist without sponsor or social assets', () => {
-        const safari = readJson<Mv2Manifest>('manifest.safari.json');
-        const safariResources = normalized(safari.web_accessible_resources);
 
-        for (const file of extensionIconFiles) {
-            expect(safariResources).toContain(`icons/${file}`);
-        }
-        expect(safariResources).not.toContain('icons/*.png');
-        for (const file of safariExcludedIconFiles) {
-            expect(safariResources).not.toContain(`icons/${file}`);
-        }
-    });
 
-    it('defines Safari locale exclusions for sponsor and social messages', () => {
-        expect(safariExcludedLocaleMessageKeys).toEqual(expect.arrayContaining([
-            'tabSponsor',
-            'supportCoffeeDesc',
-            'buyMeCoffee',
-            'wechatAppreciationCode',
-            'findMeOnXiaohongshu',
-            'communityCardTitle',
-            'communityQQTitle',
-            'communityXiaohongshuTitle',
-            'communityPrivacyNote',
-            'sponsorThanksTitle',
-        ]));
-    });
+
 
     it('chrome web_accessible_resources matches should stay limited to supported content hosts', () => {
         const chrome = readJson<ChromeManifest>('manifest.chrome.json');
@@ -89,52 +66,40 @@ describe('manifest resource consistency', () => {
     it('toolbar/action icon paths should stay aligned across manifests', () => {
         const chrome = readJson<ChromeManifest>('manifest.chrome.json');
         const firefox = readJson<Mv2Manifest>('manifest.firefox.json');
-        const safari = readJson<Mv2Manifest>('manifest.safari.json');
 
         const chromeIcons = chrome.action?.default_icon || {};
         const firefoxIcons = firefox.browser_action?.default_icon || {};
-        const safariIcons = safari.browser_action?.default_icon || {};
 
         expect(chromeIcons).toEqual(firefoxIcons);
-        expect(chromeIcons).toEqual(safariIcons);
         expect(chrome.icons).toEqual(firefox.icons);
-        expect(chrome.icons).toEqual(safari.icons);
     });
 
     it('background entries should match each target runtime model', () => {
         const chrome = readJson<ChromeManifest>('manifest.chrome.json');
         const firefox = readJson<Mv2Manifest>('manifest.firefox.json');
-        const safari = readJson<Mv2Manifest>('manifest.safari.json');
 
         expect(chrome.background).toEqual({ service_worker: 'background.js' });
         expect(firefox.background).toEqual({ scripts: ['background.js'] });
-        expect(safari.background).toEqual({ scripts: ['background.js'] });
     });
 
     it('default manifests should not expose ChatGPT early-prune entrypoints', () => {
         const chrome = readJson<ChromeManifest>('manifest.chrome.json');
         const firefox = readJson<Mv2Manifest>('manifest.firefox.json');
-        const safari = readJson<Mv2Manifest>('manifest.safari.json');
 
         const chromeScripts = chrome.content_scripts?.flatMap((item) => item.js || []) || [];
         const firefoxScripts = firefox.content_scripts?.flatMap((item) => item.js || []) || [];
-        const safariScripts = safari.content_scripts?.flatMap((item) => item.js || []) || [];
         const chromeResources = normalized(chrome.web_accessible_resources?.[0]?.resources);
         const firefoxResources = normalized(firefox.web_accessible_resources);
-        const safariResources = normalized(safari.web_accessible_resources);
 
         expect(chromeScripts).not.toContain('content-early.js');
         expect(firefoxScripts).not.toContain('content-early.js');
-        expect(safariScripts).not.toContain('content-early.js');
         expect(chromeResources).not.toContain('content-early-main.js');
         expect(firefoxResources).not.toContain('content-early-main.js');
-        expect(safariResources).not.toContain('content-early-main.js');
     });
 
     it('ships the 5.3 GET seed bridge only for Chrome and Firefox', () => {
         const chrome = readJson<ChromeManifest>('manifest.chrome.json');
         const firefox = readJson<Mv2Manifest>('manifest.firefox.json');
-        const safari = readJson<Mv2Manifest>('manifest.safari.json');
 
         for (const manifest of [chrome, firefox]) {
             const entries = manifest.content_scripts || [];
@@ -153,12 +118,8 @@ describe('manifest resource consistency', () => {
             expect(resources).toContain('page-bridges/chatgpt-conversation-bridge.js');
         }
 
-        const safariEntries = safari.content_scripts || [];
-        const safariScripts = safariEntries.flatMap((item) => item.js || []);
-        expect(safariScripts).not.toContain('page-bridges/chatgpt-conversation-bootstrap.js');
-        expect(normalized(safari.web_accessible_resources)).not.toContain('page-bridges/chatgpt-conversation-bridge.js');
 
-        for (const manifest of [chrome, firefox, safari]) {
+        for (const manifest of [chrome, firefox]) {
             const idleEntry = manifest.content_scripts?.find((item) => item.js?.includes('content.js'));
             expect(idleEntry).toMatchObject({
                 matches: [...SUPPORTED_HOST_PATTERNS],

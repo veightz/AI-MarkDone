@@ -12,6 +12,23 @@ import { loadAndNormalize, planGetCategory, planReset, planSetCategory } from '@
 import type { CommentTemplateSegment } from '@/services/reader/commentExport';
 
 describe('settingsService', () => {
+    it('adds shared content defaults and preserves sibling choices on writes', () => {
+        const old = loadAndNormalize({ version: 5, reader: { renderCodeInReader: false } });
+        expect(old.content).toEqual({ preserveLinks: false, includeCodeBlocks: true });
+        const links = planSetCategory(old, 'content', { preserveLinks: true }).next;
+        const noCode = planSetCategory(links, 'content', { includeCodeBlocks: false }).next;
+        expect(noCode.content).toEqual({ preserveLinks: true, includeCodeBlocks: false });
+        expect(noCode.reader.renderCodeInReader).toBe(false);
+    });
+    it('preserves shared selection siblings and accepts only known unique pin actions', () => {
+        const old = loadAndNormalize({ version: 5, reader: { persistAnnotations: true } });
+        expect(old.reader.selectionToolbar).toEqual({ copy: true, annotation: true, highlight: true });
+        const first = planSetCategory(old, 'reader', { selectionToolbar: { copy: false } }).next;
+        const next = planSetCategory(first, 'reader', { selectionToolbar: { highlight: false } }).next;
+        expect(next.reader.selectionToolbar).toEqual({ copy: false, annotation: true, highlight: false });
+        expect(next.reader.persistAnnotations).toBe(true);
+        expect(planSetCategory(next, 'chatgptBehavior', { pinnedPageControls: ['open-prompts', 'unknown', 'open-prompts'] }).next.chatgptBehavior.pinnedPageControls).toEqual(['open-prompts']);
+    });
     it('uses v4 defaults with formula asset hover actions disabled', () => {
         const next = loadAndNormalize(null);
 
@@ -129,14 +146,16 @@ describe('settingsService', () => {
         expect(invalid.appearance.fontSizePx).toBe(DEFAULT_SETTINGS.appearance.fontSizePx);
     });
 
-    it('normalizes appearance accent color to approved theme swatches', () => {
+    it('normalizes appearance accent color to valid six-digit preset or custom HEX values', () => {
         const emerald = planSetCategory(DEFAULT_SETTINGS, 'appearance', { accentColor: '#059669' }).next;
         const shorthand = planSetCategory(DEFAULT_SETTINGS, 'appearance', { accentColor: '#0a7' }).next;
-        const invalid = planSetCategory(DEFAULT_SETTINGS, 'appearance', { accentColor: '#123456' }).next;
+        const custom = planSetCategory(DEFAULT_SETTINGS, 'appearance', { accentColor: '#123456' }).next;
+        const invalid = planSetCategory(DEFAULT_SETTINGS, 'appearance', { accentColor: '#12zz56' }).next;
         const reset = planSetCategory(emerald, 'appearance', { accentColor: null }).next;
 
         expect(emerald.appearance.accentColor).toBe('#059669');
         expect(shorthand.appearance.accentColor).toBeNull();
+        expect(custom.appearance.accentColor).toBe('#123456');
         expect(invalid.appearance.accentColor).toBeNull();
         expect(reset.appearance.accentColor).toBeNull();
     });
@@ -209,6 +228,11 @@ describe('settingsService', () => {
             showPageBookmarkControl: false,
             showDetachedReaderControl: false,
             showPromptControl: false,
+            showInputEnhancementControl: true,
+            showRefreshNavigationControl: true,
+            showComposerInputEnhancementControl: true,
+            showComposerAnnotationControl: true,
+            pinnedPageControls: [],
             promptAutocomplete: false,
             enableArrowKeyMessageNavigation: false,
             pageWidthScale: 147,
@@ -223,6 +247,11 @@ describe('settingsService', () => {
             showPageBookmarkControl: false,
             showDetachedReaderControl: false,
             showPromptControl: false,
+            showInputEnhancementControl: true,
+            showRefreshNavigationControl: true,
+            showComposerInputEnhancementControl: true,
+            showComposerAnnotationControl: true,
+            pinnedPageControls: [],
             promptAutocomplete: false,
             enableArrowKeyMessageNavigation: false,
             pageWidthScale: 145,
@@ -259,6 +288,11 @@ describe('settingsService', () => {
             showPageBookmarkControl: true,
             showDetachedReaderControl: true,
             showPromptControl: true,
+            showInputEnhancementControl: true,
+            showRefreshNavigationControl: true,
+            showComposerInputEnhancementControl: true,
+            showComposerAnnotationControl: true,
+            pinnedPageControls: [],
             promptAutocomplete: true,
             enableArrowKeyMessageNavigation: true,
             pageWidthScale: 100,
@@ -386,6 +420,7 @@ describe('settingsService', () => {
         }).next;
 
         expect(next.formula).toEqual({
+            composerAssetActions: { copyPng: true, copySvg: true, copyMathml: true, savePng: true, saveSvg: true },
             clickCopyMarkdown: false,
             clickCopyFormulaFormat: 'markdown-dollar',
             markdownCopyFormulaFormat: 'markdown-dollar',

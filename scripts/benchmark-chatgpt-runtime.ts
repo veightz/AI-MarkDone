@@ -512,8 +512,13 @@ async function runRuntimeBenchmark(extensionPath: string, rounds: number, mutati
         await resetPhase(page);
         await runRealDragSelection(page, mutations, true);
         await page.waitForSelector('[data-action="page-comment-add"]', { timeout: 2_000 });
+        // Opening the annotation editor moves focus away from the host selection.
+        // Prove the atom is selected before that normal focus transition clears it.
+        const selectedCount = await page.evaluate(() => document.querySelectorAll('[data-aimd-page-atomic-state="selected"]').length);
         await page.locator('[data-action="page-comment-add"]').click();
-        await page.waitForSelector('[data-action="reader-comment-cancel"], [data-action="cancel"]', { timeout: 2_000 }).catch(() => undefined);
+        const commentEditor = page.locator('[data-aimd-role="reader-comment-popover"]');
+        await commentEditor.waitFor({ state: 'visible', timeout: 2_000 });
+        await commentEditor.locator('[data-role="input"]').click();
         const actionDiagnostics = await page.evaluate(() => {
             const state = (window as unknown as { __AIMD_PERF_HARNESS__: HarnessState }).__AIMD_PERF_HARNESS__;
             const actionEvents = state.contentEvents.filter((event) => event.phase === 'action');
@@ -528,7 +533,6 @@ async function runRuntimeBenchmark(extensionPath: string, rounds: number, mutati
         drag.markdownProjectionCalls = actionDiagnostics.markdownProjectionCalls;
         drag.materializeFormulaScans = actionDiagnostics.materializeFormulaScans;
         drag.materializeRangeToStringCalls = actionDiagnostics.materializeRangeToStringCalls;
-        const selectedCount = await page.evaluate(() => document.querySelectorAll('[data-aimd-page-atomic-state="selected"]').length);
         const clearedCount = await page.evaluate(async () => {
             const selection = window.getSelection();
             if (!selection) throw new Error('Atomic selection fixture lost Selection');
@@ -542,7 +546,8 @@ async function runRuntimeBenchmark(extensionPath: string, rounds: number, mutati
         // its transient editor before startup/heap metrics so the steady-state
         // sample measures mounted consumers rather than an intentionally open
         // popover retained by the test itself.
-        await page.locator('[data-action="reader-comment-cancel"], [data-action="cancel"]').first().click({ timeout: 1_000 }).catch(() => undefined);
+        await commentEditor.locator('[data-action="close"]').click({ timeout: 2_000 });
+        await commentEditor.waitFor({ state: 'detached', timeout: 2_000 });
         const selectionContract = { selectedCount, clearedCount, ...clipboardContract };
         await page.waitForTimeout(50);
         const selection = await collectPhase(page);

@@ -169,6 +169,8 @@ function buildConversationReaderItem(
         // projection must not reinterpret it or create a second canonical
         // content path.
         content: turn.assistantMarkdown,
+        sourceContent: turn.assistantSourceMarkdown,
+        ...(turn.assistantRichBlocks !== undefined ? { richBlocks: turn.assistantRichBlocks } : {}),
         meta: {
             platformId: document.platformId,
             messageId: turn.identity.assistantMessageId,
@@ -426,6 +428,13 @@ export async function readerItemsToChatTurns(items: ReaderItem[]): Promise<ChatT
         turns.push({
             user: item.userPrompt,
             assistant,
+            ...(item.sourceContent !== undefined
+                ? { assistantSource: await resolveContent(item.sourceContent) }
+                : {}),
+            ...(item.richBlocks !== undefined ? { richBlocks: item.richBlocks } : {}),
+            ...((item.meta?.assistantMessageId || item.meta?.messageId)
+                ? { messageId: item.meta!.assistantMessageId || item.meta!.messageId! } : {}),
+            ...(item.meta?.url ? { documentUrl: item.meta.url } : {}),
             index,
         });
     }

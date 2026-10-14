@@ -1,9 +1,11 @@
 import type { Rule } from '../../core/Rule';
 
 function fenceInlineCode(code: string): string {
-    const maxRun = Math.max(0, ...Array.from(code.matchAll(/`+/g)).map((m) => m[0].length));
+    let maxRun = 0;
+    for (const match of code.matchAll(/`+/g)) maxRun = Math.max(maxRun, match[0].length);
     const fence = '`'.repeat(maxRun + 1);
-    return `${fence}${code}${fence}`;
+    const padding = /^`|`$/.test(code) || (/^ /.test(code) && / $/.test(code) && /[^ ]/.test(code)) ? ' ' : '';
+    return `${fence}${padding}${code}${padding}${fence}`;
 }
 
 export function createCodeInlineRule(): Rule {
@@ -14,8 +16,7 @@ export function createCodeInlineRule(): Rule {
         replacement: (content, node) => {
             const el = node as HTMLElement;
             if (el.closest('pre')) return content;
-            return fenceInlineCode(content.trim());
+            return fenceInlineCode((el.textContent ?? '').replace(/\r\n?|\n/g, ' '));
         },
     };
 }
-

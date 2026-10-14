@@ -3,6 +3,23 @@ import { normalizeChatGPTReaderMarkdown } from '@/drivers/content/chatgpt/normal
 import { WordCounter } from '../../../../src/core/text/wordCounter';
 
 describe('WordCounter', () => {
+    it.each([
+        '~~~python\nprint("hello")\n~~~',
+        '````python\nfirst()\n\n\n```\nlast()\n````',
+        '~~~python\nrun()\n~~~~',
+        '    indented();\n    next();',
+    ])('excludes source-proven code blocks regardless of fence or indentation: %s', (markdown) => {
+        const counter = new WordCounter();
+        const result = counter.count(markdown);
+        expect(result).toMatchObject({ words: 0, chars: 0, excluded: { codeBlocks: 1 } });
+        expect(counter.format(result)).toBe('0 Words / 0 Chars');
+    });
+
+    it('excludes multi-backtick inline code without changing the weighted character algorithm', () => {
+        const result = new WordCounter().count('中 a_b é `` `https://example.com` ``');
+        expect(result).toMatchObject({ chars: 5, cjk: 1, latin: 1 });
+    });
+
     it('counts latin words and chars', () => {
         const counter = new WordCounter();
         const res = counter.count('hello world');

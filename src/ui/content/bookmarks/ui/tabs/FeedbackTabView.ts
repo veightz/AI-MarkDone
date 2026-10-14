@@ -39,7 +39,7 @@ function createCommunityGroupCard(actions: FeedbackTabViewActions): HTMLElement 
     description.className = 'community-card__description';
     description.textContent = tr(
         'communityCardDesc',
-        'Join a group to share feedback, report issues, and compare workflows with other AI-MarkDone users.',
+        'Share workflows, feedback, and ideas.',
     );
     header.append(eyebrow, title, description);
 
@@ -53,7 +53,7 @@ function createCommunityGroupCard(actions: FeedbackTabViewActions): HTMLElement 
         },
         {
             platform: tr('communityXiaohongshuTitle', 'Xiaohongshu group'),
-            meta: tr('communityXiaohongshuMeta', 'Invite valid through August 14, 2026'),
+            meta: tr('communityXiaohongshuMeta', 'This invite expired on August 14, 2026'),
             hint: tr(
                 'communityXiaohongshuHint',
                 'Open Xiaohongshu and scan the code. If it has expired, follow my Xiaohongshu account and join the group through my profile.',
@@ -107,7 +107,7 @@ function createCommunityGroupCard(actions: FeedbackTabViewActions): HTMLElement 
     privacyNote.className = 'community-card__privacy-note';
     privacyNote.textContent = tr(
         'communityPrivacyNote',
-        'Joining is optional and group members may see your public profile. You can also follow my Xiaohongshu account and enter the group through my profile.',
+        'Joining is optional. Other members may see your public profile. You can also join through my Xiaohongshu profile.',
     );
 
     section.append(header, grid, privacyNote);

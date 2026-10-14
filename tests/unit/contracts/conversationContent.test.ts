@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { richSvgBlock } from '../../helpers/richContentFixtures';
 
 import {
     createConversationDocumentKeyV1,
@@ -98,6 +99,29 @@ describe('Conversation Content Port V1 contract', () => {
         expect(() => {
             (frozen.turns[0] as { assistantMarkdown: string }).assistantMarkdown = 'changed';
         }).toThrow();
+    });
+
+    it('clones and freezes rich sources without freezing or retaining caller-owned objects', () => {
+        const source = { kind: 'svg' as const, svg: '<svg><rect fill="red"/></svg>' };
+        const block = richSvgBlock({ source });
+        const snapshot = createSnapshot();
+        const frozen = freezeConversationSnapshotV1({ ...snapshot, turns: [{ ...snapshot.turns[0]!, assistantRichBlocks: [block] }] });
+        const captured = frozen.turns[0]?.assistantRichBlocks;
+        expect(captured).toEqual([block]);
+        expect(captured?.[0]).not.toBe(block);
+        expect(captured?.[0]?.source).not.toBe(source);
+        expect(Object.isFrozen(captured)).toBe(true);
+        expect(Object.isFrozen(captured?.[0]?.source)).toBe(true);
+        source.svg = '<svg><rect fill="blue"/></svg>';
+        expect(captured?.[0]?.source).toMatchObject({ svg: '<svg><rect fill="red"/></svg>' });
+    });
+
+    it('rejects invalid rich sidecars before admitting a snapshot', () => {
+        const snapshot = createSnapshot();
+        const withBlocks = (assistantRichBlocks: unknown) => ({ ...snapshot, turns: [{ ...snapshot.turns[0], assistantRichBlocks }] });
+        expect(isConversationSnapshotV1(withBlocks([richSvgBlock()]))).toBe(true);
+        expect(isConversationSnapshotV1(withBlocks([{ ...richSvgBlock(), source: { kind: 'svg', svg: 5 } }]))).toBe(false);
+        expect(isConversationSnapshotV1(withBlocks([richSvgBlock(), richSvgBlock()]))).toBe(false);
     });
 
     it('requires every published snapshot to be complete and dense', () => {

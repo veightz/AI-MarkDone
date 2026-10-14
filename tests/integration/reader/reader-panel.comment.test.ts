@@ -150,6 +150,29 @@ describe('ReaderPanel comments', () => {
         textarea!.value = 'Needs clarification';
         textarea!.dispatchEvent(new Event('input', { bubbles: true }));
 
+        document.body.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true, composed: true }));
+        document.body.dispatchEvent(new MouseEvent('click', { bubbles: true, composed: true }));
+        expect(listReaderComments(scopeId, 'a')).toHaveLength(0);
+        expect(textarea!.value).toBe('Needs clarification');
+        expect((panel as any).commentPopover.isOpen()).toBe(true);
+        shadow.querySelector<HTMLButtonElement>('.reader-comment-popover [data-action="close"]')!.click();
+        await vi.waitFor(() => expect((panel as any).commentPopover.isOpen()).toBe(false));
+        document.dispatchEvent(new Event('selectionchange'));
+        document.dispatchEvent(new Event('pointerup'));
+        await Promise.resolve();
+        shadow.querySelectorAll<HTMLButtonElement>('.reader-comment-action__button')[1]!.click();
+        const reopenedInput = shadow.querySelector<HTMLTextAreaElement>('.reader-comment-popover__input')!;
+        expect(reopenedInput.value).toBe('');
+        expect(listReaderComments(scopeId, 'a')).toHaveLength(0);
+        reopenedInput.value = 'Needs clarification';
+        reopenedInput.dispatchEvent(new Event('input', { bubbles: true }));
+        (panel as any).toggleFullscreen();
+        expect(shadow.querySelector('.reader-comment-popover__input')).toBe(reopenedInput);
+        expect(reopenedInput.isConnected).toBe(true);
+        expect(reopenedInput.value).toBe('Needs clarification');
+        const resizedMarkdownRoot = shadow.querySelector<HTMLElement>('.reader-markdown')!;
+        installLayoutMocks(range, resizedMarkdownRoot, Array.from(resizedMarkdownRoot.querySelectorAll<HTMLElement>('[data-aimd-unit-id]')));
+
         shadow.querySelector<HTMLButtonElement>('.reader-comment-popover [data-action="save"]')!.click();
         await Promise.resolve();
 
@@ -295,20 +318,40 @@ describe('ReaderPanel comments', () => {
         shadow.querySelector<HTMLButtonElement>('.reader-comment-popover [data-action="save"]')!.click();
         await Promise.resolve();
 
-        shadow.querySelector<HTMLButtonElement>('[data-action="reader-copy-comments"]')!.click();
+        const copyCommentsTrigger = shadow.querySelector<HTMLButtonElement>('[data-action="reader-copy-comments"]')!;
+        copyCommentsTrigger.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true, composed: true }));
+        copyCommentsTrigger.click();
         await Promise.resolve();
         await Promise.resolve();
         await Promise.resolve();
-        shadow.querySelector<HTMLButtonElement>('.comment-prompt-picker__item[data-prompt-id="research-review"]')!.click();
+        const picker = shadow.querySelector<HTMLElement>('.comment-prompt-picker')!;
+        expect(picker.classList.contains('aimd-material-surface')).toBe(true);
+        // Real-browser short-height coverage found auto grid tracks compressing both text rows.
+        const pickerCss = shadow.querySelector<HTMLStyleElement>('[data-aimd-style-id="aimd-comment-prompt-picker-style"]')!.textContent!;
+        const listRule = pickerCss.match(/\.comment-prompt-picker__list\s*\{([^}]*)\}/)![1];
+        const itemRule = pickerCss.match(/\.comment-prompt-picker__item\s*\{([^}]*)\}/)![1];
+        expect(listRule).toContain('grid-auto-rows: max-content;');
+        expect(listRule).toContain('align-content: start;');
+        expect(itemRule).toContain('grid-template-rows: max-content max-content;');
+        const promptChoice = shadow.querySelector<HTMLButtonElement>('.comment-prompt-picker__item[data-prompt-id="research-review"]')!;
+        expect(promptChoice.classList.contains('aimd-material-choice')).toBe(true);
+        promptChoice.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true, composed: true }));
+        expect(picker.isConnected).toBe(true);
+        promptChoice.click();
         await Promise.resolve();
 
         const exportRoot = shadow.querySelector<HTMLElement>('.reader-comment-export');
         expect(exportRoot).toBeTruthy();
+        expect(exportRoot!.classList.contains('aimd-material-surface')).toBe(true);
+        expect(exportRoot!.querySelector('[data-role="preview"].aimd-material-field')).toBeTruthy();
         expect(exportRoot!.querySelector('[data-role="userPrompt"]')).toBeNull();
         expect(exportRoot!.querySelector('[data-role="commentTemplate"]')).toBeNull();
         expect(exportRoot!.querySelector('[data-action="insert-selected-source"]')).toBeNull();
         expect(exportRoot!.querySelector<HTMLElement>('[data-role="preview"]')?.textContent).toContain('Summarize these comments:');
-        exportRoot.querySelector<HTMLButtonElement>('[data-action="copy"]')!.click();
+        const copyExport = exportRoot.querySelector<HTMLButtonElement>('[data-action="copy"]')!;
+        copyExport.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true, composed: true }));
+        expect(exportRoot.isConnected).toBe(true);
+        copyExport.click();
         await Promise.resolve();
         await Promise.resolve();
 
@@ -363,7 +406,8 @@ describe('ReaderPanel comments', () => {
 
         shadow.querySelector<HTMLButtonElement>('.reader-comment-anchor')!.click();
         await Promise.resolve();
-        shadow.querySelector<HTMLButtonElement>('.reader-comment-popover [data-action="cancel"]')!.click();
+        shadow.querySelector<HTMLButtonElement>('.reader-comment-popover [data-action="delete"]')!.click();
+        shadow.querySelector<HTMLButtonElement>('.reader-comment-popover [data-action="confirm-delete"]')!.click();
         await Promise.resolve();
 
         expect(listReaderComments(scopeId, 'a')).toHaveLength(0);
@@ -522,8 +566,8 @@ describe('ReaderPanel comments', () => {
         expect(items[0]?.textContent).toContain('Later text source');
         expect(items[1]?.textContent).toContain('Earlier text source');
         const styles = Array.from(shadow.querySelectorAll('style')).map((node) => node.textContent ?? '').join('\n');
-        expect(styles).toContain('--_modal-width: min(760px');
-        expect(styles).toContain('--_modal-max-height: min(720px');
+        expect(styles).toContain('--_modal-content-max-width: 760px');
+        expect(styles).toContain('--_modal-content-max-height: 720px');
         expect(styles).toContain('.reader-comment-list__items');
         expect(styles).toContain('overflow: auto;');
         expect(styles).toContain('overscroll-behavior: contain;');
@@ -794,7 +838,7 @@ describe('ReaderPanel comments', () => {
             textarea.value = text;
             textarea.dispatchEvent(new Event('input', { bubbles: true }));
             shadow.querySelector<HTMLButtonElement>('.reader-comment-popover [data-action="save"]')!.click();
-            await Promise.resolve();
+            await vi.waitFor(() => expect((panel as any).commentPopover.isOpen()).toBe(false));
         }
 
         const anchors = Array.from(shadow.querySelectorAll<HTMLElement>('.reader-comment-anchor'));

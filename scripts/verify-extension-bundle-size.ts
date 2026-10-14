@@ -2,7 +2,7 @@ import { readFile, readdir } from 'node:fs/promises';
 import { gzipSync } from 'node:zlib';
 import { resolve } from 'node:path';
 
-type Target = 'chrome' | 'firefox' | 'safari';
+type Target = 'chrome' | 'firefox';
 
 type BundleBudget = {
     file: string;
@@ -21,10 +21,10 @@ const BUDGETS: BundleBudget[] = [
 
 function parseTargets(args: string[]): Target[] {
     if (args.length === 0) {
-        throw new Error('Usage: verify-extension-bundle-size.ts <chrome|firefox|safari> [...]');
+        throw new Error('Usage: verify-extension-bundle-size.ts <chrome|firefox> [...]');
     }
     return args.map((arg) => {
-        if (arg === 'chrome' || arg === 'firefox' || arg === 'safari') return arg;
+        if (arg === 'chrome' || arg === 'firefox') return arg;
         throw new Error(`Unknown extension target: ${arg}`);
     });
 }

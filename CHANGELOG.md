@@ -5,6 +5,75 @@ All notable changes to AI-MarkDone will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+## [6.2.0] - 2026-10-13
+
+### Added
+- Save supported ChatGPT diagrams, charts and cards in an offline Markdown ZIP with image attachments and explanations for unavailable content.
+- Choose static images or text placeholders for rich blocks in PDF and PNG exports.
+
+### Changed
+- Write annotations in a movable window with minimize, expand and explicit close controls. Clicking outside no longer closes it; annotations submit only when you choose Save. Thanks to email user @qds19100.
+- Bring Prompt, export, Send, Reader settings, annotation tools, backup review and the popup into the shared workspace appearance, with clearer Chinese and English guidance.
+- Show the message directory by default on new installations while preserving existing settings.
+
+### Fixed
+- Save toolbar bookmarks when older messages load and reply numbers change while the save dialog is open.
+- Locate the correct annotation or highlight passage after content or layout changes, including marks opened from Library. Thanks to Xiaohongshu user @三分钟热度.
+- Restore the directory and reply controls after conversation switches and delayed loading, and keep regenerated replies attached to their current content.
+- Preserve code fences, language identifiers, indentation, blank lines and inline code in ChatGPT's updated code display; keep following paragraphs outside code blocks and exclude Run controls from copied text. Thanks to email user @oxwo277.
+- Fix blank message PDFs caused by a conflict with ChatGPT's print view. Thanks to QQ user @成长！
+- Improve PDF layout for wide tables, long code and formulas, and wait briefly for images before printing.
+- Keep selected messages in source order without duplicates across Markdown, PDF and PNG exports.
+- Include visual-only replies in the directory, preserve available chart data in Markdown, and keep numeric metric cards out of the heading outline.
+- Keep Reader and exports readable when preserved source is empty, and refresh Reader when source links change.
+- Apply saved theme and accent choices to the popup, label compact Prompt actions, and keep long choices and Send controls usable in narrow windows.
+- Stop cancelled image preparation, retain images while printing, and release temporary image resources when their views close.
+- Explain when a directory jump cannot locate its reply instead of failing silently.
+
+## [6.1.0] - 2026-10-02
+
+### Added
+- Added a searchable Feature overview with grouped function names and explanations, including entry points and useful shortcuts.
+- Added full-screen mode beside Close in the management panel's top-right corner, without a separate title bar.
+- Added Cherry pink, Bay blue, Light pink, and a custom RGB hex color editor; removed duplicate blue and purple presets while preserving saved colors.
+- Added shared options to keep links and omit code blocks in Reader, Markdown copy, and message exports.
+- Added shared Copy, Annotation, and Highlight visibility switches for page and Reader selections.
+- Added a dedicated Buttons settings page with live previews, individual visibility switches, and page/message button pins.
+- Copy the matching question and AI reply together with short role headings.
+- Export and import settings as JSON, review changes by category, and restore the previous configuration without including saved content or credentials.
+- Copy or save formula assets directly from composer previews, with separate button preferences for replies and composer formulas.
+
+### Fixed
+- Hovering pinned message actions no longer expands the toolbar drawer; hover More to open it.
+- Keep the Directory growing as older replies load, even when ChatGPT temporarily hides their prompts or switches the visible message window.
+- Corrected Settings card padding, group dividers, configuration-transfer spacing, and pin alignment.
+- Keep formula previews visible after closing delimiters and when focusing a saved draft; show whether Input enhancement is enabled in its page control.
+- Follow the current Directory entry after history loads and ignore host markers without a visible box when tracking scroll position.
+- Keep keyboard focus while switching button groups and tighten their navigation spacing.
+- Recover full conversation data fetched before a ChatGPT route change, and update the Directory while messages continue loading.
+- Copy selected code fragments without adding code fences or altering formula-like text, and keep partially selected formulas complete.
+- Capture the reading position before sending and preserve it through focus changes and repeated ChatGPT scrolling updates.
+- Keep the Directory expanded while moving between its entries and preview, and close both after leaving the interaction area.
+- Keep lower-right page controls floating if ChatGPT replaces extension styles during a page update.
+
+### Changed
+- Grouped Feature overview, Changelog, FAQ, About the author, and Feedback below Settings in the same scrolling list; kept Mappamory and Buy Me Coffee at the bottom.
+- Unified labels for questions, reusable prompts, annotations, excerpts, and the separate reader, and corrected bookmark-excerpt descriptions.
+- Hover over Copy to copy an image above or the matching question and reply below; use the same layout and distinct conversation icon in Settings.
+- Separate configuration files, Library preferences, cloud backups, and local backups into clear settings groups.
+- Removed the composer Input enhancement button and its button-settings group; the annotation entry is enabled automatically when annotations exist.
+- Control message time and character counts independently, and configure Copy PNG without moving its secondary action.
+- Docked Previous/Next arrows above the bottom-right brand button, with the existing visibility switch and keyboard shortcuts preserved.
+- Show the complete formula assistant in Settings, including inline, display, and completion examples; remove misleading Directory and composer-entry previews.
+- Reuse formula renders, limit pending preview work, and disable stale exports immediately when input changes.
+- Reject newer or unknown settings files before import and protect newer stored settings from older clients.
+- Moved Reader-only preferences into a compact panel under the Reader header and clarified the existing code syntax highlighting option.
+- Composer formula previews now follow the text caret instead of mouse hover.
+- Grouped Settings controls by purpose and clarified where each option appears and what it changes, including formula buttons, image exports, selection actions, annotations, and page navigation.
+- Refreshed the default accent with sapphire blue while preserving existing color choices.
+
 ## [6.0.0] - 2026-09-25
 
 ### Added

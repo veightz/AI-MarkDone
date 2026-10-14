@@ -1,4 +1,4 @@
-import { PROTOCOL_VERSION, createRequestId, type ReaderSessionSnapshot } from '../../contracts/protocol';
+import { PROTOCOL_VERSION, createRequestId, isReaderSessionRichContentWithinBudget, type ReaderSessionSnapshot } from '../../contracts/protocol';
 import { isReaderAnnotationDocument } from '../../contracts/readerAnnotations';
 import { DEFAULT_GLOBAL_FONT_SIZE_PX, DEFAULT_SETTINGS, type AppSettings } from '../../core/settings/types';
 import { normalizeGlobalFontSizePx, normalizeThemeAccentColor } from '../../core/settings/migrations';
@@ -17,6 +17,8 @@ import { createDetachedReaderSendPort } from '../../ui/content/sending/detachedR
 import { createPromptLibraryClient } from '../../drivers/content/prompts/promptLibraryClient';
 import { ChatGPTPromptAutocompleteController } from '../../ui/content/controllers/ChatGPTPromptAutocompleteController';
 import type { ReaderItem } from '../../services/reader/types';
+import { freezeRichBlocks, isRichBlocksV1 } from '../../contracts/richContent';
+import { createDetachedReaderRichContentResolver } from './readerRichContentClient';
 import { setCanonicalMarkdownCopyFormulaFormat } from '../../services/copy/canonicalMarkdownCopy';
 import { bookmarkSaveDialog } from '../../ui/content/bookmarks/save/bookmarkSaveDialogSingleton';
 import { SettingsClient } from '../../drivers/content/settings/settingsClient';
@@ -58,9 +60,11 @@ function isReaderSessionSnapshot(value: unknown): value is ReaderSessionSnapshot
     if (!hasFields(value, ['sourceUrl'], ['startIndex', 'createdAt', 'updatedAt'])) return false;
     const items = readArrayField(value, 'items', (item) => (
         hasFields(item, ['id', 'userPrompt', 'content'])
+        && (item.sourceContent === undefined || typeof item.sourceContent === 'string')
+        && (item.richBlocks === undefined || isRichBlocksV1(item.richBlocks))
         && (item.meta === undefined || isReaderSessionItemMeta(item.meta))
     ));
-    if (!items) return false;
+    if (!items || !isReaderSessionRichContentWithinBudget({ items })) return false;
     return typeof value.startIndex === 'number'
         && Number.isInteger(value.startIndex)
         && value.startIndex >= 0
@@ -110,6 +114,8 @@ function toReaderItems(snapshot: ReaderSessionSnapshot): ReaderItem[] {
         id: item.id,
         userPrompt: item.userPrompt,
         content: item.content,
+        sourceContent: item.sourceContent,
+        ...(item.richBlocks !== undefined ? { richBlocks: freezeRichBlocks(item.richBlocks) } : {}),
         meta: item.meta ? { ...item.meta } : undefined,
     }));
 }
@@ -199,7 +205,7 @@ async function run(): Promise<void> {
     ensurePageTokens();
     const sessionId = getSessionId();
     if (!sessionId) {
-        renderStatus('Reader session is missing.');
+        renderStatus(t('detachedReaderMissingSession'));
         return;
     }
 
@@ -238,6 +244,7 @@ async function run(): Promise<void> {
     sendPopover.setPromptAutocompleteController(promptManager);
     promptManager.setEnabled(Boolean(settings.chatgptBehavior?.promptAutocomplete ?? DEFAULT_SETTINGS.chatgptBehavior.promptAutocomplete));
     panel.setReaderSettings(settings.reader);
+    panel.setContentCleanupSettings(settings.content);
     let readerSettingsWriteQueue: Promise<void> = Promise.resolve();
     panel.setReaderSettingsController({
         onChange: (patch) => {
@@ -275,6 +282,7 @@ async function run(): Promise<void> {
     }
 
     const unsubscribeSettings = settingsClient.subscribe((snapshot) => {
+        panel.setContentCleanupSettings(snapshot.settings.content);
         settings = snapshot.settings;
         const nextLocale = settings.language ?? DEFAULT_SETTINGS.language;
         if (nextLocale !== activeLocale) {
@@ -287,6 +295,7 @@ async function run(): Promise<void> {
     const disposeSettingsBackflow = (): void => {
         if (settingsDisposed) return;
         settingsDisposed = true;
+        panel.hide();
         unsubscribeSettings();
         window.removeEventListener('pagehide', disposeSettingsBackflow);
     };
@@ -418,6 +427,7 @@ async function run(): Promise<void> {
             profile: 'conversation-reader',
             annotationDocument: snapshot.annotationDocument,
             actions,
+            resolveRichContent: createDetachedReaderRichContentResolver(sessionId),
             onRequestClose: async () => {
                 disposeSettingsBackflow();
                 panel.hide();
@@ -431,6 +441,6 @@ async function run(): Promise<void> {
     await showSession();
 }
 
-void run().catch((error) => {
-    renderStatus(error instanceof Error ? error.message : 'Detached reader failed to start.');
+void run().catch(() => {
+    renderStatus(t('detachedReaderStartFailed'));
 });

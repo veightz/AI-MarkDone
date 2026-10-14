@@ -6,7 +6,7 @@ import { handlePromptsRequest } from './handlers/prompts';
 import { handleReaderSessionRequest, handleReaderSessionTabRemoved } from './handlers/readerSession';
 import { consumeReaderAnnotationNavigationIntent, handleReaderAnnotationRequest } from './handlers/annotations';
 import { handleHighlightRequest } from './handlers/highlights';
-import { handleSettingsRequest } from './handlers/settings';
+import { handleSettingsRequest, initializeSettingsForInstall } from './handlers/settings';
 import { browserCompat } from '../../drivers/shared/browser';
 import { logger } from '../../core/logger';
 import { SUPPORTED_HOST_PATTERNS } from '../../../config/extension/hosts';
@@ -187,6 +187,9 @@ const action = browserCompat.action;
 const runtime = browserCompat.runtime;
 
 runtime?.onInstalled?.addListener?.((details: { reason?: string; previousVersion?: string }) => {
+    void initializeSettingsForInstall(details?.reason).catch((error) => {
+        logger.warn('[AI-MarkDone][Settings] First-install settings initialization failed', error);
+    });
     const manifestVersion = String(runtime?.getManifest?.()?.version ?? '').trim();
     if (!manifestVersion) return;
     if (details?.reason !== 'install' && details?.reason !== 'update') return;

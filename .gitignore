@@ -43,6 +43,8 @@ mocks/components/*
 !mocks/components/prompt-family/**
 !mocks/components/workflow-dialogs/
 !mocks/components/workflow-dialogs/**
+!mocks/components/message-export/
+!mocks/components/message-export/**
 !mocks/components/overlay-host/
 !mocks/components/overlay-host/**
 !mocks/components/reader-comments/
@@ -55,6 +57,10 @@ mocks/components/*
 !mocks/components/host-integrated-controls/**
 !mocks/components/bookmarks-workspace/
 !mocks/components/bookmarks-workspace/**
+!mocks/components/send-position-restore/
+!mocks/components/send-position-restore/**
+!mocks/components/buttons-settings/
+!mocks/components/buttons-settings/**
 !mocks/pages/
 mocks/pages/*
 !mocks/pages/style-system/

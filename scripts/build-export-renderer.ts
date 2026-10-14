@@ -34,6 +34,7 @@ async function buildRendererHost(target: ExtensionTarget): Promise<void> {
             rollupOptions: {
                 input: {
                     'export-renderer': resolve(process.cwd(), 'src/runtimes/export-renderer/entry.ts'),
+                    'rich-asset-relay': resolve(process.cwd(), 'src/runtimes/rich-asset-relay/entry.ts'),
                 },
                 output: {
                     entryFileNames: '[name].js',
@@ -69,7 +70,7 @@ async function buildPngWorker(target: ExtensionTarget): Promise<void> {
 async function main(): Promise<void> {
     const target = process.argv[2] ?? '';
     if (!isExtensionTarget(target)) {
-        throw new Error('Usage: tsx scripts/build-export-renderer.ts <chrome|firefox|safari>');
+        throw new Error('Usage: tsx scripts/build-export-renderer.ts <chrome|firefox>');
     }
     await buildRendererHost(target);
     await buildPngWorker(target);

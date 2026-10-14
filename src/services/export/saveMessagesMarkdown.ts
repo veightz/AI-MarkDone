@@ -1,4 +1,7 @@
 import type { ChatTurn, ConversationMetadata, TranslateFn } from './saveMessagesTypes';
+import { buildMessageExportDocument } from './messageExportDocument';
+import { sanitizeExportFilename } from './saveMessagesDocument';
+import { projectRichContentMarkdown } from '../content/richContentProjection';
 import {
     DEFAULT_FORMULA_SOURCE_FORMAT,
     normalizeFormulaSourceFormat,
@@ -10,15 +13,6 @@ export type MarkdownExportResult = {
     filename: string;
     markdown: string;
 };
-
-function sanitizeFilename(name: string): string {
-    const base = (name || 'Conversation')
-        .replace(/[<>:"/\\|?*]/g, '_')
-        .replace(/\s+/g, '_')
-        .trim()
-        .substring(0, 100);
-    return base || 'Conversation';
-}
 
 function sanitizeMarkdownHeading(text: string): string {
     const out =
@@ -37,26 +31,35 @@ export function buildMarkdownExport(
     t: TranslateFn,
     options: { formulaFormat?: FormulaSourceFormat } = {},
 ): MarkdownExportResult | null {
-    const selected = selectedIndices.map((i) => turns[i]).filter((x): x is ChatTurn => Boolean(x));
-    if (selected.length === 0) return null;
+    const document = buildMessageExportDocument(turns, selectedIndices, {
+        title: metadata.title,
+        labels: { user: t('exportUserLabel'), assistant: t('exportAssistantLabel') },
+        formatHeading: (ordinal) => t('exportMessagePrefix', `${ordinal}`),
+    });
+    if (!document) return null;
 
     const markdownTitle = sanitizeMarkdownHeading(metadata.title);
     let markdown = `# ${markdownTitle}\n\n`;
     markdown += `> ${t('exportMetadata', [metadata.platform, new Date(metadata.exportedAt).toLocaleString()])}\n\n`;
 
     const formulaFormat = normalizeFormulaSourceFormat(options.formulaFormat ?? DEFAULT_FORMULA_SOURCE_FORMAT);
-    selected.forEach((msg, i) => {
-        const messageNum = i + 1;
+    document.sections.forEach((section, i) => {
         if (i > 0) {
-            markdown += `\n<div align="center">◆ ◆ ◆</div>\n\n`;
+            markdown += `\n---\n\n`;
         }
-        markdown += `# ${t('exportMessagePrefix', `${messageNum}`)}\n\n`;
-        markdown += `## ${t('exportUserLabel')}\n\n${rewriteMarkdownFormulaSources(msg.user, formulaFormat)}\n\n`;
-        markdown += `## ${t('exportAssistantLabel')}\n\n${rewriteMarkdownFormulaSources(msg.assistant, formulaFormat)}\n\n`;
+        markdown += `# ${section.heading}\n\n`;
+        markdown += `## ${document.labels.user}\n\n${rewriteMarkdownFormulaSources(section.userText, formulaFormat)}\n\n`;
+        let body = section.assistantMarkdown;
+        if (body.includes('aimd-rich:')) {
+            const projection = projectRichContentMarkdown(body, section.richBlocks ?? []);
+            if (projection.status !== 'ready' || projection.kind !== 'rich-content') throw new Error('Rich content projection is unavailable.');
+            body = projection.markdown;
+        }
+        markdown += `## ${document.labels.assistant}\n\n${rewriteMarkdownFormulaSources(body, formulaFormat)}\n\n`;
     });
 
     return {
-        filename: `${sanitizeFilename(metadata.title)}.md`,
+        filename: `${sanitizeExportFilename(metadata.title)}.md`,
         markdown,
     };
 }

@@ -113,30 +113,34 @@ export class PageAnnotationStore {
     }
 
     async create(record: ReaderCommentRecord, target: ReaderAnnotationTarget | null): Promise<ReaderCommentRecord> {
-        if (!this.persistEnabled || !this.document || !target) {
+        const document = this.document;
+        if (!this.persistEnabled || !document || !target) {
             return this.saveRuntime(record);
         }
         const annotation = toReaderAnnotationRecord(record, target);
-        const result = await this.client.create(this.document, annotation);
+        const result = await this.client.create(document, annotation);
         if (!result.ok || !result.data?.annotation) {
             throw new Error(result.ok ? 'Annotation save returned no annotation' : result.message);
         }
-        const saved = fromReaderAnnotationRecord(result.data.annotation, this.document);
+        const saved = fromReaderAnnotationRecord(result.data.annotation, document);
+        if (readerAnnotationDocumentKey(document) !== (this.document ? readerAnnotationDocumentKey(this.document) : null)) return saved;
         this.setDurable(saved);
         this.emit();
         return saved;
     }
 
     async update(record: ReaderCommentRecord, target: ReaderAnnotationTarget | null): Promise<ReaderCommentRecord> {
-        if (!this.document || !target || record.revision === undefined) {
+        const document = this.document;
+        if (!document || !target || record.revision === undefined) {
             return this.saveRuntime(record);
         }
         const annotation = toReaderAnnotationRecord(record, record.target ?? target);
-        const result = await this.client.update(this.document, annotation, record.revision);
+        const result = await this.client.update(document, annotation, record.revision);
         if (!result.ok || !result.data?.annotation) {
             throw new Error(result.ok ? 'Annotation update returned no annotation' : result.message);
         }
-        const saved = fromReaderAnnotationRecord(result.data.annotation, this.document);
+        const saved = fromReaderAnnotationRecord(result.data.annotation, document);
+        if (readerAnnotationDocumentKey(document) !== (this.document ? readerAnnotationDocumentKey(this.document) : null)) return saved;
         this.setDurable(saved);
         this.emit();
         return saved;

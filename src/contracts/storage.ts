@@ -2,6 +2,7 @@ export const STORAGE_SCHEMA_VERSION = 1 as const;
 
 export const STORAGE_KEYS = {
     schemaVersion: 'aimd:schema_version',
+    settingsRecoveryV1: 'aimd:settings:recovery:v1',
     userLocale: 'aimd:user_locale',
     changelogNoticeV1: 'aimd:changelog_notice:v1',
 
@@ -12,6 +13,7 @@ export const STORAGE_KEYS = {
     promptLibraryV1: 'aimd:prompts:library:v1',
     cloudBackupStatusGoogleDriveV1: 'aimd:cloud_backup:status:googleDrive:v1',
     readerAnnotationsDocumentPrefixV1: 'aimd:reader_annotations:document:',
+    annotationDraftsV1: 'aimd:annotation_drafts:v1',
 } as const;
 
 export const LEGACY_STORAGE_KEYS = {

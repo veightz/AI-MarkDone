@@ -6,6 +6,8 @@
  * - Support lazy loading (performance): content can be computed on demand.
  */
 
+import type { RichBlockV1, RichContentImageV1 } from '../../contracts/richContent';
+
 export type ContentProvider = string | (() => string) | (() => Promise<string>);
 
 export type ReaderItemMeta = {
@@ -30,8 +32,17 @@ export type ReaderItem = {
     id: string;
     userPrompt: string;
     content: ContentProvider;
+    /** Unfiltered captured Markdown, when available from ChatGPT. */
+    sourceContent?: ContentProvider;
+    richBlocks?: readonly RichBlockV1[];
     meta?: ReaderItemMeta;
 };
+
+export type ReaderRichContentLease = Readonly<{
+    assets: readonly RichContentImageV1[];
+    release: () => void | Promise<void>;
+}>;
+export type ReaderRichContentResolver = (item: ReaderItem, signal: AbortSignal) => Promise<ReaderRichContentLease>;
 
 export async function resolveContent(provider: ContentProvider): Promise<string> {
     if (typeof provider === 'string') return provider;

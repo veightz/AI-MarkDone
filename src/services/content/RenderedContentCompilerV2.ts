@@ -8,7 +8,8 @@ import type {
     RenderedTurnCompileResultV2,
 } from '../../contracts/conversationDiscoveryV2';
 import type { MarkdownParserAdapter } from '../../drivers/content/adapters/parser/MarkdownParserAdapter';
-import { createMarkdownParser } from '../markdown-parser/createMarkdownParser';
+import type { RichBlockV1 } from '../../contracts/richContent';
+import { compileRenderedBody } from './compileRenderedBody';
 
 export type RenderedContentCompilerOptionsV2 = Readonly<{
     markdownParserAdapter: MarkdownParserAdapter;
@@ -16,6 +17,7 @@ export type RenderedContentCompilerOptionsV2 = Readonly<{
     isNoiseNode?: (node: Node, context: { nextSibling: Element | null }) => boolean;
     getArtifactPlaceholder?: (node: HTMLElement) => string | null;
     cleanMarkdown?: (markdown: string) => string;
+    collectRichBlocks?: (root: HTMLElement) => readonly RichBlockV1[];
 }>;
 
 export const DEFAULT_RENDERED_CONTENT_POLICY_V2: RenderedContentCompilePolicyV2 = Object.freeze({
@@ -41,15 +43,24 @@ export class RenderedContentCompilerV2 implements RenderedContentCompilerV2Port 
     async compile(request: RenderedTurnCompileRequestV2): Promise<RenderedTurnCompileResultV2> {
         const startedAt = performance.now();
         try {
-            const user = this.prepare(request.userRootClone, request.policy);
-            const assistant = this.prepare(request.assistantRootClone, request.policy);
-            if (!user || !assistant) return { kind: 'rejected', reason: 'budget-exceeded' };
-            if (!assistant.text) return { kind: 'rejected', reason: 'empty-content' };
+            const capabilities = { ...this.options, parserAdapter: this.options.markdownParserAdapter };
+            const policy = {
+                whitespace: 'formatting' as const,
+                noiseErrors: 'reject' as const,
+                maxInputCodeUnits: request.policy.maxInputCodeUnits,
+                parserOptions: {
+                    maxNodeCount: request.policy.maxNodes,
+                    maxProcessingTimeMs: request.policy.maxWallTimeMs,
+                    enablePerformanceLogging: false,
+                },
+            };
+            const user = compileRenderedBody(request.userRootClone, capabilities, policy);
+            const assistant = compileRenderedBody(request.assistantRootClone, capabilities, policy);
+            if (user.kind !== 'ready' || assistant.kind !== 'ready') return { kind: 'rejected', reason: 'budget-exceeded' };
+            if (!assistant.text && !assistant.richBlocks.length) return { kind: 'rejected', reason: 'empty-content' };
 
-            const userMarkdown = user.text
-                ? (this.compileMarkdown(user.root, request.policy) || user.text)
-                : '';
-            const assistantMarkdown = this.compileMarkdown(assistant.root, request.policy) || assistant.text;
+            const userMarkdown = user.markdown || user.text || '';
+            const assistantMarkdown = assistant.markdown || assistant.text;
             if (
                 userMarkdown.length > request.policy.maxOutputCodeUnits
                 || assistantMarkdown.length > request.policy.maxOutputCodeUnits
@@ -65,12 +76,14 @@ export class RenderedContentCompilerV2 implements RenderedContentCompilerV2Port 
                 formulaCount: 0,
                 codeBlockCount: 0,
                 tableCount: 0,
-                imageCount: 0,
+                imageCount: assistant.richBlocks.length,
             });
             return Object.freeze({
                 kind: 'ready',
                 user: userBody,
                 assistant: assistantBody,
+                assistantSourceMarkdown: assistant.sourceMarkdown || assistant.text,
+                ...(assistant.richBlocks.length ? { assistantRichBlocks: assistant.richBlocks } : {}),
                 semanticDigest: digest({
                     identity: request.identity,
                     user: userBody.markdown,
@@ -87,70 +100,10 @@ export class RenderedContentCompilerV2 implements RenderedContentCompilerV2Port 
         }
     }
 
-    private prepare(
-        root: HTMLElement,
-        policy: RenderedContentCompilePolicyV2,
-    ): { root: HTMLElement; text: string; nodeCount: number } | null {
-        this.options.normalizeDOM?.(root);
-        removeNoiseNodes(root, this.options);
-        removeRootFormattingWhitespace(root);
-        const nodeCount = root.querySelectorAll('*').length + 1;
-        const text = normalizeText(root.textContent ?? '');
-        if (nodeCount > policy.maxNodes || text.length > policy.maxInputCodeUnits) return null;
-        return { root, text, nodeCount };
-    }
-
-    private compileMarkdown(root: HTMLElement, policy: RenderedContentCompilePolicyV2): string {
-        const parsed = createMarkdownParser(this.options.markdownParserAdapter, {
-            maxNodeCount: policy.maxNodes,
-            maxProcessingTimeMs: policy.maxWallTimeMs,
-            enablePerformanceLogging: false,
-        }).parse(root);
-        const cleaned = this.options.cleanMarkdown?.(parsed) ?? parsed;
-        const normalized = cleaned.trim();
-        if (/Parser (Max nodes|Time budget)/.test(normalized)) return '';
-        return normalized;
-    }
-}
-
-function removeRootFormattingWhitespace(root: HTMLElement): void {
-    for (const node of Array.from(root.childNodes)) {
-        if (
-            node.nodeType === Node.TEXT_NODE
-            && /[\r\n]/.test(node.textContent ?? '')
-            && !(node.textContent ?? '').trim()
-        ) {
-            node.remove();
-        }
-    }
-}
-
-function removeNoiseNodes(root: HTMLElement, options: RenderedContentCompilerOptionsV2): void {
-    if (!options.isNoiseNode) return;
-    const toRemove: Array<{ node: HTMLElement; placeholder: string | null }> = [];
-    for (const node of Array.from(root.querySelectorAll<HTMLElement>('*'))) {
-        if (options.isNoiseNode(node, { nextSibling: node.nextElementSibling })) {
-            toRemove.push({ node, placeholder: options.getArtifactPlaceholder?.(node) ?? null });
-        }
-    }
-    for (const { node, placeholder } of toRemove.reverse()) {
-        if (!node.parentNode) continue;
-        if (placeholder) {
-            const replacement = root.ownerDocument.createElement('p');
-            replacement.textContent = placeholder;
-            node.parentNode.replaceChild(replacement, node);
-        } else {
-            node.remove();
-        }
-    }
 }
 
 function createBody(markdown: string, text: string): ConversationBodyV2 {
     return Object.freeze({ markdown, text });
-}
-
-function normalizeText(value: string): string {
-    return value.replace(/\u00a0/g, ' ').replace(/\s+/g, ' ').trim();
 }
 
 function digest(value: unknown): string {

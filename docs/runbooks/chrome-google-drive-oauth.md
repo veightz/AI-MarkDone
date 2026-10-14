@@ -12,7 +12,7 @@ Google Drive Backup follows the browser-extension OAuth path selected from runti
 2. Google Chrome uses `chrome.identity.getAuthToken()` with the manifest Chrome Extension OAuth client so Chrome manages the Google identity cache and refresh behavior.
 3. WebAuth-compatible browsers use `identity.launchWebAuthFlow()` with the configured Web application OAuth client and `identity.getRedirectURL()`.
 4. Firefox requests `identity` plus Google API host permissions and uses the same WebAuth path with its configured Web application OAuth client.
-5. Safari v1 does not expose Google Drive Backup.
+5. Browser support is limited to Chrome and Firefox; see the browser compatibility SSOT.
 6. The runtime never stores refresh tokens or client secrets.
 
 Google Chrome uses browser-managed Google identity. Interactive connect first tries `getAuthToken({ interactive: false })`, then calls `getAuthToken({ interactive: true })` only when confirmation is required. Later backup/list/restore/manage operations reuse the short local token cache first, then call `getAuthToken`. Browser identity owns Chrome's long-lived authorization experience. If Drive returns 401, the provider removes the browser cached token, clears the local token cache, and retries once with a fresh token.

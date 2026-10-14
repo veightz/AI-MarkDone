@@ -8,9 +8,11 @@ import type { ReaderItem } from '../../../src/services/reader/types';
 import { createAppearanceSnapshot } from '../../../src/style/appearance';
 import { ensurePageTokens } from '../../../src/style/pageTokens';
 import { MessageToolbar } from '../../../src/ui/content/MessageToolbar';
+import { CommentPromptPickerPopover } from '../../../src/ui/content/components/CommentPromptPickerPopover';
 import { setLocale, t } from '../../../src/ui/content/components/i18n';
 import { ChatGPTMessageStepperController } from '../../../src/ui/content/controllers/ChatGPTMessageStepperController';
 import { ReaderPanel } from '../../../src/ui/content/reader/ReaderPanel';
+import { ReaderCommentExportPopover } from '../../../src/ui/content/reader/ReaderCommentExportPopover';
 import { createConversationReaderActions } from '../../../src/ui/content/reader/conversationReaderActions';
 import {
     installVisualHarnessBridge,
@@ -136,6 +138,8 @@ const adapter = {
 } as unknown as SiteAdapter;
 
 const panel = new ReaderPanel();
+const fixturePromptPicker = new CommentPromptPickerPopover();
+const fixtureCommentExport = new ReaderCommentExportPopover();
 let toolbar: MessageToolbar | null = null;
 let stepper: ChatGPTMessageStepperController | null = null;
 const fixtureParams = new URLSearchParams(window.location.search);
@@ -176,11 +180,49 @@ async function waitForReader(): Promise<HTMLElement> {
 async function closeReader(): Promise<void> {
     const host = document.getElementById('aimd-reader-panel-host');
     if (!host) return;
+    if (host.shadowRoot) {
+        fixturePromptPicker.close(host.shadowRoot);
+        fixtureCommentExport.close(host.shadowRoot);
+    }
     host.removeAttribute('data-aimd-role');
     panel.hide();
     host.shadowRoot?.querySelector<HTMLElement>('.panel-window--reader')
         ?.dispatchEvent(new Event('animationend', { bubbles: true }));
     await nextTask();
+}
+
+function openTransientFixture(host: HTMLElement): void {
+    const transient = fixtureParams.get('transient');
+    const shadow = host.shadowRoot;
+    const container = shadow?.querySelector<HTMLElement>('.panel-window--reader');
+    const anchor = container?.querySelector<HTMLElement>('[data-action="reader-copy-comments"]');
+    if (!shadow || !container || !anchor || !container.parentElement) return;
+    const zh = variant.locale === 'zh_CN';
+    const openExport = () => fixtureCommentExport.open({
+        shadow, container, theme: variant.theme,
+        preview: Array.from({ length: 12 }, (_, index) => zh
+            ? `## 注释 ${index + 1}\n\n> 长篇原文与完整注释会在预览区域内换行，并保留可访问的复制和关闭操作。\n\n这是用于窄屏及短高度验收的长篇注释。`
+            : `## Annotation ${index + 1}\n\n> Long source text and complete annotations wrap inside the preview while copy and close actions remain reachable.\n\nThis is a deliberately long annotation for narrow and short viewport review.`).join('\n\n'),
+        canCopy: true,
+        labels: {
+            title: zh ? '复制带有完整上下文和原文引用的注释' : 'Copy annotations with complete context and source references',
+            close: zh ? '关闭' : 'Close',
+            copy: zh ? '复制全部注释和原文引用' : 'Copy all annotations and source references',
+            copied: zh ? '已复制' : 'Copied!',
+        },
+        onCopy: async () => true,
+    });
+    if (transient === 'comment-export') openExport();
+    if (transient === 'prompt-picker') fixturePromptPicker.open({
+        shadow, container: container.parentElement, anchorEl: anchor, placement: 'center', theme: variant.theme,
+        labels: { title: zh ? '选择用于整理注释及完整原文引用的提示词' : 'Choose a prompt for annotations and complete source references', close: zh ? '关闭' : 'Close', empty: zh ? '暂无提示词' : 'No prompts available.' },
+        prompts: Array.from({ length: 10 }, (_, index) => ({
+            id: `fixture-prompt-${index}`,
+            title: zh ? `注释整理 ${index + 1}：保留上下文和引用的详细阅读笔记` : `Annotation review ${index + 1}: detailed reading notes preserving context and source references`,
+            content: zh ? '请根据原文引用及用户注释整理阅读笔记，并保留关键问题。{{cursor}}' : 'Organize reading notes from source references and user annotations, preserving the important questions. {{cursor}}',
+        })),
+        onSelect: openExport,
+    });
 }
 
 function mountToolbar(): void {
@@ -250,7 +292,18 @@ async function applyVariant(next: VisualHarnessVariant): Promise<void> {
     });
     mountToolbar();
     mountPageControl();
-    await openFromProductionTrigger(next.theme === 'dark');
+    const host = await openFromProductionTrigger(next.theme === 'dark');
+    if (fixtureParams.get('settings') === '1' || fixtureParams.get('template') === '1') {
+        const settings = host.shadowRoot?.querySelector<HTMLButtonElement>('[data-action="reader-settings"]');
+        settings?.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true, composed: true }));
+        settings?.click();
+        if (fixtureParams.get('template') === '1') {
+            const template = host.shadowRoot?.querySelector<HTMLButtonElement>('[data-action="reader-settings-comment-template"]');
+            template?.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true, composed: true }));
+            template?.click();
+        }
+    }
+    openTransientFixture(host);
 }
 
 installHighlightFixture();
@@ -273,6 +326,11 @@ installVisualHarnessBridge({
 });
 
 window.addEventListener('pagehide', () => {
+    const shadow = document.getElementById('aimd-reader-panel-host')?.shadowRoot;
+    if (shadow) {
+        fixturePromptPicker.close(shadow);
+        fixtureCommentExport.close(shadow);
+    }
     toolbar?.dispose();
     stepper?.dispose();
     panel.hide();

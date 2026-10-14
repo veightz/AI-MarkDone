@@ -13,10 +13,9 @@ export class WordCounter {
     count(markdown: string): WordCountResult {
         const excluded = { codeBlocks: 0, mathFormulas: 0 };
 
-        let cleaned = (markdown || '').replace(/```[\s\S]*?```/g, () => {
-            excluded.codeBlocks++;
-            return '';
-        });
+        const code = protectMarkdownCode(markdown || '');
+        excluded.codeBlocks = code.codeBlockCount;
+        let cleaned = code.withoutCode;
 
         cleaned = cleaned.replace(/\$\$[\s\S]*?\$\$/g, () => {
             excluded.mathFormulas++;
@@ -27,8 +26,6 @@ export class WordCounter {
             excluded.mathFormulas++;
             return '';
         });
-
-        cleaned = cleaned.replace(/`[^`]+`/g, '');
 
         const cjkPattern = /[\u4e00-\u9fa5\u3040-\u309f\u30a0-\u30ff\uac00-\ud7af]/g;
         const cjkMatches = cleaned.match(cjkPattern) || [];
@@ -80,4 +77,5 @@ export class WordCounter {
         return this.count(text);
     }
 }
+import { protectMarkdownCode } from '../content/markdownCodeProtection';
 

@@ -408,7 +408,7 @@ export class BookmarksCloudBackupWorkflow {
             snapshots.forEach((snapshot, index) => {
                 const option = document.createElement('button');
                 option.type = 'button';
-                option.className = 'cloud-backup-snapshot-option';
+                option.className = 'cloud-backup-snapshot-option aimd-material-choice';
                 option.dataset.snapshotId = snapshot.snapshotId;
                 option.dataset.selected = index === 0 ? '1' : '0';
                 option.setAttribute('role', 'radio');
@@ -479,12 +479,12 @@ export class BookmarksCloudBackupWorkflow {
         const title = document.createElement('strong');
         title.textContent = 'Google Drive';
         const privacy = document.createElement('p');
-        privacy.className = 'cloud-backup-settings-modal__privacy';
+        privacy.className = 'cloud-backup-settings-modal__privacy aimd-material-card';
         privacy.textContent = tr('cloudBackupPrivacyNote', 'Saved bookmarks, highlights, annotations and folders are stored in your authorized Google Drive.');
         summary.append(title, privacy);
         body.appendChild(summary);
         const statusRow = document.createElement('div');
-        statusRow.className = 'settings-row settings-item cloud-backup-settings-modal__status-card';
+        statusRow.className = 'settings-row settings-item cloud-backup-settings-modal__status-card aimd-material-card';
         const statusInfo = document.createElement('div');
         statusInfo.className = 'settings-label settings-item-info';
         const statusTitle = document.createElement('strong');
@@ -516,12 +516,7 @@ export class BookmarksCloudBackupWorkflow {
             }
             const accountText = formatAccount(result.data);
             if (result.data?.connected) {
-                status.textContent = accountText
-                    ? (() => {
-                        const translated = tr('cloudBackupConnectedAs', 'Connected as $1', [accountText]);
-                        return translated && translated !== 'cloudBackupConnectedAs' ? translated : `Connected as ${accountText}`;
-                    })()
-                    : tr('cloudBackupConnectedStatus', 'Connected');
+                status.textContent = tr('cloudBackupConnectedStatus', 'Connected');
             } else {
                 status.textContent = tr('cloudBackupDisconnected', 'Not connected');
             }
@@ -591,7 +586,7 @@ export class BookmarksCloudBackupWorkflow {
             listRoot.dataset.state = 'ready';
             listRoot.replaceChildren(...snapshots.map((snapshot: CloudBackupSnapshotSummary) => {
                 const row = document.createElement('article');
-                row.className = 'cloud-backup-manager-item';
+                row.className = 'cloud-backup-manager-item aimd-material-card';
                 const info = document.createElement('div');
                 info.className = 'cloud-backup-manager-info';
                 const createdAt = document.createElement('strong');
@@ -606,7 +601,7 @@ export class BookmarksCloudBackupWorkflow {
                 info.append(createdAt, fileName, size);
                 const trash = document.createElement('button');
                 trash.type = 'button';
-                trash.className = 'secondary-btn secondary-btn--danger cloud-backup-manager-trash';
+                trash.className = 'secondary-btn secondary-btn--danger cloud-backup-manager-trash aimd-material-button--danger';
                 trash.textContent = tr('cloudBackupMoveToTrash', 'Move to trash');
                 trash.addEventListener('click', () => void (async () => {
                     const confirmed = await modal.confirm({

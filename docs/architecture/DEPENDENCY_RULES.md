@@ -153,6 +153,20 @@ Conversation content-discovery rules:
 
 Semantic-content dependency rules:
 
+- Rich content reuses the canonical Markdown image nodes and SemanticContent
+  UTF-16 source spans. The sidecar contains bounded portable descriptions,
+  never DOM handles, captured bitmap bytes or executable widget state.
+- `compileRenderedBody` is the common conversion core; host readiness, identity,
+  ordering and clone ownership remain with their current driver/wrapper owners.
+- Rich asset capture stays in content drivers and runs only on explicit actions.
+  The bounded transient asset cache/lease is not a second semantic content pool.
+  Pixel captures require fresh owning-surface proof; immutable closed SVG sources
+  may be exported without rematerializing their message.
+- Extension renderer binary input uses the versioned rich-asset relay and
+  transferable chunks. The legacy message renderer JSON job stays text-only.
+  Reader runtime messaging carries only versioned, sender-bound metadata;
+  neither arbitrary remote URLs nor page-owned Blob URLs grant asset access.
+
 - `SemanticContent.ts` may depend on `src/contracts/*` and pure parser libraries only. It must not depend on `src/drivers/*`, `src/ui/*`, `src/runtimes/*`, DOM/browser globals, platform IDs, host selectors, clipboard, storage, or renderer implementation types.
 - Parser-library AST types are private implementation details. The public Interface must expose only AI-MarkDone-owned immutable types.
 - `ContentSurfaceAdapter` lives in `src/drivers/content/*`; it may consume Site Adapter and Materialization contracts, but must not import services or return DOM handles inside `ContentSurfaceSelectionEvidenceV1`.

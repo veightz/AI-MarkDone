@@ -22,6 +22,7 @@ import type { runFormulaAssetAction } from '../../services/math/formulaAssetActi
 import type { renderFormulaSvgAsset } from '../../services/math/formulaAssetRenderer';
 import type { UiLocale } from '../../ui/content/components/i18n';
 import type * as ContentFeatureModuleExports from './contentFeatures';
+import type { ReaderRichAssetSessions } from '../../services/reader/readerRichAssetSession';
 import {
     areAppearanceSnapshotsEqual,
     createAppearanceSnapshot,
@@ -46,6 +47,8 @@ export class ContentFeatureModuleLoader {
     private prewarmPromise: Promise<void> | null = null;
 
     constructor(private readonly importer: ContentFeatureImporter = importContentFeatureModule) {}
+
+    get current(): ContentFeatureModule | null { return this.loadedModule; }
 
     load(): Promise<ContentFeatureModule> {
         if (!this.modulePromise) {
@@ -111,6 +114,69 @@ export class ContentFeatureModuleLoader {
 }
 
 const defaultLoader = new ContentFeatureModuleLoader();
+
+type ReaderRichAssetSessionsPort = Pick<ReaderRichAssetSessions, 'prepare' | 'release' | 'dispose'>;
+
+class LazyReaderRichAssetSessions implements ReaderRichAssetSessionsPort {
+    private instance: ReaderRichAssetSessionsPort | null = null;
+    private creating: Promise<ReaderRichAssetSessionsPort> | null = null;
+    private generation = 0;
+    private readonly pendingJobs = new Set<{ sessionId: string; leaseId: string; cancelled: boolean }>();
+
+    constructor(private readonly loader: ContentFeatureModuleLoader) {}
+
+    async prepare(...args: Parameters<ReaderRichAssetSessionsPort['prepare']>): ReturnType<ReaderRichAssetSessionsPort['prepare']> {
+        const generation = this.generation;
+        const job = { sessionId: args[0], leaseId: args[3], cancelled: false };
+        this.pendingJobs.add(job);
+        const checkCurrent = () => {
+            if (job.cancelled || generation !== this.generation) throw new DOMException('Reader assets cancelled', 'AbortError');
+        };
+        try {
+            if (!this.instance) {
+                const module = await this.loader.load();
+                checkCurrent();
+                if (!this.creating) {
+                    const creating = module.createReaderRichAssetSessions().then(instance => {
+                        if (generation !== this.generation) {
+                            void instance.dispose();
+                            throw new DOMException('Reader assets cancelled', 'AbortError');
+                        }
+                        this.instance = instance;
+                        return instance;
+                    }).finally(() => { if (this.creating === creating) this.creating = null; });
+                    this.creating = creating;
+                }
+                await this.creating;
+            }
+            checkCurrent();
+            const instance = this.instance!;
+            const result = await instance.prepare(...args);
+            if (job.cancelled || generation !== this.generation) {
+                await instance.release(job.sessionId, job.leaseId);
+                throw new DOMException('Reader assets cancelled', 'AbortError');
+            }
+            return result;
+        } finally { this.pendingJobs.delete(job); }
+    }
+
+    async release(sessionId: string, leaseId?: string): Promise<void> {
+        for (const job of this.pendingJobs) if (job.sessionId === sessionId && (!leaseId || job.leaseId === leaseId)) job.cancelled = true;
+        await this.instance?.release(sessionId, leaseId);
+    }
+
+    async dispose(): Promise<void> {
+        this.generation += 1;
+        this.creating = null;
+        for (const job of this.pendingJobs) job.cancelled = true;
+        this.loader.current?.disposeRichContentResources?.();
+        await this.instance?.dispose();
+    }
+}
+
+export function createLazyReaderRichAssetSessions(loader: ContentFeatureModuleLoader = defaultLoader): ReaderRichAssetSessionsPort {
+    return new LazyReaderRichAssetSessions(loader);
+}
 
 export function setLazyContentFeatureLocale(locale: UiLocale): void {
     defaultLoader.setLocale(locale);
@@ -206,6 +272,7 @@ class LazyReaderPanel implements ReaderPanelPort {
     private readonly lazy: LazyInstance<ReaderPanelPort>;
     private appearance: AppearanceSnapshot = createAppearanceSnapshot('light');
     private readerSettings: AppSettings['reader'] | null = null;
+    private contentCleanup: AppSettings['content'] | null = null;
     private settingsController: ReaderPanelSettingsController | null = null;
     private promptManagerController: ReaderPanelPromptManagerController | null = null;
 
@@ -215,6 +282,7 @@ class LazyReaderPanel implements ReaderPanelPort {
             (instance) => {
                 instance.setAppearance(this.appearance);
                 if (this.readerSettings) instance.setReaderSettings(this.readerSettings);
+                if (this.contentCleanup) instance.setContentCleanupSettings(this.contentCleanup);
                 instance.setReaderSettingsController(this.settingsController);
                 instance.setPromptManagerController(this.promptManagerController);
             },
@@ -230,6 +298,11 @@ class LazyReaderPanel implements ReaderPanelPort {
     setReaderSettings(settings: AppSettings['reader']): void {
         this.readerSettings = structuredClone(settings);
         this.lazy.current?.setReaderSettings(this.readerSettings);
+    }
+
+    setContentCleanupSettings(settings: AppSettings['content']): void {
+        this.contentCleanup = { ...settings };
+        this.lazy.current?.setContentCleanupSettings(this.contentCleanup);
     }
 
     setReaderSettingsController(controller: ReaderPanelSettingsController | null): void {
@@ -322,6 +395,7 @@ class LazySaveMessagesDialog implements SaveMessagesDialogPort {
     private readonly lazy: LazyInstance<SaveMessagesDialogPort>;
     private appearance: AppearanceSnapshot = createAppearanceSnapshot('light');
     private exportSettings: ExportSettings | null = null;
+    private contentCleanup: AppSettings['content'] | null = null;
     private markdownFormulaFormat: FormulaSourceFormat | null = null;
 
     constructor(loader: ContentFeatureModuleLoader) {
@@ -330,6 +404,7 @@ class LazySaveMessagesDialog implements SaveMessagesDialogPort {
             (instance) => {
                 instance.setAppearance(this.appearance);
                 if (this.exportSettings) instance.setExportSettings(this.exportSettings);
+                if (this.contentCleanup) instance.setContentCleanupSettings(this.contentCleanup);
                 if (this.markdownFormulaFormat) instance.setMarkdownFormulaFormat(this.markdownFormulaFormat);
             },
         );
@@ -344,6 +419,11 @@ class LazySaveMessagesDialog implements SaveMessagesDialogPort {
     setExportSettings(settings: ExportSettings): void {
         this.exportSettings = structuredClone(settings);
         this.lazy.current?.setExportSettings(this.exportSettings);
+    }
+
+    setContentCleanupSettings(settings: AppSettings['content']): void {
+        this.contentCleanup = { ...settings };
+        this.lazy.current?.setContentCleanupSettings(this.contentCleanup);
     }
 
     setMarkdownFormulaFormat(format: FormulaSourceFormat): void {

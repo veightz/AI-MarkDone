@@ -1,6 +1,8 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { renderInfoBlocks } from '@/ui/content/bookmarks/ui/tabs/renderInfoBlocks';
+
+vi.mock('@/ui/content/components/i18n', () => ({ t: (key: string) => key }));
 
 describe('renderInfoBlocks', () => {
     it('renders bold inline markdown for paragraphs and list items', () => {
@@ -74,7 +76,7 @@ describe('renderInfoBlocks', () => {
         expect(frame).toBeTruthy();
         expect(image?.alt).toBe('Project mark');
         expect(image?.src).toBe('chrome-extension://test/icons/icon128.png');
-        expect(frame?.querySelector<HTMLButtonElement>('.info-media__fullscreen')?.getAttribute('aria-label')).toBe('Enlarge image');
+        expect(frame?.querySelector<HTMLButtonElement>('.info-media__fullscreen')?.getAttribute('aria-label')).toBe('infoEnlargeImage');
     });
 
     it('opens a local enlarged view without entering browser fullscreen', () => {
@@ -83,9 +85,16 @@ describe('renderInfoBlocks', () => {
         host.appendChild(fragment);
 
         const frame = host.querySelector<HTMLElement>('.info-media')!;
-        frame.querySelector<HTMLButtonElement>('.info-media__fullscreen')?.click();
+        const button = frame.querySelector<HTMLButtonElement>('.info-media__fullscreen')!;
+        button.click();
 
         expect(frame.classList.contains('info-media--expanded')).toBe(true);
+        expect(button.getAttribute('aria-label')).toBe('infoRestoreImage');
+        expect(button.getAttribute('aria-expanded')).toBe('true');
+        button.click();
+        expect(frame.classList.contains('info-media--expanded')).toBe(false);
+        expect(button.getAttribute('aria-label')).toBe('infoEnlargeImage');
+        expect(button.getAttribute('aria-expanded')).toBe('false');
     });
 
     it('renders preserved line breaks inside paragraphs and list items', () => {

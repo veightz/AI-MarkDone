@@ -83,25 +83,25 @@ export class ReaderCommentTemplateSettingsPopover {
             <span class="reader-settings-popover__field-label">${params.labels.template}</span>
             <div class="reader-settings-template__toolbar">
               <div class="reader-settings-template__menu-shell">
-                <button class="secondary-btn secondary-btn--compact reader-settings-template__tool" type="button" data-action="toggle-placeholder-menu" aria-haspopup="menu" aria-expanded="false">${params.labels.insertPlaceholder}</button>
-                <div class="reader-settings-template__menu" data-role="placeholder-menu" data-open="0" role="menu">
-                  <button class="reader-settings-template__menu-item" type="button" data-action="insert-selected-source" role="menuitem">
+                <button class="secondary-btn secondary-btn--compact reader-settings-template__tool aimd-material-button" type="button" data-action="toggle-placeholder-menu" aria-haspopup="menu" aria-expanded="false">${params.labels.insertPlaceholder}</button>
+                <div class="reader-settings-template__menu aimd-material-surface" data-role="placeholder-menu" data-open="0" role="menu">
+                  <button class="reader-settings-template__menu-item aimd-material-choice" type="button" data-action="insert-selected-source" role="menuitem">
                     ${createIcon(fileCodeIcon).outerHTML}
                     <span>${params.labels.insertSelectedSource}</span>
                   </button>
-                  <button class="reader-settings-template__menu-item" type="button" data-action="insert-user-comment" role="menuitem">
+                  <button class="reader-settings-template__menu-item aimd-material-choice" type="button" data-action="insert-user-comment" role="menuitem">
                     ${createIcon(commentTokenIcon).outerHTML}
                     <span>${params.labels.insertUserComment}</span>
                   </button>
                 </div>
               </div>
             </div>
-            <div class="reader-settings-template__editor" data-role="commentTemplate" tabindex="0"></div>
+            <div class="reader-settings-template__editor aimd-material-field" data-role="commentTemplate" tabindex="0"></div>
             <p class="reader-settings-template__hint">${params.labels.templateHint}</p>
           </div>
           <div class="reader-settings-popover__field">
             <span class="reader-settings-popover__field-label">${params.labels.preview}</span>
-            <pre class="reader-settings-template__preview" data-role="preview"></pre>
+            <pre class="reader-settings-template__preview aimd-material-field" data-role="preview"></pre>
           </div>
         `;
         shell.footer.innerHTML = `

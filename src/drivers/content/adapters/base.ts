@@ -1,5 +1,6 @@
 import type { Theme } from '../../../core/types/theme';
 import type { MarkdownParserAdapter } from './parser/MarkdownParserAdapter';
+import type { RichBlockV1 } from '../../../contracts/richContent';
 
 export interface ThemeDetector {
     detect(): Theme | null;
@@ -152,6 +153,16 @@ export abstract class SiteAdapter {
      */
     normalizeDOM(_root: HTMLElement): void {
         // no-op by default
+    }
+
+    /** Reject a partially rebound host body before current-message actions clone it. */
+    isMessageContentAvailable(_message: HTMLElement): boolean {
+        return true;
+    }
+
+    /** Replaces recognized visuals on the owned clone and returns portable resource descriptions. */
+    collectRichBlocks(_root: HTMLElement): readonly RichBlockV1[] {
+        return [];
     }
 
     /**

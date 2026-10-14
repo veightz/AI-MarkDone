@@ -1,3 +1,4 @@
+import { normalizeSelectionToolbarActions } from '../../../core/settings/selectionToolbar';
 import { readMarkDocumentTitle } from '../../../drivers/content/chatgpt/readMarkDocumentTitle';
 import type { Theme } from '../../../core/types/theme';
 import { pinIcon } from '../../../assets/icons';
@@ -6,6 +7,7 @@ import { HighlightSession, createHighlightRecord, highlightAnchor } from '../hig
 import { createHighlightSwatches } from '../components/HighlightSwatches';
 import type { ReaderItem } from '../../../services/reader/types';
 import { copyReaderItemMarkdownToClipboard } from '../../../services/reader/readerMarkdownCopy';
+import { DEFAULT_CONTENT_CLEANUP_SETTINGS, type ContentCleanupSettings } from '../../../core/settings/content';
 import {
     copyCanonicalMarkdownToClipboard,
     formatCanonicalMarkdownForCopy,
@@ -75,7 +77,7 @@ import {
     type AppearanceSnapshot,
 } from '../../../style/appearance';
 import { getKatexCssWithRuntimeFontUrls, getKatexRuntimeFontFaceCss, hasKatexMarkup } from '../../../core/export/katexAssets';
-import { ReaderCommentPopover } from './ReaderCommentPopover';
+import { ReaderCommentPopover, getAnnotationEditorLabels } from './ReaderCommentPopover';
 import { ReaderCommentExportPopover } from './ReaderCommentExportPopover';
 import { ReaderCommentListPopover } from './ReaderCommentListPopover';
 import { ReaderAnnotationManagerPopover } from './ReaderAnnotationManagerPopover';
@@ -109,6 +111,7 @@ import {
     type ReaderRenderResult,
 } from './ReaderRendering';
 import { BrowserReaderHostAdapter, type ReaderHostAdapter } from './ReaderHostAdapter';
+import { fallbackReaderRichSlot, hydrateReaderRichSlots, prepareReaderRichContent, type ReaderRichContentLease, type ReaderRichContentResolver } from './readerRichContent';
 
 export type {
     ReaderCommentExportContext,
@@ -179,15 +182,21 @@ export class ReaderPanel {
     private readonly annotationManagerPopover = new ReaderAnnotationManagerPopover();
     private readonly settingsPopover = new ReaderSettingsPopover();
     private readonly commentPromptPicker = new CommentPromptPickerPopover();
+    private selectionToolbarActions = normalizeSelectionToolbarActions(undefined);
     private settingsController: ReaderPanelSettingsController | null = null;
     private promptManagerController: ReaderPanelPromptManagerController | null = null;
     private onKeyDown: ((e: KeyboardEvent) => void) | null = null;
     private unsubscribeLocale: (() => void) | null = null;
     private tooltipDelegate: TooltipDelegate | null = null;
     private contentRenderToken = 0;
+    private richContentController: AbortController | null = null;
+    private richContentLease: ReaderRichContentLease | null = null;
+    private resolveRichContent: ReaderRichContentResolver = prepareReaderRichContent;
+    private readonly richImageListeners = new WeakSet<HTMLImageElement>();
     private katexCssToken = 0;
     private statusTimer: number | null = null;
     private renderCodeInReader = true;
+    private contentCleanup: ContentCleanupSettings = DEFAULT_CONTENT_CLEANUP_SETTINGS;
     private appearance: AppearanceSnapshot = createAppearanceSnapshot('light');
     private closing = false;
     private motionNeedsOpen = false;
@@ -275,6 +284,16 @@ export class ReaderPanel {
     }
 
     async focusAnnotation(annotationId: string, assistantMessageId?: string | null): Promise<boolean> {
+        const documentKey = readerAnnotationDocumentKeyOrNull(this.annotationDocument);
+        let highlightedRecord: ReaderCommentRecord | undefined;
+        if (annotationId.startsWith('highlight:')) {
+            await this.highlights.reload();
+            if (readerAnnotationDocumentKeyOrNull(this.annotationDocument) !== documentKey) return false;
+            const highlight = this.highlights.list().find(record => `highlight:${record.id}` === annotationId);
+            if (!highlight || (assistantMessageId && highlight.target.assistantMessageId !== assistantMessageId)) return false;
+            highlightedRecord = highlightAnchor(highlight);
+            assistantMessageId = highlight.target.assistantMessageId;
+        }
         const itemIndex = this.workflow.items.findIndex((item) => (
             (Boolean(assistantMessageId) && item.meta?.assistantMessageId === assistantMessageId)
             || item.id === this.persistentComments.get(item.id)?.find((record) => record.id === annotationId)?.itemId
@@ -285,9 +304,18 @@ export class ReaderPanel {
             this.workflow.jump(itemIndex);
             await this.renderCurrentContent({ restoreScrollPosition: false });
         }
+        if (readerAnnotationDocumentKeyOrNull(this.annotationDocument) !== documentKey) return false;
         this.cancelPendingReaderScrollRestore();
-        const record = this.getCurrentComments('created').find((candidate) => candidate.id === annotationId);
+        const record = highlightedRecord ?? this.getCurrentComments('created').find((candidate) => candidate.id === annotationId);
         if (!record) return false;
+        const root = this.getMarkdownRoot();
+        const resolved = root ? resolveReaderCommentAnchor(root, record) : null;
+        if (!resolved || (!resolved.range && resolved.units.length === 0)) return false;
+        if (highlightedRecord) {
+            if (resolved.unionRect) this.scrollCommentRectIntoView(resolved.unionRect);
+            this.syncCommentUi();
+            return true;
+        }
         const panel = this.overlaySession?.surfaceRoot.querySelector<HTMLElement>('.panel-window--reader');
         if (!panel) return false;
         this.openExistingComment(record, panel.getBoundingClientRect(), { scrollIntoView: true });
@@ -312,6 +340,7 @@ export class ReaderPanel {
         if (this.persistAnnotations === next) return;
         this.persistAnnotations = next;
         this.syncReaderSettingsSurfaces();
+        this.syncTransientCommentUi();
         if (this.state.visible) {
             this.syncCommentUi();
             this.syncCommentControls();
@@ -346,6 +375,7 @@ export class ReaderPanel {
     setReaderSettings(settings: AppSettings['reader']): void {
         const previous = this.getReaderSettingsSnapshot();
         const normalized = this.normalizeReaderSettings(settings);
+        this.selectionToolbarActions = normalized.selectionToolbar;
         this.renderCodeInReader = normalized.renderCodeInReader;
         this.state.showOutlineInReader = normalized.showOutlineInReader;
         this.state.defaultOpenMode = normalized.defaultOpenMode;
@@ -356,6 +386,7 @@ export class ReaderPanel {
         this.commentExportSettings = normalized.commentExport;
         this.setPersistAnnotations(normalized.persistAnnotations);
         this.syncReaderSettingsSurfaces();
+        this.syncTransientCommentUi();
         if (this.state.visible) {
             if (this.state.fullscreen && this.state.defaultOpenMode === 'panel') {
                 this.state.fullscreen = false;
@@ -376,6 +407,13 @@ export class ReaderPanel {
         }
     }
 
+    setContentCleanupSettings(settings: ContentCleanupSettings): void {
+        if (this.contentCleanup.preserveLinks === settings.preserveLinks
+            && this.contentCleanup.includeCodeBlocks === settings.includeCodeBlocks) return;
+        this.contentCleanup = { ...settings };
+        if (this.overlaySession) void this.renderCurrentContent({ restoreScrollPosition: true });
+    }
+
     getCommentExportContext(): ReaderCommentExportContext | null {
         const comments = this.getCurrentComments();
         return {
@@ -388,6 +426,8 @@ export class ReaderPanel {
     }
 
     async show(items: ReaderItem[], startIndex: number, theme: Theme, options?: ReaderPanelShowOptions): Promise<void> {
+        this.clearRichContentAssets();
+        this.resolveRichContent = options?.resolveRichContent ?? prepareReaderRichContent;
         if (!this.closing) this.saveCurrentReaderScrollPosition();
         this.cancelPendingReaderScrollRestore();
         this.focusLifecycle.capture();
@@ -401,6 +441,7 @@ export class ReaderPanel {
         this.annotationDocument = nextAnnotationDocument;
         this.highlights.bind(nextAnnotationDocument);
         if (documentChanged) {
+            if (this.overlaySession) this.commentPopover.close(this.overlaySession.shadow, false);
             this.annotationLoadGeneration += 1;
             this.unsubscribeAnnotationChanges?.();
             this.unsubscribeAnnotationChanges = null;
@@ -502,6 +543,8 @@ export class ReaderPanel {
 
     hide(): void {
         if (this.closing) return;
+        this.clearRichContentAssets();
+        this.contentRenderToken += 1;
         this.saveCurrentReaderScrollPosition();
         this.cancelPendingReaderScrollRestore();
         this.state.visible = false;
@@ -615,6 +658,7 @@ export class ReaderPanel {
     }
 
     private unmount(): void {
+        this.clearRichContentAssets();
         this.showGeneration += 1;
         this.annotationLoadGeneration += 1;
         this.unsubscribeAnnotationChanges?.();
@@ -971,6 +1015,7 @@ export class ReaderPanel {
     }
 
     private async renderCurrentContent(options: { restoreScrollPosition?: boolean } = {}): Promise<void> {
+        this.clearRichContentAssets();
         const item = this.workflow.currentItem;
         if (!item) {
             const empty = createEmptyReaderRenderResult();
@@ -992,6 +1037,7 @@ export class ReaderPanel {
         const token = ++this.contentRenderToken;
         const rendered = await renderReaderItem(item, {
             highlightCode: this.renderCodeInReader,
+            contentCleanup: this.contentCleanup,
             labels: {
                 copyCode: this.getLabel('btnCopyText', 'Copy code'),
                 enableCodeWrap: this.getLabel('readerCodeWrapEnable', 'Enable word wrap'),
@@ -1016,6 +1062,69 @@ export class ReaderPanel {
             this.restoreCurrentReaderScrollPosition(item, token);
         }
         this.syncOutlineActiveState();
+        if (item.richBlocks?.length) void this.hydrateCurrentRichContent(item, token);
+    }
+
+    private clearRichContentAssets(): void {
+        this.richContentController?.abort();
+        this.richContentController = null;
+        const lease = this.richContentLease;
+        this.richContentLease = null;
+        if (lease) void Promise.resolve(lease.release()).catch(() => undefined);
+        // No future render may reuse URLs after their lease is released.
+        this.state.renderedHtml = '';
+    }
+
+    private async hydrateCurrentRichContent(item: ReaderItem, token: number): Promise<void> {
+        const controller = new AbortController();
+        this.richContentController = controller;
+        let lease: ReaderRichContentLease | null = null;
+        const current = () => !controller.signal.aborted && this.state.visible
+            && token === this.contentRenderToken && this.workflow.currentItem === item;
+        try {
+            lease = await this.resolveRichContent(item, controller.signal);
+            if (!current()) { await lease.release(); return; }
+            const rendered = await renderReaderItem(item, {
+                highlightCode: this.renderCodeInReader, contentCleanup: this.contentCleanup, richAssets: lease.assets,
+                labels: { copyCode: this.getLabel('btnCopyText', 'Copy code'), enableCodeWrap: this.getLabel('readerCodeWrapEnable', 'Enable word wrap'), disableCodeWrap: this.getLabel('readerCodeWrapDisable', 'Disable word wrap') },
+            });
+            if (!current()) { await lease.release(); return; }
+            this.richContentLease = lease;
+            this.state.renderedHtml = rendered.html;
+            const root = this.getMarkdownRoot();
+            if (root) hydrateReaderRichSlots(root, rendered.html);
+            this.bindRichContentImages();
+            this.syncCommentUi();
+        } catch {
+            if (lease && this.richContentLease !== lease) await lease.release();
+            // Base text and descriptive placeholders remain usable on failure.
+        }
+    }
+
+    private bindRichContentImages(): void {
+        const item = this.workflow.currentItem;
+        const lease = this.richContentLease;
+        const controller = this.richContentController;
+        const root = this.getMarkdownRoot();
+        const token = this.contentRenderToken;
+        if (!item || !lease || !controller || !root) return;
+        const current = () => !controller.signal.aborted && this.workflow.currentItem === item && token === this.contentRenderToken;
+        for (const image of root.querySelectorAll<HTMLImageElement>('img[data-aimd-rich-block]')) {
+            const block = item.richBlocks?.find(candidate => candidate.id === image.dataset.aimdRichBlock);
+            if (!block || this.richImageListeners.has(image)
+                || !lease.assets.some(asset => asset.blockId === block.id && asset.url === image.getAttribute('src'))) continue;
+            this.richImageListeners.add(image);
+            image.addEventListener('load', () => { if (current()) this.syncCommentUi(); }, { once: true, signal: controller.signal });
+            image.addEventListener('error', () => {
+                if (!current()) return;
+                fallbackReaderRichSlot(root, block);
+                const markup = this.host.document.createElement('div');
+                markup.innerHTML = this.state.renderedHtml;
+                fallbackReaderRichSlot(markup, block);
+                this.state.renderedHtml = markup.innerHTML;
+                this.syncCommentUi();
+            }, { once: true, signal: controller.signal });
+        }
     }
 
     private async copyCurrent(): Promise<void> {
@@ -1027,7 +1136,7 @@ export class ReaderPanel {
 
         try {
             button.disabled = true;
-            const ok = await copyReaderItemMarkdownToClipboard(item);
+            const ok = await copyReaderItemMarkdownToClipboard(item, this.contentCleanup);
             showEphemeralTooltip({
                 root: this.overlaySession?.shadow ?? this.host.document,
                 anchor: button,
@@ -1173,6 +1282,7 @@ export class ReaderPanel {
 
     private getReaderSettingsSnapshot(): AppSettings['reader'] {
         return this.normalizeReaderSettings({
+            selectionToolbar: this.selectionToolbarActions,
             renderCodeInReader: this.renderCodeInReader,
             showOutlineInReader: this.state.showOutlineInReader,
             persistAnnotations: this.persistAnnotations,
@@ -1187,6 +1297,7 @@ export class ReaderPanel {
 
     private normalizeReaderSettings(settings: AppSettings['reader']): AppSettings['reader'] {
         return {
+            selectionToolbar: normalizeSelectionToolbarActions(settings.selectionToolbar),
             renderCodeInReader: Boolean(settings.renderCodeInReader),
             showOutlineInReader: Boolean(settings.showOutlineInReader),
             persistAnnotations: Boolean(settings.persistAnnotations),
@@ -1233,6 +1344,7 @@ export class ReaderPanel {
             canOpenConversation: this.canOpenConversation(),
         });
 
+        const restoreCommentEditor = this.commentPopover.preserveForRender();
         const { element: backdrop, isNew: isNewBackdrop } = ensureBackdropElement(this.overlaySession.backdropRoot, 'panel-stage__overlay');
         const { element: panel, isNew: isNewPanel } = ensureStableElementFromHtml<HTMLElement>(
             this.overlaySession.surfaceRoot,
@@ -1242,6 +1354,7 @@ export class ReaderPanel {
                 (key, fallback, substitutions) => this.getLabel(key, fallback, substitutions),
             ),
         );
+        this.settingsPopover.reposition();
         this.overlaySession.syncKeyboardScope({
             root: this.overlaySession.host,
             onEscape: () => this.requestClose(),
@@ -1249,6 +1362,7 @@ export class ReaderPanel {
             ignoreEscapeWhileComposing: true,
             trapTabWithin: panel ?? this.overlaySession.host,
         });
+        restoreCommentEditor(panel);
         if (this.motionNeedsOpen && (isNewBackdrop || isNewPanel)) {
             this.overlaySession.openSurface({ surface: panel, backdrop });
             this.focusLifecycle.scheduleInitialFocus({
@@ -1271,6 +1385,8 @@ export class ReaderPanel {
         this.applyAtomicSelectionState();
         this.syncCommentUi();
         this.syncCommentControls();
+
+        this.bindRichContentImages();
 
         const nextBody = panel.querySelector<HTMLElement>('.reader-body');
         this.syncReaderBodyScrollListener(nextBody);
@@ -1799,10 +1915,9 @@ export class ReaderPanel {
         else this.persistentComments.delete(record.itemId);
     }
 
-    private async persistNewComment(record: ReaderCommentRecord): Promise<void> {
-        const document = this.annotationDocument;
+    private async persistNewComment(record: ReaderCommentRecord, document = this.annotationDocument): Promise<void> {
         const item = this.getCurrentItem();
-        const target = item ? this.getAnnotationTarget(item) : null;
+        const target = record.target ?? (item ? this.getAnnotationTarget(item) : null);
         if (!this.persistAnnotations || !document || !target) {
             saveReaderComment(READER_COMMENT_SCOPE_ID, record);
             this.activeCommentId = record.id;
@@ -1816,16 +1931,16 @@ export class ReaderPanel {
             throw new Error(result.ok ? 'Annotation save returned no annotation' : result.message);
         }
         const saved = fromReaderAnnotationRecord(result.data.annotation, document);
+        if (readerAnnotationDocumentKeyOrNull(this.annotationDocument) !== readerAnnotationDocumentKey(document)) return;
         this.setPersistentComment(saved);
         this.activeCommentId = saved.id;
         this.syncCommentUi();
         this.syncCommentControls();
     }
 
-    private async persistUpdatedComment(record: ReaderCommentRecord): Promise<void> {
-        const document = this.annotationDocument;
+    private async persistUpdatedComment(record: ReaderCommentRecord, document = this.annotationDocument): Promise<void> {
         const item = this.getCurrentItem();
-        const target = item ? this.getAnnotationTarget(item) : null;
+        const target = record.target ?? (item ? this.getAnnotationTarget(item) : null);
         if (!document || !target || record.revision === undefined) {
             saveReaderComment(READER_COMMENT_SCOPE_ID, record);
             return;
@@ -1835,18 +1950,17 @@ export class ReaderPanel {
         if (!result.ok || !result.data.annotation) {
             throw new Error(result.ok ? 'Annotation update returned no annotation' : result.message);
         }
-        this.setPersistentComment(fromReaderAnnotationRecord(result.data.annotation, document));
+        if (readerAnnotationDocumentKeyOrNull(this.annotationDocument) === readerAnnotationDocumentKey(document)) this.setPersistentComment(fromReaderAnnotationRecord(result.data.annotation, document));
     }
 
-    private async persistRemovedComment(record: ReaderCommentRecord): Promise<void> {
-        const document = this.annotationDocument;
+    private async persistRemovedComment(record: ReaderCommentRecord, document = this.annotationDocument): Promise<void> {
         if (!document || record.revision === undefined) {
             removeReaderComment(READER_COMMENT_SCOPE_ID, record.itemId, record.id);
             return;
         }
         const result = await readerAnnotationsClient.remove(document, record.id, record.revision);
         if (!result.ok) throw new Error(result.message);
-        this.removePersistentComment(record);
+        if (readerAnnotationDocumentKeyOrNull(this.annotationDocument) === readerAnnotationDocumentKey(document)) this.removePersistentComment(record);
     }
 
     private markAnchorState(record: ReaderCommentRecord, state: 'anchored' | 'unanchored'): void {
@@ -1981,9 +2095,10 @@ export class ReaderPanel {
         const item = this.getCurrentItem();
         const target = item ? this.getAnnotationTarget(item) : null;
         const markdownRoot = this.getMarkdownRoot();
-        const showHighlights = !!this.annotationDocument && !!target && !!markdownRoot
+        const showHighlights = this.selectionToolbarActions.highlight && !!this.annotationDocument && !!target && !!markdownRoot
             && isHighlightableTextSelection(selection.range, markdownRoot);
-        const actionCount = (showStickyAction ? 3 : 2) + (showHighlights ? 3 : 0);
+        const actionCount = Number(this.selectionToolbarActions.copy) + Number(this.selectionToolbarActions.annotation) + Number(showStickyAction) + (showHighlights ? 3 : 0);
+        group.hidden = actionCount === 0;
         const actionWidth = (buttonSize * actionCount) + (gap * (actionCount - 1));
         const clampPadding = this.getTokenSize('--aimd-space-3', 12);
         const verticalGap = this.getTokenSize('--aimd-space-2', 8);
@@ -2021,8 +2136,8 @@ export class ReaderPanel {
         commentButton.className = 'icon-btn reader-comment-action__button';
         commentButton.type = 'button';
         commentButton.dataset.action = 'reader-comment-add';
-        commentButton.setAttribute('aria-label', this.getLabel('readerCommentAction', 'Comment'));
-        commentButton.setAttribute('title', this.getLabel('readerCommentAction', 'Comment'));
+        commentButton.setAttribute('aria-label', this.getLabel('readerCommentAction', 'Annotate'));
+        commentButton.setAttribute('title', this.getLabel('readerCommentAction', 'Annotate'));
         commentButton.innerHTML = createIcon(messageSquareTextIcon).outerHTML;
         commentButton.addEventListener('click', () => {
             const sourceMarkdown = this.materializeSelectionExport(selection);
@@ -2037,6 +2152,11 @@ export class ReaderPanel {
                 sourceMarkdown,
                 hasSelection: selection.hasSelection,
             };
+            if (!item) return;
+            const document = this.annotationDocument;
+            const record = createReaderCommentRecord({ id: `comment-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+                itemId: item.id, comment: '', range: frozenSelection.range, root: markdownRoot, selectedUnits: frozenSelection.selectedUnits });
+            record.target = target ?? undefined;
             this.openCommentPopover({
                 mode: 'create',
                 anchorRect: commentButton.getBoundingClientRect(),
@@ -2044,24 +2164,16 @@ export class ReaderPanel {
                 selectedSource: sourceMarkdown,
                 sessionOnly: !this.annotationDocument || !this.persistAnnotations || !target,
                 onSave: (value) => {
-                    const item = this.getCurrentItem();
-                    if (!item) return;
-                    const record = createReaderCommentRecord({
-                        id: `comment-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-                        itemId: item.id,
-                        comment: value,
-                        range: frozenSelection.range,
-                        root: markdownRoot,
-                        selectedUnits: frozenSelection.selectedUnits,
-                    });
+                    if (readerAnnotationDocumentKeyOrNull(document) !== readerAnnotationDocumentKeyOrNull(this.annotationDocument)) throw new Error(this.getLabel('pageAnnotationSelectionUnavailable', 'Selection unavailable. Select text again and try.'));
+                    const next = { ...record, comment: value };
                     if (!this.annotationDocument || !this.persistAnnotations) {
-                        saveReaderComment(READER_COMMENT_SCOPE_ID, record);
+                        saveReaderComment(READER_COMMENT_SCOPE_ID, next);
                         this.activeCommentId = record.id;
                         this.syncCommentUi();
                         this.syncCommentControls();
                         return;
                     }
-                    return this.persistNewComment(record).catch((error) => {
+                    return this.persistNewComment(next, document).catch((error) => {
                         this.notify(error instanceof Error ? error.message : this.getLabel('readerCommentPersistenceUnavailable', 'Annotation could not be saved.'));
                         throw error;
                     });
@@ -2072,7 +2184,8 @@ export class ReaderPanel {
                 },
             });
         });
-        group.append(copyButton, commentButton);
+        if (this.selectionToolbarActions.copy) group.append(copyButton);
+        if (this.selectionToolbarActions.annotation) group.append(commentButton);
         if (showHighlights && item && target) {
             group.append(createHighlightSwatches({ document: this.host.document, onSelect: async color => {
                 if (this.highlightSaving) return;
@@ -2094,8 +2207,8 @@ export class ReaderPanel {
             stickButton.className = 'icon-btn reader-comment-action__button';
             stickButton.type = 'button';
             stickButton.dataset.action = 'reader-selection-stick';
-            stickButton.setAttribute('aria-label', this.getLabel('readerStickyAction', 'Stick'));
-            stickButton.setAttribute('title', this.getLabel('readerStickyAction', 'Stick'));
+            stickButton.setAttribute('aria-label', this.getLabel('readerStickyAction', 'Keep excerpt'));
+            stickButton.setAttribute('title', this.getLabel('readerStickyAction', 'Keep excerpt'));
             stickButton.innerHTML = createIcon(pinIcon).outerHTML;
             stickButton.addEventListener('click', () => {
                 this.addStickyBlock(this.materializeSelectionExport(selection));
@@ -2155,6 +2268,7 @@ export class ReaderPanel {
             this.scrollCommentRectIntoView(resolved.unionRect);
         }
         const contentAnchorRect = resolved?.unionRect ? this.toViewportRect(resolved.unionRect) : null;
+        const document = this.annotationDocument;
         this.openCommentPopover({
             mode: 'edit',
             anchorRect: contentAnchorRect ?? fallbackRect,
@@ -2162,11 +2276,12 @@ export class ReaderPanel {
             selectedSource: record.sourceMarkdown,
             sessionOnly: !this.annotationDocument || !target || record.revision === undefined,
             onSave: async (value) => {
+                if (readerAnnotationDocumentKeyOrNull(document) !== readerAnnotationDocumentKeyOrNull(this.annotationDocument)) throw new Error(this.getLabel('pageAnnotationSelectionUnavailable', 'Selection unavailable. Select text again and try.'));
                 await this.persistUpdatedComment({
                     ...record,
                     comment: value,
                     updatedAt: Date.now(),
-                }).catch((error) => {
+                }, document).catch((error) => {
                     this.notify(error instanceof Error ? error.message : this.getLabel('readerCommentPersistenceUnavailable', 'Annotation could not be saved.'));
                     throw error;
                 });
@@ -2175,7 +2290,8 @@ export class ReaderPanel {
             },
             onDelete: async () => {
                 try {
-                    await this.persistRemovedComment(record);
+                    if (readerAnnotationDocumentKeyOrNull(document) !== readerAnnotationDocumentKeyOrNull(this.annotationDocument)) throw new Error(this.getLabel('pageAnnotationSelectionUnavailable', 'Selection unavailable. Select text again and try.'));
+                    await this.persistRemovedComment(record, document);
                 } catch (error) {
                     this.notify(String(error));
                     throw error;
@@ -2225,8 +2341,9 @@ export class ReaderPanel {
             initialText: params.initialText,
             mode: params.mode,
             labels: {
-                addTitle: this.getLabel('readerCommentAddTitle', 'Add comment'),
-                editTitle: this.getLabel('readerCommentEditTitle', 'Edit comment'),
+                ...getAnnotationEditorLabels((key, fallback) => this.getLabel(key, fallback)),
+                addTitle: this.getLabel('readerCommentAddTitle', 'Add annotation'),
+                editTitle: this.getLabel('readerCommentEditTitle', 'Edit annotation'),
                 close: this.getLabel('btnClose', 'Close'),
                 selectedSource: this.getLabel('readerCommentSelectedSource', 'Selected content'),
                 placeholder: this.getLabel('readerCommentPlaceholder', 'Write your annotation...'),

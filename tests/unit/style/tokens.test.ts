@@ -9,7 +9,7 @@ describe('tokens', () => {
         expect(css).toContain('--aimd-border-default');
         expect(css).toContain('--aimd-ref-color-neutral-0');
         expect(css).toContain('--aimd-sys-color-surface');
-        expect(css).toContain('--aimd-shadow-xl');
+        expect(css).toContain('--aimd-shadow-workspace');
         expect(css).toContain('--aimd-radius-2xl');
         expect(css).toContain('--aimd-radius-full');
         expect(css).toContain('--aimd-text-base');

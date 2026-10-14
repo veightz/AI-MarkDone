@@ -1,6 +1,13 @@
 import { xIcon } from '../../../assets/icons';
 import { createIcon } from '../components/Icon';
 import { markTransientRoot } from '../components/transientUi';
+import { ensureStyle } from '../../../style/shadow';
+import { getSurfaceMaterialCss } from '../components/styles/surfaceMaterialCss';
+import dialogCss from './readerSettingsDialog.css?inline';
+
+function getDialogCss(): string {
+    return dialogCss + getSurfaceMaterialCss();
+}
 
 let dialogTitleSequence = 0;
 
@@ -29,9 +36,12 @@ export function createReaderSettingsDialogLayer(params: {
 }): { layer: HTMLElement; panel: HTMLElement } {
     const layer = markTransientRoot(document.createElement('div'));
     layer.className = 'reader-settings-popover-layer';
+    if (params.panelClassNames.includes('reader-settings-popover--template')) layer.classList.add('reader-settings-popover-layer--template');
+    const root = params.parent.getRootNode();
+    if (root instanceof ShadowRoot) ensureStyle(root, getDialogCss(), { id: 'aimd-reader-settings-material', cache: 'shared' });
 
     const panel = document.createElement('div');
-    panel.className = ['panel-window', 'panel-window--dialog', 'panel-window--reader-settings', ...params.panelClassNames].join(' ');
+    panel.className = ['panel-window', 'panel-window--dialog', 'panel-window--reader-settings', 'aimd-material-surface', ...params.panelClassNames].join(' ');
 
     layer.appendChild(panel);
     params.parent.appendChild(layer);
@@ -48,7 +58,7 @@ export function createReaderSettingsDialogShell(params: ReaderSettingsDialogShel
     panel.setAttribute('aria-labelledby', titleId);
 
     const header = document.createElement('div');
-    header.className = 'panel-header';
+    header.className = 'panel-header aimd-material-chrome';
 
     const headerMeta = document.createElement('div');
     headerMeta.className = 'panel-header__meta';
@@ -64,7 +74,7 @@ export function createReaderSettingsDialogShell(params: ReaderSettingsDialogShel
 
     const closeButton = document.createElement('button');
     closeButton.type = 'button';
-    closeButton.className = 'icon-btn reader-settings-dialog__close';
+    closeButton.className = 'icon-btn reader-settings-dialog__close aimd-material-button aimd-material-button--quiet';
     closeButton.dataset.action = 'close';
     closeButton.setAttribute('aria-label', params.closeLabel);
     closeButton.appendChild(createIcon(xIcon));
@@ -76,7 +86,7 @@ export function createReaderSettingsDialogShell(params: ReaderSettingsDialogShel
     body.className = 'dialog-body dialog-body--reader-settings';
 
     const footer = document.createElement('div');
-    footer.className = 'panel-footer panel-footer--reader-settings';
+    footer.className = 'panel-footer panel-footer--reader-settings aimd-material-chrome';
 
     panel.append(header, body, footer);
 

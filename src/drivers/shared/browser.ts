@@ -25,9 +25,6 @@ export const browserInfo = {
     get isFirefox(): boolean {
         return this.target === 'firefox';
     },
-    get isSafari(): boolean {
-        return this.target === 'safari';
-    },
     get manifestVersion(): number {
         return browser.runtime.getManifest().manifest_version;
     }

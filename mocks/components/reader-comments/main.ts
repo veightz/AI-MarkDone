@@ -1,10 +1,13 @@
 import '../browserExtensionMock';
+import { mountAnnotationConcept } from './annotationConcept';
 import katexCssUrl from 'katex/dist/katex.min.css?url';
+import enMessages from '../../../public/_locales/en/messages.json';
+import zhMessages from '../../../public/_locales/zh_CN/messages.json';
 
 import { messageSquareTextIcon } from '../../../src/assets/icons';
 import { createIcon } from '../../../src/ui/content/components/Icon';
 import { getMarkdownThemeCss } from '../../../src/services/renderer/markdownTheme';
-import { ReaderCommentPopover } from '../../../src/ui/content/reader/ReaderCommentPopover';
+import { ReaderCommentPopover, getAnnotationEditorLabels } from '../../../src/ui/content/reader/ReaderCommentPopover';
 import { ReaderCommentListPopover } from '../../../src/ui/content/reader/ReaderCommentListPopover';
 import { ReaderAnnotationManagerPopover } from '../../../src/ui/content/reader/ReaderAnnotationManagerPopover';
 import { getReaderSurfaceCss } from '../../../src/ui/content/reader/ReaderRendering';
@@ -115,6 +118,7 @@ function getCommentsMockCss(): string {
 *, *::before, *::after { box-sizing: border-box; }
 
 .mock-shell {
+  position: relative;
   min-width: 0;
   max-width: 100%;
   border-radius: 24px;
@@ -871,6 +875,9 @@ class ReaderCommentsMock {
         };
         const zh = document.documentElement.lang === 'zh-CN';
 
+        const catalog = (zh ? zhMessages : enMessages) as Record<string, { message: string }>;
+        const label = (key: string, fallback: string) => catalog[key]?.message ?? fallback;
+
         this.commentPopover.open({
             shadow: this.shadow,
             container: shell,
@@ -878,17 +885,20 @@ class ReaderCommentsMock {
             anchorRect,
             selectedSource: params.selectedSource,
             initialText: params.initialText,
+            runtimeDraftKey: JSON.stringify([this.scopeId, this.item.id, this.item.markdown, params.mode, params.selectedSource]),
             mode: params.mode,
-            labels: zh ? {
-                addTitle: '添加评论',
-                editTitle: '编辑评论',
-                close: '关闭',
-                selectedSource: '所选内容',
-                placeholder: '写下你的批注…',
-                cancel: '取消',
-                delete: '删除',
-                save: '保存批注',
-            } : undefined,
+            labels: {
+                ...getAnnotationEditorLabels(label),
+                addTitle: label('readerCommentAddTitle', 'Add annotation'),
+                editTitle: label('readerCommentEditTitle', 'Edit annotation'),
+                close: label('btnClose', 'Close'),
+                selectedSource: label('readerCommentSelectedSource', 'Selected content'),
+                placeholder: label('readerCommentPlaceholder', 'Write your annotation…'),
+                cancel: label('btnCancel', 'Cancel'),
+                delete: label('btnDelete', 'Delete'),
+                save: label('readerCommentSave', 'Save annotation'),
+                saveShortcut: label('readerCommentSaveShortcut', 'Ctrl/Cmd + Enter to save'),
+            },
             onSave: (value) => params.onSave(value),
             onCancel: () => this.renderComments(this.selectionRange ? {
                 range: this.selectionRange,
@@ -987,7 +997,8 @@ function mount(): void {
     });
 }
 
-mount();
+if (new URLSearchParams(location.search).has('annotationConcept')) mountAnnotationConcept();
+else mount();
 
 let visualVariant: VisualHarnessVariant = { theme: 'light', locale: 'en' };
 

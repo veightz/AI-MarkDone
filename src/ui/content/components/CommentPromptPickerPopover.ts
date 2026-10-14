@@ -3,6 +3,7 @@ import { createIcon } from './Icon';
 import { ensureStyle } from '../../../style/shadow';
 import { markTransientRoot } from './transientUi';
 import type { Theme } from '../../../core/types/theme';
+import { getSurfaceMaterialCss } from './styles/surfaceMaterialCss';
 
 type PromptOption = {
     id: string;
@@ -49,22 +50,19 @@ function getCss(): string {
   max-height: min(430px, calc(100vh - (var(--aimd-space-4) * 2)));
   display: flex;
   flex-direction: column;
-  border-radius: var(--aimd-radius-2xl);
-  border: 1px solid color-mix(in srgb, var(--aimd-border-default) 82%, transparent);
-  background: color-mix(in srgb, var(--aimd-bg-surface) 98%, var(--aimd-bg-primary));
-  box-shadow: var(--aimd-shadow-lg);
   pointer-events: auto;
   overflow: hidden;
+  min-width: 0;
 }
 
 .comment-prompt-picker__head {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
   gap: var(--aimd-space-3);
   min-height: var(--aimd-panel-header-height-compact);
-  padding: var(--aimd-space-3) var(--aimd-space-3) var(--aimd-space-2);
-  border-bottom: 1px solid color-mix(in srgb, var(--aimd-border-default) 82%, transparent);
+  padding: var(--aimd-space-4);
+  flex: none;
 }
 
 .comment-prompt-picker__title {
@@ -73,14 +71,20 @@ function getCss(): string {
   line-height: 1.4;
   font-weight: var(--aimd-font-medium);
   color: var(--aimd-text-primary);
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .comment-prompt-picker__list {
   display: grid;
+  grid-auto-rows: max-content;
+  align-content: start;
   gap: var(--aimd-space-2);
   padding: var(--aimd-space-3);
   overflow: auto;
   overscroll-behavior: contain;
+  flex: 1 1 auto;
+  min-height: 0;
 }
 
 .comment-prompt-picker__item {
@@ -88,17 +92,11 @@ function getCss(): string {
   box-sizing: border-box;
   cursor: pointer;
   display: grid;
+  grid-template-rows: max-content max-content;
   gap: var(--aimd-space-1);
   padding: var(--aimd-space-2) var(--aimd-space-3);
-  border-radius: var(--aimd-radius-xl);
-  border: 1px solid color-mix(in srgb, var(--aimd-border-default) 80%, transparent);
-  background: color-mix(in srgb, var(--aimd-bg-primary) 94%, transparent);
-  color: var(--aimd-text-primary);
-}
-
-.comment-prompt-picker__item:hover {
-  border-color: color-mix(in srgb, var(--aimd-interactive-primary) 32%, var(--aimd-border-default));
-  background: color-mix(in srgb, var(--aimd-button-secondary-hover) 90%, var(--aimd-surface-hover));
+  min-width: 0;
+  min-height: calc(var(--aimd-size-control-action-panel) + var(--aimd-space-1));
 }
 
 .comment-prompt-picker__item-title {
@@ -108,7 +106,8 @@ function getCss(): string {
   font-weight: var(--aimd-font-medium);
   overflow: hidden;
   text-overflow: ellipsis;
-  white-space: nowrap;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 .comment-prompt-picker__item-content {
@@ -124,26 +123,20 @@ function getCss(): string {
 .comment-prompt-picker__empty {
   margin: 0;
   padding: var(--aimd-space-3);
-  border-radius: var(--aimd-radius-xl);
-  background: color-mix(in srgb, var(--aimd-bg-primary) 94%, transparent);
   font-size: var(--aimd-text-xs);
   line-height: 1.45;
   color: var(--aimd-text-secondary);
 }
 
-.comment-prompt-picker .icon-btn {
+.comment-prompt-picker__close {
   all: unset;
   box-sizing: border-box;
   cursor: pointer;
-  width: var(--aimd-size-control-icon-panel);
-  height: var(--aimd-size-control-icon-panel);
+  width: calc(var(--aimd-size-control-action-panel) + var(--aimd-space-1));
+  height: calc(var(--aimd-size-control-action-panel) + var(--aimd-space-1));
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border-radius: var(--aimd-radius-full);
-  border: 1px solid transparent;
-  color: var(--aimd-button-icon-text);
-  background: transparent;
   flex: 0 0 auto;
   transition:
     background var(--aimd-duration-fast) var(--aimd-ease-in-out),
@@ -151,22 +144,17 @@ function getCss(): string {
     box-shadow var(--aimd-duration-fast) var(--aimd-ease-in-out);
 }
 
-.comment-prompt-picker .icon-btn:hover {
-  background: var(--aimd-button-icon-hover);
-  color: var(--aimd-button-icon-text-hover);
-}
-
-.comment-prompt-picker .icon-btn:focus-visible {
+.comment-prompt-picker__close:focus-visible {
   outline: 2px solid var(--aimd-focus-ring);
   outline-offset: 2px;
 }
 
-.comment-prompt-picker .icon-btn .aimd-icon,
-.comment-prompt-picker .icon-btn .aimd-icon svg {
+.comment-prompt-picker__close .aimd-icon,
+.comment-prompt-picker__close .aimd-icon svg {
   width: var(--aimd-size-control-glyph-panel);
   height: var(--aimd-size-control-glyph-panel);
 }
-`;
+${getSurfaceMaterialCss()}`;
 }
 
 function getPromptPreview(content: string): string {
@@ -208,12 +196,12 @@ export class CommentPromptPickerPopover {
         layer.className = 'comment-prompt-picker-layer';
         layer.dataset.placement = params.placement === 'center' ? 'center' : 'anchor';
         const popover = document.createElement('div');
-        popover.className = 'comment-prompt-picker';
+        popover.className = 'comment-prompt-picker aimd-material-surface';
         popover.setAttribute('data-aimd-theme', params.theme);
         popover.innerHTML = `
-          <div class="comment-prompt-picker__head">
+          <div class="comment-prompt-picker__head aimd-material-chrome">
             <h3 class="comment-prompt-picker__title">${params.labels.title}</h3>
-            <button class="icon-btn" type="button" data-action="close" aria-label="${params.labels.close}">${createIcon(xIcon).outerHTML}</button>
+            <button class="icon-btn comment-prompt-picker__close aimd-material-button aimd-material-button--quiet" type="button" data-action="close" aria-label="${params.labels.close}">${createIcon(xIcon).outerHTML}</button>
           </div>
         `;
 
@@ -221,14 +209,14 @@ export class CommentPromptPickerPopover {
         list.className = 'comment-prompt-picker__list';
         if (params.prompts.length < 1) {
             const empty = document.createElement('p');
-            empty.className = 'comment-prompt-picker__empty';
+            empty.className = 'comment-prompt-picker__empty aimd-material-card';
             empty.textContent = params.labels.empty;
             list.appendChild(empty);
         } else {
             for (const prompt of params.prompts) {
                 const button = document.createElement('button');
                 button.type = 'button';
-                button.className = 'comment-prompt-picker__item';
+                button.className = 'comment-prompt-picker__item aimd-material-choice';
                 button.dataset.promptId = prompt.id;
                 button.setAttribute('aria-label', prompt.title);
                 const title = document.createElement('span');

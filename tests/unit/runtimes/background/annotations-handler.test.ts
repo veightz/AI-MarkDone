@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createRequestId, PROTOCOL_VERSION, type ExtRequest } from '@/contracts/protocol';
 import { readerAnnotationStorageKey, type ReaderAnnotationDocument, type ReaderAnnotationRecord } from '@/contracts/readerAnnotations';
+import { highlightStorageKey } from '@/contracts/highlights';
 
 function createArea(store: Record<string, unknown>) {
     return {
@@ -46,6 +47,20 @@ describe('reader annotation background handler', () => {
     beforeEach(() => {
         vi.resetModules();
         vi.unstubAllGlobals();
+    });
+
+    it.each(['annotation', 'highlight'])('opens the exact stored reply and retains its %s identity until content focus', async (kind) => {
+        const storedDocument = { ...document, lastKnownUrl: 'https://chatgpt.com/c/conv-1?branch=one#settings' };
+        const navigationId = kind === 'annotation' ? annotation.id : 'highlight:highlight-1';
+        const store = kind === 'annotation'
+            ? { [readerAnnotationStorageKey(storedDocument)]: { schemaVersion: 1, document: storedDocument, annotations: [annotation] } }
+            : { [highlightStorageKey(storedDocument)]: { schemaVersion: 1, document: storedDocument, highlights: [{ ...annotation, id: 'highlight-1', color: 'blue' }] } };
+        const tabs = { create: vi.fn((_options, callback) => callback({ id: 77 })) };
+        vi.stubGlobal('browser', { runtime: { getManifest: () => ({ manifest_version: 3 }) }, tabs, storage: { local: createArea(store), session: createArea({}) } });
+        const { handleReaderAnnotationRequest: handle, consumeReaderAnnotationNavigationIntent: consume } = await import('@/runtimes/background/handlers/annotations');
+        expect((await handle(req('annotations:navigate', { document: storedDocument, annotationId: navigationId })))?.response.ok).toBe(true);
+        expect(tabs.create).toHaveBeenCalledWith({ url: 'https://chatgpt.com/c/conv-1?branch=one&message=assistant-1' }, expect.any(Function));
+        expect(await consume(77, 'https://chatgpt.com/c/conv-1')).toMatchObject({ annotationId: navigationId, assistantMessageId: 'assistant-1' });
     });
 
     it('fills a missing stored conversation title on save and preserves it on later untitled saves', async () => {

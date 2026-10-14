@@ -34,7 +34,7 @@ function normalizeHosts(patterns: string[]): string[] {
 
 function popupHosts(): string[] {
     const html = readFileSync(resolve(process.cwd(), 'src/popup/popup.html'), 'utf-8');
-    const hrefs = Array.from(html.matchAll(/href="([^"]+)"/g), (match) => match[1]);
+    const hrefs = Array.from(html.matchAll(/<a\b[^>]*\bhref="([^"]+)"/g), (match) => match[1]);
     return Array.from(new Set(hrefs.map((href) => new URL(href).hostname))).sort();
 }
 
@@ -42,7 +42,6 @@ describe('supported hosts consistency', () => {
     it('keeps manifest hosts aligned across chrome, firefox, and content scripts while allowing the popup to show a curated subset', () => {
         const chrome = readJson<ChromeManifest>('manifest.chrome.json');
         const firefox = readJson<FirefoxManifest>('manifest.firefox.json');
-        const safari = readJson<FirefoxManifest>('manifest.safari.json');
 
         const sourceHosts = normalizeHosts([...SUPPORTED_HOST_PATTERNS]);
         const chromeHosts = normalizeHosts(chrome.host_permissions || []);
@@ -50,17 +49,13 @@ describe('supported hosts consistency', () => {
         const firefoxHosts = normalizeHosts(
             firefoxHttpPermissions.filter((value) => value !== GOOGLE_DRIVE_API_HOST_PERMISSION && value !== GOOGLE_OAUTH_REVOKE_HOST_PERMISSION),
         );
-        const safariHosts = normalizeHosts((safari.permissions || []).filter((value) => value.startsWith('http')));
         const chromeContentHosts = normalizeHosts(chrome.content_scripts?.flatMap((entry) => entry.matches || []) || []);
         const firefoxContentHosts = normalizeHosts(firefox.content_scripts?.flatMap((entry) => entry.matches || []) || []);
-        const safariContentHosts = normalizeHosts(safari.content_scripts?.flatMap((entry) => entry.matches || []) || []);
         const popupLinkHosts = popupHosts();
 
         expect(sourceHosts).toEqual(chromeContentHosts);
         expect(sourceHosts).toEqual(firefoxHosts);
-        expect(sourceHosts).toEqual(safariHosts);
         expect(sourceHosts).toEqual(firefoxContentHosts);
-        expect(sourceHosts).toEqual(safariContentHosts);
         expect(chromeHosts).toEqual(normalizeHosts([...SUPPORTED_HOST_PATTERNS, GOOGLE_DRIVE_API_HOST_PERMISSION, GOOGLE_OAUTH_REVOKE_HOST_PERMISSION]));
         expect(normalizeHosts(firefoxHttpPermissions)).toEqual(normalizeHosts([...SUPPORTED_HOST_PATTERNS, GOOGLE_DRIVE_API_HOST_PERMISSION, GOOGLE_OAUTH_REVOKE_HOST_PERMISSION]));
         expect(popupLinkHosts.length).toBeGreaterThan(0);

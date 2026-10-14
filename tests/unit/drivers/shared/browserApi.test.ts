@@ -14,9 +14,9 @@ describe('shared browser api adapters', () => {
         expect(resolveActionApi({})).toBeNull();
     });
 
-    it('detects Safari separately from Chrome and Firefox', () => {
+    it('detects supported browsers and leaves other environments unknown', () => {
         expect(detectBrowserTarget({ userAgent: 'Mozilla/5.0 Firefox/125.0', hasChrome: false })).toBe('firefox');
-        expect(detectBrowserTarget({ userAgent: 'Mozilla/5.0 Version/17.0 Safari/605.1.15', hasChrome: false })).toBe('safari');
+        expect(detectBrowserTarget({ userAgent: 'Mozilla/5.0 Version/17.0 Safari/605.1.15', hasChrome: false })).toBe('unknown');
         expect(detectBrowserTarget({ userAgent: 'Mozilla/5.0 Chrome/123.0 Safari/537.36', hasChrome: true })).toBe('chrome');
     });
 

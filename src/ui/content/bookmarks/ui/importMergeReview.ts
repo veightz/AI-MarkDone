@@ -16,6 +16,7 @@ export type ImportMergeReviewModal = {
 
 export function buildImportMergeReviewModalBody(result: ImportMergeReviewResult): ImportMergeReviewModal {
     const body = document.createElement('div');
+    body.className = 'import-merge-review';
     const summarySection = document.createElement('section');
     summarySection.className = 'merge-section merge-section--summary';
     const summaryHeading = document.createElement('div');
@@ -33,7 +34,7 @@ export function buildImportMergeReviewModalBody(result: ImportMergeReviewResult)
 
     for (const item of items) {
         const article = document.createElement('article');
-        article.className = 'merge-summary-item';
+        article.className = 'merge-summary-item aimd-material-card';
         const label = document.createElement('span');
         label.className = 'merge-summary-item__label';
         label.textContent = item.label;
@@ -75,7 +76,7 @@ export function buildImportMergeReviewModalBody(result: ImportMergeReviewResult)
 
     for (const row of rows) {
         const article = document.createElement('article');
-        article.className = 'merge-entry';
+        article.className = 'merge-entry aimd-material-card';
         const top = document.createElement('div');
         top.className = 'merge-entry__top';
         const title = document.createElement('strong');
@@ -113,7 +114,7 @@ export function appendLibraryImportSummary(body: HTMLElement, counts: LibraryRes
         [t('cloudBackupConversationNames'), counts.conversations.added],
     ] as const) {
         const item = document.createElement('article');
-        item.className = 'merge-summary-item';
+        item.className = 'merge-summary-item aimd-material-card';
         const name = document.createElement('span'); name.className = 'merge-summary-item__label'; name.textContent = label;
         const value = document.createElement('strong'); value.textContent = String(count);
         item.append(name, value);

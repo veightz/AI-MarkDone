@@ -10,6 +10,10 @@ import {
     type ChatGPTDomRoundRef,
 } from '../../chatgpt/domConversationDiscovery';
 import { isChatGPTPageUrl } from '../../../../contracts/chatgptHosts';
+import { normalizeChatGPTRichBlocks } from '../../chatgpt/chatgptRichContent';
+import type { RichBlockV1 } from '../../../../contracts/richContent';
+import { hasConsistentChatGPTMessageContentIdentity } from '../../chatgpt/chatgptMessageContentIdentity';
+import { resolveChatGPTActiveSurface } from '../../chatgpt/chatgptActiveSurface';
 
 const DEEP_RESEARCH_SCREENSHOT_ROOT_SELECTOR = '[data-conversation-screenshot-content]';
 const DEEP_RESEARCH_IFRAME_SELECTOR = `${DEEP_RESEARCH_SCREENSHOT_ROOT_SELECTOR} iframe[title="internal://deep-research"]`;
@@ -43,7 +47,7 @@ export class ChatGPTAdapter extends SiteAdapter {
     }
 
     private hasActiveGenerationControl(): boolean {
-        return document.querySelector(ACTIVE_GENERATION_CONTROL_SELECTOR) instanceof HTMLElement;
+        return resolveChatGPTActiveSurface()?.pageRoot.querySelector(ACTIVE_GENERATION_CONTROL_SELECTOR) instanceof HTMLElement;
     }
 
     private findOfficialActionAnchor(assistantMessageElement: HTMLElement): HTMLElement | null {
@@ -175,6 +179,7 @@ export class ChatGPTAdapter extends SiteAdapter {
     }
 
     getToolbarAnchorElement(assistantMessageElement: HTMLElement): HTMLElement | null {
+        if (!this.isMessageContentAvailable(assistantMessageElement)) return null;
         return this.findOfficialActionAnchor(assistantMessageElement)
             ?? this.findDeepResearchToolbarAnchor(assistantMessageElement);
     }
@@ -194,6 +199,7 @@ export class ChatGPTAdapter extends SiteAdapter {
     }
 
     injectToolbar(messageElement: HTMLElement, toolbarHost: HTMLElement): boolean {
+        if (!this.isMessageContentAvailable(messageElement)) return false;
         try {
             const officialActionAnchor = this.findOfficialActionAnchor(messageElement);
             const deepResearchAnchor = officialActionAnchor
@@ -239,13 +245,15 @@ export class ChatGPTAdapter extends SiteAdapter {
         // are translated UI copy and are not content-lifecycle evidence.
         if (!this.hasActiveGenerationControl()) return false;
 
-        const messages = document.querySelectorAll(this.getMessageSelector());
+        const messages = resolveChatGPTActiveSurface()?.contentRoot.querySelectorAll(this.getMessageSelector());
+        if (!messages) return false;
         if (messages.length === 0) return false;
         const lastMessage = messages[messages.length - 1];
         return lastMessage === element;
     }
 
     getMessageId(element: HTMLElement): string | null {
+        if (!this.isMessageContentAvailable(element)) return null;
         const searchIds = element.getAttribute('data-chatgpt-search-message-ids')?.trim().split(/\s+/).filter(Boolean);
         if (searchIds?.length && searchIds.every((id) => id === searchIds[0])) return searchIds[0]!;
         if (this.findDeepResearchFrame(element)) {
@@ -274,19 +282,25 @@ export class ChatGPTAdapter extends SiteAdapter {
         return index >= 0 ? `chatgpt-${index}` : null;
     }
 
-    getObserverContainer(): HTMLElement | null {
-        const main = document.querySelector('main');
-        if (main instanceof HTMLElement) return main.parentElement ?? main;
+    isMessageContentAvailable(message: HTMLElement): boolean {
+        return hasConsistentChatGPTMessageContentIdentity(message);
+    }
 
-        const appRoot = document.querySelector('#__next');
-        return appRoot instanceof HTMLElement ? appRoot : document.body;
+    getObserverContainer(): HTMLElement | null {
+        const root = resolveChatGPTActiveSurface()?.contentRoot;
+        if (!root) return null;
+        return root.matches('main') ? root.parentElement ?? root : root;
+    }
+
+    getLastMessageElement(): HTMLElement | null {
+        const messages = resolveChatGPTActiveSurface()?.contentRoot.querySelectorAll<HTMLElement>(this.getMessageSelector());
+        return messages?.length ? messages[messages.length - 1]! : null;
     }
 
     getConversationScrollRoot(): HTMLElement | null {
-        const seed =
-            this.getLastMessageElement()
-            || this.getObserverContainer()
-            || document.querySelector('main');
+        const surface = resolveChatGPTActiveSurface();
+        if (!surface) return null;
+        const seed = this.getLastMessageElement() || surface.contentRoot;
 
         let cursor: HTMLElement | null = seed instanceof HTMLElement ? seed : null;
         while (cursor) {
@@ -296,8 +310,7 @@ export class ChatGPTAdapter extends SiteAdapter {
             if (scrollable) return cursor;
             cursor = cursor.parentElement;
         }
-        const main = document.querySelector('main');
-        if (main instanceof HTMLElement) return main;
+        if (surface.contentRoot.matches('main')) return surface.contentRoot;
         return document.scrollingElement instanceof HTMLElement ? document.scrollingElement : null;
     }
 
@@ -390,6 +403,26 @@ export class ChatGPTAdapter extends SiteAdapter {
 
     normalizeDOM(root: HTMLElement): void {
         this.unwrapComponentBlocks(root);
+        root.querySelectorAll<HTMLElement>('span[data-d-weight="semibold"]').forEach((source) => {
+            if (source.closest('strong, pre, code')) return;
+            const strong = root.ownerDocument.createElement('strong');
+            strong.append(...Array.from(source.childNodes));
+            source.replaceWith(strong);
+        });
+        // Host markers carry code semantics even when ChatGPT omits native pre/code tags.
+        root.querySelectorAll<HTMLElement>('[data-markdown-copy="code-block"]').forEach((source) => {
+            if (source.tagName === 'PRE') return;
+            const pre = root.ownerDocument.createElement('pre');
+            for (const attribute of Array.from(source.attributes)) pre.setAttribute(attribute.name, attribute.value);
+            pre.append(...Array.from(source.childNodes));
+            source.replaceWith(pre);
+        });
+        root.querySelectorAll<HTMLElement>('[data-markdown-copy="inline-code"]').forEach((source) => {
+            if (source.tagName === 'CODE') return;
+            const code = root.ownerDocument.createElement('code');
+            code.textContent = source.textContent;
+            source.replaceWith(code);
+        });
 
         root.querySelectorAll('[data-testid="webpage-citation-pill"]').forEach((pill) => {
             const wrapper = pill.parentElement;
@@ -403,6 +436,10 @@ export class ChatGPTAdapter extends SiteAdapter {
                 wrapper.remove();
             }
         });
+    }
+
+    collectRichBlocks(root: HTMLElement): readonly RichBlockV1[] {
+        return normalizeChatGPTRichBlocks(root);
     }
 
     private unwrapComponentBlocks(root: HTMLElement): void {
@@ -477,6 +514,8 @@ export class ChatGPTAdapter extends SiteAdapter {
 
     isNoiseNode(node: Node, context: NoiseContext): boolean {
         if (!(node instanceof HTMLElement)) return false;
+        if (node.matches('[data-markdown-copy="exclude"]')) return true;
+        if (node.matches('[data-d-component="icon"], [data-d-component="favicon"]')) return true;
 
         if (node.classList.contains('sr-only')) {
             return true;
@@ -496,7 +535,7 @@ export class ChatGPTAdapter extends SiteAdapter {
     }
 
     private isMarkdownControlNoise(node: HTMLElement): boolean {
-        if (!node.closest('.markdown.prose, .markdown.prose.dark\\:prose-invert')) return false;
+        if (!node.closest('.markdown.prose, .markdown.prose.dark\\:prose-invert, [data-markdown-text-style="assistant-message"]')) return false;
         if (node.matches('button')) return true;
         if (node.getAttribute('role') === 'button') return true;
         const label = `${node.getAttribute('aria-label') ?? ''} ${node.textContent ?? ''}`.replace(/\s+/g, ' ').trim();

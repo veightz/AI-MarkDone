@@ -1,6 +1,6 @@
 (() => {
   const BRIDGE_KEY = '__AIMD_CHATGPT_CONVERSATION_BRIDGE__';
-  const BRIDGE_VERSION = 9;
+  const BRIDGE_VERSION = 11;
   const MAX_RESPONSE_BYTES = 8 * 1024 * 1024;
   const MAX_GRAPH_OBJECTS = 256;
   const MAX_GRAPH_DEPTH = 4;
@@ -102,21 +102,27 @@
     return true;
   }
 
-  function extractText(value) {
+  function extractText(value, depth = 0) {
+    if (depth > 8) return '> [Dynamic content: representation limit exceeded]';
     if (typeof value === 'string') return value;
-    if (Array.isArray(value)) return value.map(extractText).filter(Boolean).join('\n\n').trim();
+    if (Array.isArray(value)) return value.map(part => extractText(part, depth + 1)).filter(Boolean).join('\n\n').trim();
     if (!readRecord(value)) return '';
     const contentType = readString(value, 'content_type') || readString(value, 'type');
-    if (contentType && !['text', 'multimodal_text', 'output_text'].includes(contentType)) return '';
+    if (contentType && !['text', 'multimodal_text', 'output_text'].includes(contentType)) {
+      // The host's final visual message has identity even before its DOM is
+      // mounted. Retain a readable seed, never serialize opaque widget state.
+      return '> [Dynamic content: static representation unavailable until displayed]';
+    }
     if (Array.isArray(value.parts)) {
       const parts = value.parts.map((part) => {
         if (typeof part === 'string') return part;
         if (!readRecord(part)) return '';
-        return part.text || part.content || part.markdown || '';
+        return extractText(part, depth + 1);
       }).filter(Boolean).join('\n\n').trim();
       if (parts) return parts;
     }
-    return String(value.text || value.content || value.markdown || '').trim();
+    const text = value.text || value.content || value.markdown;
+    return text ? extractText(text, depth + 1).trim() : '';
   }
 
   function messageId(message) {
@@ -341,7 +347,10 @@
       const urlId = getConversationIdFromUrl(url);
       let sameOrigin = false;
       try { sameOrigin = new URL(url, window.location.href).origin === window.location.origin; } catch {}
-      if (method === 'GET' && currentId && sameOrigin && (!urlId || urlId === currentId)) {
+      // SPA prefetch can start before history reflects the target route.
+      // A typed conversation URL owns its capture independently of the
+      // current tab route; route entry will consume that cached result.
+      if (method === 'GET' && (urlId || currentId) && sameOrigin) {
         const expectedId = urlId || currentId;
         const requestId = ++requestSequence;
         Promise.resolve(result)

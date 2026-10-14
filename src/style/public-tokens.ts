@@ -45,9 +45,7 @@ export function getPublicTokenCss(): string {
   --aimd-shadow-xs: var(--aimd-sys-shadow-xs);
   --aimd-shadow-sm: var(--aimd-sys-shadow-sm);
   --aimd-shadow-lg: var(--aimd-sys-shadow-lg);
-  --aimd-shadow-xl: var(--aimd-sys-shadow-xl);
   --aimd-shadow-focus: var(--aimd-sys-shadow-focus);
-  --aimd-shadow-field-inset: var(--aimd-sys-shadow-field-inset);
   --aimd-shadow-picker-selection: var(--aimd-sys-shadow-picker-selection);
   --aimd-shadow-panel: var(--aimd-sys-shadow-panel);
   --aimd-shadow-interactive-halo: var(--aimd-sys-shadow-interactive-halo);

@@ -10,6 +10,8 @@ import type {
     TranslateFn,
 } from './saveMessagesTypes';
 import type { FormulaSourceFormat } from '../../core/math/formulaSourceFormat';
+import { DEFAULT_CONTENT_CLEANUP_SETTINGS, type ContentCleanupSettings } from '../../core/settings/content';
+import { projectChatGPTMarkdown, omitMarkdownCodeBlocks } from '../../core/content/chatgptMarkdownCleanup';
 import { buildMarkdownExport } from './saveMessagesMarkdown';
 import { buildPdfPrintPlan } from './saveMessagesPdf';
 import { buildMessageExportDocument } from './messageExportDocument';
@@ -18,18 +20,41 @@ import {
     renderMessageDocumentPng,
     type MessagePngRenderSettings,
 } from './messagePngRenderer';
+import { prepareRichOutput, type RichOutputManifest } from './prepareRichOutput';
 
 export type ExportResult =
-    | { ok: true; noop: boolean }
+    | { ok: true; noop: boolean; richContent?: { included: number; placeholders: number } }
     | { ok: false; error: { code: string; message: string }; cancelled?: boolean };
 
 export type ExportOptions = {
     t: TranslateFn;
     markdownFormulaFormat?: FormulaSourceFormat;
+    contentCleanup?: ContentCleanupSettings;
     png?: MessagePngRenderSettings;
     onProgress?: ExportProgressCallback;
     signal?: AbortSignal;
+    visuals?: 'include' | 'placeholder';
+    onPrepared?: () => void;
 };
+
+function richSummary(manifest: RichOutputManifest) {
+    return manifest.blocks.length ? { richContent: {
+        included: manifest.blocks.filter(block => block.outcome === 'included').length,
+        placeholders: manifest.blocks.filter(block => block.outcome === 'placeholder').length,
+    } } : {};
+}
+
+function projectTurns(turns: ChatTurn[], settings: ContentCleanupSettings = DEFAULT_CONTENT_CLEANUP_SETTINGS): ChatTurn[] {
+    if (!settings.preserveLinks && settings.includeCodeBlocks) return turns;
+    return turns.map((turn) => ({
+        ...turn,
+        assistant: !settings.preserveLinks
+            ? omitMarkdownCodeBlocks(turn.assistant)
+            : turn.assistantSource?.trim()
+            ? projectChatGPTMarkdown(turn.assistantSource, settings)
+            : settings.includeCodeBlocks ? turn.assistant : omitMarkdownCodeBlocks(turn.assistant),
+    }));
+}
 
 export async function exportTurnsMarkdown(
     turns: ChatTurn[],
@@ -39,10 +64,12 @@ export async function exportTurnsMarkdown(
 ): Promise<ExportResult> {
     if (!selectedIndices || selectedIndices.length === 0) return { ok: true, noop: true };
     try {
-        const out = buildMarkdownExport(turns, selectedIndices, metadata, options.t, {
+        throwIfAborted(options.signal);
+        const out = buildMarkdownExport(projectTurns(turns, options.contentCleanup), selectedIndices, metadata, options.t, {
             formulaFormat: options.markdownFormulaFormat,
         });
         if (!out) return { ok: true, noop: true };
+        throwIfAborted(options.signal);
         downloadText({ filename: out.filename, content: out.markdown, mime: 'text/markdown;charset=utf-8' });
         return { ok: true, noop: false };
     } catch (err: any) {
@@ -60,17 +87,55 @@ export async function exportTurnsPdf(
     options: ExportOptions
 ): Promise<ExportResult> {
     if (!selectedIndices || selectedIndices.length === 0) return { ok: true, noop: true };
+    let prepared: Awaited<ReturnType<typeof prepareRichOutput>> | null = null;
+    let printOwnsResources = false;
     try {
-        const plan = buildPdfPrintPlan(turns, selectedIndices, metadata, options.t);
+        prepared = await prepareRichOutput(projectTurns(turns, options.contentCleanup), selectedIndices, {
+            target: 'visual', visuals: options.visuals ?? 'include', signal: options.signal, onProgress: options.onProgress,
+        });
+        const plan = buildPdfPrintPlan(prepared.turns, selectedIndices, metadata, options.t);
         if (!plan) return { ok: true, noop: true };
-        await printPdf({ html: plan.html, containerId: plan.containerId });
-        return { ok: true, noop: false };
+        throwIfAborted(options.signal);
+        options.onPrepared?.();
+        await printPdf(plan, { onCleanup: prepared.release });
+        printOwnsResources = true;
+        return { ok: true, noop: false, ...richSummary(prepared.manifest) };
     } catch (err: any) {
+        if (isRenderAbortError(err)) return { ok: false, cancelled: true, error: { code: 'CANCELLED', message: options.t('pngExportCancelled') } };
         return {
             ok: false,
             error: { code: err?.code || 'INTERNAL_ERROR', message: err?.message || 'Export failed' },
         };
-    }
+    } finally { if (!printOwnsResources) prepared?.release(); }
+}
+
+export async function exportTurnsMarkdownZip(
+    turns: ChatTurn[], selectedIndices: number[], metadata: ConversationMetadata, options: ExportOptions,
+): Promise<ExportResult> {
+    if (!selectedIndices.length) return { ok: true, noop: true };
+    let prepared: Awaited<ReturnType<typeof prepareRichOutput>> | null = null;
+    try {
+        prepared = await prepareRichOutput(projectTurns(turns, options.contentCleanup), selectedIndices, {
+            target: 'archive', visuals: options.visuals ?? 'include', signal: options.signal, onProgress: options.onProgress,
+        });
+        const markdown = buildMarkdownExport(prepared.turns, selectedIndices, metadata, options.t, { formulaFormat: options.markdownFormulaFormat });
+        if (!markdown) return { ok: true, noop: true };
+        const filename = markdown.filename.replace(/\.md$/i, '-offline.zip');
+        const files = [
+            { filename: 'conversation.md', blob: new Blob([markdown.markdown], { type: 'text/markdown;charset=utf-8' }) },
+            ...prepared.files,
+            { filename: 'manifest.json', blob: new Blob([JSON.stringify({ ...prepared.manifest, sourceUrl: metadata.url }, null, 2)], { type: 'application/json' }) },
+        ];
+        options.onProgress?.({ phase: 'zipping', completed: files.length, total: files.length, filename });
+        const zip = await zipBlobs({ files, signal: options.signal });
+        throwIfAborted(options.signal);
+        downloadBlob({ filename, blob: zip });
+        options.onProgress?.({ phase: 'done', completed: files.length, total: files.length, filename });
+        return { ok: true, noop: false, ...richSummary(prepared.manifest) };
+    } catch (err: any) {
+        return { ok: false, ...(isRenderAbortError(err) ? { cancelled: true } : {}),
+            error: { code: isRenderAbortError(err) ? 'CANCELLED' : 'EXPORT_FAILED', message: err?.message || 'Export failed' } };
+    } finally { prepared?.release(); }
 }
 
 export async function exportTurnsPng(
@@ -80,9 +145,13 @@ export async function exportTurnsPng(
     options: ExportOptions
 ): Promise<ExportResult> {
     if (!selectedIndices || selectedIndices.length === 0) return { ok: true, noop: true };
+    let prepared: Awaited<ReturnType<typeof prepareRichOutput>> | null = null;
     try {
         throwIfAborted(options.signal);
-        const document = buildMessageExportDocument(turns, selectedIndices, {
+        prepared = await prepareRichOutput(projectTurns(turns, options.contentCleanup), selectedIndices, {
+            target: 'visual', visuals: options.visuals ?? 'include', signal: options.signal, onProgress: options.onProgress,
+        });
+        const document = buildMessageExportDocument(prepared.turns, selectedIndices, {
             title: metadata.title,
             labels: {
                 user: options.t('pdfUserLabel'),
@@ -114,7 +183,7 @@ export async function exportTurnsPng(
             throwIfAborted(options.signal);
             downloadBlob({ filename, blob: artifact.blob });
             options.onProgress?.({ phase: 'done', completed: 1, total, filename });
-            return { ok: true, noop: false };
+            return { ok: true, noop: false, ...richSummary(prepared.manifest) };
         }
         const files = artifacts.map((artifact, index) => ({
             filename: filenames.artifactFilenames[index]!,
@@ -128,7 +197,7 @@ export async function exportTurnsPng(
         throwIfAborted(options.signal);
         downloadBlob({ filename: filenames.zipFilename, blob: zip });
         options.onProgress?.({ phase: 'done', completed: files.length, total, filename: filenames.zipFilename });
-        return { ok: true, noop: false };
+        return { ok: true, noop: false, ...richSummary(prepared.manifest) };
     } catch (err: any) {
         if (isRenderAbortError(err)) {
             return { ok: false, cancelled: true, error: { code: 'CANCELLED', message: options.t('pngExportCancelled') } };
@@ -137,5 +206,5 @@ export async function exportTurnsPng(
             ok: false,
             error: { code: err?.code || 'INTERNAL_ERROR', message: err?.message || 'Export failed' },
         };
-    }
+    } finally { prepared?.release(); }
 }

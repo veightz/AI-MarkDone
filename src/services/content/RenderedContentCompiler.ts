@@ -1,8 +1,8 @@
 import { logger } from '../../core/logger';
-import { enhanceUnrenderedMath } from '../copy/preprocess/math-extractor';
-import { createMarkdownParser } from '../markdown-parser/createMarkdownParser';
 import type { ParserOptions } from '../markdown-parser/core/types';
 import type { MarkdownParserAdapter } from '../../drivers/content/adapters/parser/MarkdownParserAdapter';
+import type { RichBlockV1 } from '../../contracts/richContent';
+import { compileRenderedBody } from './compileRenderedBody';
 
 export type RenderedContentCompilerCapabilities = Readonly<{
     parserAdapter: MarkdownParserAdapter | null;
@@ -11,10 +11,11 @@ export type RenderedContentCompilerCapabilities = Readonly<{
     getArtifactPlaceholder?: (node: HTMLElement) => string | null;
     enhanceUnrenderedMath?: boolean;
     cleanMarkdown?: (markdown: string) => string;
+    collectRichBlocks?: (root: HTMLElement) => readonly RichBlockV1[];
 }>;
 
 export type RenderedContentCompileResult =
-    | Readonly<{ kind: 'ready'; markdown: string }>
+    | Readonly<{ kind: 'ready'; markdown: string; sourceMarkdown?: string; richBlocks?: readonly RichBlockV1[] }>
     | Readonly<{
         kind: 'rejected';
         reason: 'unsupported-parser' | 'empty-content' | 'parser-budget' | 'compile-error';
@@ -43,22 +44,17 @@ export class RenderedContentCompiler {
 
         try {
             const clone = root.cloneNode(true) as HTMLElement;
-            this.capabilities.normalizeDOM?.(clone);
-            removeNoiseNodes(clone, this.capabilities);
-            normalizeRenderedWhitespace(clone);
-            if (this.capabilities.enhanceUnrenderedMath) enhanceUnrenderedMath(clone);
-
-            const parsed = createMarkdownParser(parserAdapter, { enablePerformanceLogging: false, ...options })
-                .parse(clone);
-            const markdown = this.capabilities.cleanMarkdown?.(parsed) ?? parsed;
-            if (/^<!-- Parser (Max nodes|Time budget)/.test(markdown)) {
+            const result = compileRenderedBody(clone, { ...this.capabilities, parserAdapter }, {
+                whitespace: 'rendered', noiseErrors: 'ignore', parserOptions: options,
+            });
+            if (result.kind === 'rejected') {
                 return {
                     kind: 'rejected',
                     reason: 'parser-budget',
                     message: 'Markdown fragment budget exceeded.',
                 };
             }
-            const normalized = markdown.trim();
+            const normalized = result.markdown;
             if (!normalized) {
                 return {
                     kind: 'rejected',
@@ -66,7 +62,11 @@ export class RenderedContentCompiler {
                     message: 'Rendered content did not contain a complete semantic body.',
                 };
             }
-            return Object.freeze({ kind: 'ready', markdown: normalized });
+            return Object.freeze({
+                kind: 'ready', markdown: normalized,
+                ...(result.sourceMarkdown !== normalized ? { sourceMarkdown: result.sourceMarkdown } : {}),
+                ...(result.richBlocks.length ? { richBlocks: result.richBlocks } : {}),
+            });
         } catch (error) {
             logger.warn('[AI-MarkDone][RenderedContentCompiler] Compile failed', error);
             return {
@@ -76,76 +76,4 @@ export class RenderedContentCompiler {
             };
         }
     }
-}
-
-function removeNoiseNodes(
-    root: HTMLElement,
-    capabilities: RenderedContentCompilerCapabilities,
-): void {
-    if (!capabilities.isNoiseNode) return;
-    const showElement = root.ownerDocument.defaultView?.NodeFilter.SHOW_ELEMENT ?? 1;
-    const walker = root.ownerDocument.createTreeWalker(root, showElement);
-    const toProcess: Array<{ node: HTMLElement; placeholder: string | null }> = [];
-    let node: Node | null;
-
-    while ((node = walker.nextNode())) {
-        const element = node as HTMLElement;
-        const nextSibling = element.nextElementSibling;
-        try {
-            if (capabilities.isNoiseNode(element, { nextSibling })) {
-                toProcess.push({
-                    node: element,
-                    placeholder: capabilities.getArtifactPlaceholder?.(element) ?? null,
-                });
-            }
-        } catch (error) {
-            logger.warn('[AI-MarkDone][RenderedContentCompiler] Noise policy failed', error);
-        }
-    }
-
-    toProcess.reverse().forEach(({ node: element, placeholder }) => {
-        if (!element.parentNode) return;
-        if (placeholder) {
-            const paragraph = root.ownerDocument.createElement('p');
-            paragraph.textContent = placeholder;
-            element.parentNode.replaceChild(paragraph, element);
-        } else {
-            element.parentNode.removeChild(element);
-        }
-    });
-}
-
-function normalizeRenderedWhitespace(root: HTMLElement): void {
-    const showText = root.ownerDocument.defaultView?.NodeFilter.SHOW_TEXT ?? 4;
-    const walker = root.ownerDocument.createTreeWalker(root, showText);
-    const textNodes: Text[] = [];
-    let current: Node | null;
-    while ((current = walker.nextNode())) {
-        if (current.nodeType === 3) textNodes.push(current as Text);
-    }
-
-    for (const textNode of textNodes) {
-        if (textNode.parentElement?.closest('pre, code, textarea, .katex, .katex-display, math')) continue;
-        const normalized = textNode.data.replace(/\u00a0/g, ' ');
-        if (!normalized.trim()) {
-            if (shouldPreserveCollapsedSpace(textNode)) textNode.data = ' ';
-            else textNode.remove();
-            continue;
-        }
-        textNode.data = normalized.replace(/\s+/g, ' ');
-    }
-}
-
-function shouldPreserveCollapsedSpace(textNode: Text): boolean {
-    const previous = textNode.previousSibling;
-    const next = textNode.nextSibling;
-    if (!previous || !next) return false;
-    return !isBlockNode(previous) && !isBlockNode(next);
-}
-
-function isBlockNode(node: Node): boolean {
-    if (node.nodeType !== 1) return false;
-    return (node as HTMLElement).matches(
-        'address, article, aside, div, dl, fieldset, figure, footer, form, h1, h2, h3, h4, h5, h6, header, hr, li, main, nav, ol, p, pre, section, table, ul',
-    );
 }

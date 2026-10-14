@@ -2,6 +2,9 @@ import {
     installVisualHarnessBridge,
     type VisualHarnessVariant,
 } from '../visualHarnessBridge';
+import { getPageTokenCss } from '../../../src/style/tokens';
+import { getSurfaceMaterialCss } from '../../../src/ui/content/components/styles/surfaceMaterialCss';
+import { createPopupPreviewHtml } from './popupPreview';
 
 const frame = document.getElementById('popup-frame') as HTMLIFrameElement;
 let variant: VisualHarnessVariant = { theme: 'light', locale: 'en' };
@@ -22,28 +25,8 @@ async function renderPopup(next: VisualHarnessVariant): Promise<void> {
     ]);
     if (!htmlResponse.ok) throw new Error('Unable to load the shipped popup document');
     const popupHtml = await htmlResponse.text();
-    const serializedCatalog = JSON.stringify(catalog).replaceAll('<', '\\u003c');
     const locale = next.locale === 'zh_CN' ? 'zh-CN' : 'en';
-    const extensionApi = `<script>
-      (() => {
-        const catalog = ${serializedCatalog};
-        const api = {
-          runtime: { id: 'aimd-popup-visual', getURL: (path) => '/' + path.replace(/^\\//, '') },
-          i18n: {
-            getMessage: (key) => catalog[key]?.message || '',
-            getUILanguage: () => ${JSON.stringify(locale)}
-          },
-          storage: { sync: { get: (_key, callback) => {
-            const value = {};
-            callback?.(value);
-            return Promise.resolve(value);
-          } } }
-        };
-        globalThis.browser = api;
-        globalThis.chrome = api;
-      })();
-    <\/script>`;
-    frame.srcdoc = popupHtml.replace('<script src="/src/popup/popup.js"></script>', `${extensionApi}<script src="/src/popup/popup.js"></script>`);
+    frame.srcdoc = createPopupPreviewHtml(popupHtml, catalog, locale, [getPageTokenCss(), getSurfaceMaterialCss()].join('\n'));
     await new Promise<void>((resolve) => frame.addEventListener('load', () => resolve(), { once: true }));
     const root = frame.contentDocument?.documentElement;
     if (root) {

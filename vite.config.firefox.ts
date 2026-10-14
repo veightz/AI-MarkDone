@@ -1,6 +1,5 @@
 import { defineConfig } from 'vite';
 import { resolve } from 'path';
-import { extensionSurfacePolicies } from './config/extension/surface';
 
 /**
  * Vite Config for Firefox Build
@@ -13,9 +12,6 @@ export default defineConfig({
         charset: 'ascii',
     },
     define: {
-        __AIMD_ENABLE_SPONSOR_TAB__: JSON.stringify(extensionSurfacePolicies.firefox.sponsorTab),
-        __AIMD_ENABLE_SOCIAL_FOLLOW_CARD__: JSON.stringify(extensionSurfacePolicies.firefox.socialFollowCard),
-        __AIMD_ENABLE_BINARY_CLIPBOARD_COPY_ACTIONS__: JSON.stringify(extensionSurfacePolicies.firefox.binaryClipboardCopyActions),
     },
     build: {
         modulePreload: {

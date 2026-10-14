@@ -31,6 +31,11 @@ vi.mock('../../../../src/drivers/content/export/downloadBlob', () => ({
 vi.mock('../../../../src/drivers/content/export/zipBlobs', () => ({
     zipBlobs: vi.fn(async () => new Blob(['zip'], { type: 'application/zip' })),
 }));
+vi.mock('../../../../src/services/export/prepareRichOutput', () => ({
+    prepareRichOutput: vi.fn(async (turns: ChatTurn[]) => ({
+        turns, files: [], manifest: { schemaVersion: 1, blocks: [] }, release: vi.fn(),
+    })),
+}));
 
 import { copyImageBlobToClipboard } from '../../../../src/drivers/content/clipboard/copyImageToClipboard';
 import { downloadBlob } from '../../../../src/drivers/content/export/downloadBlob';
@@ -38,6 +43,8 @@ import { zipBlobs } from '../../../../src/drivers/content/export/zipBlobs';
 import { copyMessagePng } from '../../../../src/services/copy/copy-turn-png';
 import { renderMessageDocumentPng } from '../../../../src/services/export/messagePngRenderer';
 import type { ChatTurn, ConversationMetadata } from '../../../../src/services/export/saveMessagesTypes';
+import { prepareRichOutput } from '../../../../src/services/export/prepareRichOutput';
+import { richSvgBlock } from '../../../helpers/richContentFixtures';
 
 function t(key: string): string {
     return key;
@@ -72,6 +79,37 @@ describe('copyMessagePng', () => {
         );
         expect(copyImageBlobToClipboard).toHaveBeenCalledTimes(1);
         expect(downloadBlob).not.toHaveBeenCalled();
+    });
+
+    it('prepares rich assets through the shared export projection and holds the lease through clipboard delivery', async () => {
+        const block = richSvgBlock();
+        const richTurn = { ...turn, assistant: '![Diagram](aimd-rich:block-1)', richBlocks: [block], messageId: 'assistant-1', documentUrl: metadata.url };
+        const images = [{ blockId: block.id, url: 'blob:https://chatgpt.com/image-1', mimeType: 'image/png' as const }];
+        const release = vi.fn();
+        const signal = new AbortController().signal;
+        vi.mocked(prepareRichOutput).mockResolvedValueOnce({
+            turns: [{ ...richTurn, richImages: images }], files: [], manifest: { schemaVersion: 1, blocks: [] }, release,
+        });
+        vi.mocked(copyImageBlobToClipboard).mockImplementationOnce(async () => {
+            expect(release).not.toHaveBeenCalled();
+            return { ok: true };
+        });
+        const result = await copyMessagePng(richTurn, metadata, { t, signal });
+        expect(result).toEqual({ ok: true, noop: false });
+        expect(prepareRichOutput).toHaveBeenCalledWith([richTurn], [0], expect.objectContaining({ target: 'visual', visuals: 'include', signal }));
+        expect(renderMessageDocumentPng).toHaveBeenCalledWith(expect.objectContaining({
+            sections: [expect.objectContaining({ richBlocks: [block], richImages: images })],
+        }), undefined, expect.objectContaining({ signal }));
+        expect(release).toHaveBeenCalledTimes(1);
+    });
+
+    it('releases prepared rich images when rendering fails', async () => {
+        const release = vi.fn();
+        vi.mocked(prepareRichOutput).mockResolvedValueOnce({ turns: [turn], files: [], manifest: { schemaVersion: 1, blocks: [] }, release });
+        vi.mocked(renderMessageDocumentPng).mockRejectedValueOnce(new Error('Raster failed'));
+        expect((await copyMessagePng(turn, metadata, { t })).ok).toBe(false);
+        expect(release).toHaveBeenCalledTimes(1);
+        expect(copyImageBlobToClipboard).not.toHaveBeenCalled();
     });
 
     it('returns a localized unsupported error when image clipboard write is unavailable', async () => {

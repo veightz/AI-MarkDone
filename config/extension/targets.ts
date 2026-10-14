@@ -1,4 +1,4 @@
-export type ExtensionTarget = 'chrome' | 'firefox' | 'safari';
+export type ExtensionTarget = 'chrome' | 'firefox';
 
 export const extensionTargets = {
     chrome: {
@@ -25,19 +25,6 @@ export const extensionTargets = {
             dataCollectionPermissions: {
                 required: ['none'],
             },
-        },
-    },
-    safari: {
-        target: 'safari',
-        manifestVersion: 2,
-        distDir: 'dist-safari',
-        actionKey: 'browser_action',
-        backgroundKind: 'scripts',
-        hostPermissionPlacement: 'permissions',
-        webAccessibleResourcesStyle: 'mv2',
-        bundle: {
-            bundleIdentifier: 'com.Liangbin.aimarkdone',
-            productName: 'AI-MarkDone',
         },
     },
 } as const satisfies Record<ExtensionTarget, object>;

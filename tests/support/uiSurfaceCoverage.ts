@@ -43,6 +43,22 @@ function owners(owner: string): UiSurfaceCoverageEntry['lifecycleOwners'] {
 /** Executable mirror of the user-visible catalog in docs/design.md. */
 export const uiSurfaceCoverage = [
     {
+        id: 'buttons-settings', family: 'settings', userEntry: 'Settings → Buttons → group and row controls',
+        ownerModule: 'src/ui/content/bookmarks/ui/tabs/ButtonsSettingsView.ts', productionEntry: 'src/ui/content/bookmarks/ui/tabs/SettingsTabView.ts',
+        profiles: ['inline'], domScopes: ['shadow-root'], lifecycleOwners: owners('ButtonsSettingsView'),
+        responsive: 'Stack group navigation above previews in narrow settings panels', browsers,
+        triggerTests: ['tests/unit/ui/bookmarks/buttonsSettingsView.test.ts', 'tests/unit/ui/bookmarks/settingsCatalog.test.ts'],
+        visualEvidence: { status: 'direct-mock', mockPath: 'mocks/components/buttons-settings' },
+    },
+    {
+        id: 'settings-transfer', family: 'settings', userEntry: 'Settings → Data → configuration export/import/recovery',
+        ownerModule: 'src/ui/content/bookmarks/ui/tabs/SettingsTransferPanel.ts', productionEntry: 'src/ui/content/bookmarks/BookmarksPanel.ts',
+        profiles: ['inline'], domScopes: ['shadow-root'], lifecycleOwners: owners('SettingsTransferPanel'),
+        responsive: 'Wrap actions and scroll change lists while retaining confirmation controls', browsers,
+        triggerTests: ['tests/unit/ui/bookmarks/settingsTransferPanel.test.ts', 'tests/unit/runtimes/background/settings-transfer.test.ts'],
+        visualEvidence: { status: 'covered-by-family', mockPath: 'mocks/components/buttons-settings', reason: 'The settings fixture mounts the real transfer panel beside button preferences using isolated test settings' },
+    },
+    {
         id: 'message-toolbar', family: 'message-toolbar', userEntry: 'Official message action row',
         ownerModule: 'src/ui/content/MessageToolbar.ts', productionEntry: 'src/ui/content/controllers/MessageToolbarOrchestrator.ts',
         profiles: ['inline'], domScopes: ['shadow-root'], lifecycleOwners: owners('MessageToolbar'),
@@ -81,6 +97,14 @@ export const uiSurfaceCoverage = [
         responsive: 'Searchable direct controls in the settings category layout', browsers,
         triggerTests: ['tests/unit/ui/bookmarks/settingsCatalog.test.ts', 'tests/unit/ui/content/controllers/ChatGPTComposerEditingController.test.ts'],
         visualEvidence: { status: 'covered-by-family', mockPath: 'mocks/components/bookmarks-workspace', reason: 'The production settings center owns the relocated enhancement controls and syntax guide' },
+    },
+    {
+        id: 'input-enhancement-popover', family: 'composer', userEntry: 'Lower-right drawer → Input enhancement',
+        ownerModule: 'src/ui/content/components/InputEnhancementPopover.ts', productionEntry: 'src/runtimes/content/entry.ts',
+        profiles: ['anchored'], domScopes: ['shadow-root', 'page-portal'], lifecycleOwners: owners('InputEnhancementPopover'),
+        responsive: 'Viewport-clamped width with internal scroll above the lower-right drawer', browsers,
+        triggerTests: ['tests/unit/ui/content/components/InputEnhancementPopover.test.ts', 'tests/unit/ui/content/controllers/ChatGPTMessageStepperController.test.ts'],
+        visualEvidence: { status: 'covered-by-family', mockPath: 'mocks/components/host-integrated-controls', reason: 'The actual drawer trigger opens the production input settings popover' },
     },
     {
         id: 'formula-composer-assistant', family: 'composer', userEntry: 'Formula caret inside the official composer',
@@ -177,7 +201,7 @@ export const uiSurfaceCoverage = [
             'tests/unit/ui/content/messageToolbarOrchestrator.fold-action.test.ts',
             'tests/unit/ui/export/saveMessagesDialog.test.ts',
         ],
-        visualEvidence: { status: 'direct-mock', mockPath: 'mocks/components/workflow-dialogs' },
+        visualEvidence: { status: 'direct-mock', mockPath: 'mocks/components/message-export' },
     },
     {
         id: 'send-surfaces', family: 'sending', userEntry: 'Reader or detached Reader send action',

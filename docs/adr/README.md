@@ -2,6 +2,9 @@
 
 本目录保存高影响、难逆转、值得追溯的工程决策。
 
+统一 Surface 材质与样式所有权见 [ADR-0033](ADR-0033-unified-surface-materials.md)，
+实施与视觉验证记录见[升级计划](../plans/2026-10-08-unified-surface-visual-upgrade.md)。
+
 ## When To Write An ADR
 
 新增或更新 ADR 的典型场景：
@@ -24,6 +27,11 @@
 - `ADR-0001-short-kebab-title.md`
 
 编号递增，标题保持简短。
+
+ChatGPT 富内容与安全内容池生命周期的已接受实施决策见
+[ADR-0032](ADR-0032-chatgpt-rich-content-and-safe-lifecycle.md)。逐阶段实施与验证
+记录见[执行计划](../plans/2026-10-08-chatgpt-rich-content-lifecycle.md)；未完成的
+能力不视为当前已交付行为。
 
 当前 ChatGPT 内容生命周期见 [ADR-0024-chatgpt-dom-authoritative-content-pool.md](ADR-0024-chatgpt-dom-authoritative-content-pool.md)、[ADR-0025-chatgpt-stable-message-identity-and-local-actions.md](ADR-0025-chatgpt-stable-message-identity-and-local-actions.md)、[ADR-0026-chatgpt-persistent-host-slot-order.md](ADR-0026-chatgpt-persistent-host-slot-order.md)、[ADR-0027-chatgpt-bounded-monotonic-navigation.md](ADR-0027-chatgpt-bounded-monotonic-navigation.md)、[ADR-0028-chatgpt-staged-slot-hydration.md](ADR-0028-chatgpt-staged-slot-hydration.md) 与 [ADR-0030-chatgpt-get-seed-dom-completion.md](ADR-0030-chatgpt-get-seed-dom-completion.md)：5.3 的 bridge/source 只负责初始 `get` seed，渲染 DOM 是最终正文与 slot 顺序权威。Repository 内部保留 source order 与 DOM slot 骨架的同一池投影；公共 V1 只发布稠密 turns，不伪造未知历史。`get` snapshot 可供 Directory、Reader、Export 使用；当前 runtime 不通过页面进入时的全量 DOM sweep 制造 `complete`。`conversation-turn-N` 不是持久序号；公式、当前消息动作与工具栏继续保持 DOM-local。页面注释入口的选区、Prompt 组合和管理器边界见 [ADR-0023-page-annotation-interaction.md](ADR-0023-page-annotation-interaction.md)。
 

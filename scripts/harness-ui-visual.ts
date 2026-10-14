@@ -9,6 +9,7 @@ import type {
     VisualHarnessVariant,
 } from '../mocks/components/visualHarnessBridge';
 import { uiSurfaceCoverage } from '../tests/support/uiSurfaceCoverage';
+import { readVisualPageIdentity } from './ui-visual-page-identity';
 
 type HarnessMode = 'smoke' | 'full';
 type Theme = 'light' | 'dark';
@@ -428,11 +429,7 @@ async function runCase(params: {
         const appliedVariant = await applyVariant(page, params.variant);
         errors.push(...appliedVariant.errors);
 
-        const identity = await page.evaluate(() => ({
-            title: document.title.trim(),
-            textLength: document.body.innerText.trim().length,
-            viteOverlay: Boolean(document.querySelector('vite-error-overlay')),
-        }));
+        const identity = await page.evaluate(readVisualPageIdentity);
         if (!identity.title) errors.push('identity: document title is empty');
         if (identity.textLength < 20) errors.push('identity: page has no meaningful visible content');
         if (identity.viteOverlay) errors.push('runtime: Vite error overlay is visible');

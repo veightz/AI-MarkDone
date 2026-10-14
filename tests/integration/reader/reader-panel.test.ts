@@ -409,6 +409,10 @@ describe('ReaderPanel (MVP)', () => {
         document.dispatchEvent(new Event('pointerup'));
         await Promise.resolve();
 
+        panel.setReaderSettings({ ...DEFAULT_SETTINGS.reader, selectionToolbar: { copy: false, annotation: false, highlight: false } });
+        expect(shadow.querySelector('[data-action="reader-selection-copy"]')).toBeNull();
+        expect(shadow.querySelector('[data-action="reader-comment-add"]')).toBeNull();
+        panel.setReaderSettings(DEFAULT_SETTINGS.reader);
         shadow.querySelector<HTMLButtonElement>('[data-action="reader-selection-copy"]')!.click();
         await Promise.resolve();
         expect(writeText).toHaveBeenLastCalledWith('answer');
@@ -416,8 +420,10 @@ describe('ReaderPanel (MVP)', () => {
         shadow.querySelector<HTMLButtonElement>('[data-action="reader-comment-add"]')!.click();
         await Promise.resolve();
         expect(shadow.querySelector<HTMLElement>('.reader-comment-popover__selection-value')?.textContent).toBe('answer');
-        shadow.querySelector<HTMLButtonElement>('.reader-comment-popover [data-action="cancel"]')!.click();
-        await Promise.resolve();
+        const closeAnnotation = shadow.querySelector<HTMLButtonElement>('.reader-comment-popover [data-action="close"]')!;
+        expect(closeAnnotation.getAttribute('aria-label')).toBe('Close');
+        closeAnnotation.click();
+        await vi.waitFor(() => expect((panel as any).commentPopover.isOpen()).toBe(false));
 
         document.dispatchEvent(new Event('selectionchange'));
         document.dispatchEvent(new Event('pointerup'));

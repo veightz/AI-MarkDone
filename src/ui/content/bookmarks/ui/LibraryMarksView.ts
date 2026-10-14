@@ -19,6 +19,7 @@ import { createIcon } from '../../components/Icon';
 import { t } from '../../components/i18n';
 import { chevronLeftIcon, chevronRightIcon, searchIcon, messageSquareTextIcon, highlighterIcon, xIcon, chevronDownIcon, checkIcon, editIcon, moveIcon, bookOpenIcon, trashIcon } from '../../../../assets/workspaceIcons';
 import { libraryDate } from './libraryDate';
+import { highlightAnchor } from '../../highlights/HighlightSession';
 export type LibraryMarkType = 'annotations' | 'highlights';
 type AnnotationEntry = {
     type: 'annotations';
@@ -493,12 +494,12 @@ export class LibraryMarksView {
         original.href = originalUrl(entry.document);
         original.target = '_blank';
         original.rel = 'noopener noreferrer';
-        if (entry.type === 'annotations')
-            original.addEventListener('click', event => {
+        original.addEventListener('click', event => {
                 event.preventDefault();
                 void this.run(async () => {
                     try {
-                        unwrapRuntimeClientResult(await readerAnnotationsClient.navigate(entry.document, entry.record.id));
+                        const anchorId = entry.type === 'annotations' ? entry.record.id : highlightAnchor(entry.highlight).id;
+                        unwrapRuntimeClientResult(await readerAnnotationsClient.navigate(entry.document, anchorId));
                     } catch {
                         window.open(original.href, '_blank', 'noopener');
                     }

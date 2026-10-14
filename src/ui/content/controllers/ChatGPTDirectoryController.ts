@@ -16,13 +16,15 @@ import {
     type AppearanceSnapshot,
 } from '../../../style/appearance';
 import { AIMD_VIEWPORT_RESIZE_IDLE_EVENT } from './ViewportResizeSuspendController';
-import { subscribeLocaleChange } from '../components/i18n';
+import { subscribeLocaleChange, t } from '../components/i18n';
+import { showToast } from '../../../utils/toast';
 import type { ConversationNavigationPortV1 } from '../../../contracts/conversationNavigation';
 import type {
     ConversationSurfaceFrameV1,
     ConversationSurfacePortV1,
 } from '../../../contracts/conversationSurface';
 import { ChatGPTActivePositionTracker } from './ChatGPTActivePositionTracker';
+import { projectRichContentMarkdown } from '../../../services/content/richContentProjection';
 
 type DirectoryBookmarksState = {
     refreshPositionsForUrl?: (url: string) => Promise<void>;
@@ -60,6 +62,7 @@ export class ChatGPTDirectoryController {
     private promptLabelMode: ChatGPTDirectoryPromptLabelMode = 'head';
     private previewMaxChars = DEFAULT_CHATGPT_DIRECTORY_PREVIEW_MAX_CHARS;
     private previewActionsFactory: ChatGPTDirectoryPreviewActionsFactory | null = null;
+    private navigationControls: { previous: HTMLButtonElement; next: HTMLButtonElement } | null = null;
     private roundPositions: ChatGPTRoundPosition[] = [];
     private renderedContentToken: string | null = null;
     private activePosition = 0;
@@ -214,8 +217,14 @@ export class ChatGPTDirectoryController {
         this.rail.setPromptLabelMode(this.promptLabelMode);
         this.rail.setPreviewMaxChars(this.previewMaxChars);
         this.rail.setPreviewActionsFactory(this.previewActionsFactory);
+        if (this.navigationControls) this.rail.setNavigationControls(this.navigationControls.previous, this.navigationControls.next);
         this.rail.ensureAttached();
         writeDebugState({ DirectoryHost: 'created' });
+    }
+
+    setNavigationControls(previous: HTMLButtonElement, next: HTMLButtonElement): void {
+        this.navigationControls = { previous, next };
+        this.rail?.setNavigationControls(previous, next);
     }
 
     private async refresh(): Promise<void> {
@@ -389,16 +398,24 @@ export class ChatGPTDirectoryController {
     }
 
     private buildDirectoryRoundsFromFrame(frame: ConversationSurfaceFrameV1): ChatGPTConversationRound[] {
-        return frame.obtainedTurns.map(({ turn }) => ({
-            id: turn.identity.turnId,
-            position: turn.ordinal,
-            userPrompt: turn.userText,
-            assistantContent: turn.assistantMarkdown,
-            preview: turn.userText,
-            messageId: turn.identity.assistantMessageId,
-            userMessageId: turn.identity.userMessageId,
-            assistantMessageId: turn.identity.assistantMessageId,
-        }));
+        return frame.obtainedTurns.map(({ turn }) => {
+            let assistantContent = turn.assistantMarkdown;
+            if (assistantContent.includes('aimd-rich:')) {
+                const projected = projectRichContentMarkdown(assistantContent, turn.assistantRichBlocks ?? []);
+                assistantContent = projected.status === 'ready' && 'markdown' in projected
+                    ? projected.markdown : (turn.assistantRichBlocks ?? []).map(block => block.label).join('; ');
+            }
+            return {
+                id: turn.identity.turnId,
+                position: turn.ordinal,
+                userPrompt: turn.userText,
+                assistantContent,
+                preview: turn.userText,
+                messageId: turn.identity.assistantMessageId,
+                userMessageId: turn.identity.userMessageId,
+                assistantMessageId: turn.identity.assistantMessageId,
+            };
+        });
     }
 
     private updateActivePosition(options?: { followRail?: boolean }): void {
@@ -431,11 +448,12 @@ export class ChatGPTDirectoryController {
             if (matches.length !== 1) {
                 this.renderedContentToken = null;
                 this.reconcile();
+                showToast({ text: t('chatgptDirectoryNavigationFailed'), tone: 'error' });
                 return;
             }
             const entry = matches[0]!;
             if (this.navigation) {
-                await this.navigation.navigate({
+                const result = await this.navigation.navigate({
                     position: entry.turn.ordinal,
                     messageId: entry.turn.identity.assistantMessageId,
                     roundId: entry.turn.identity.turnId,
@@ -444,6 +462,9 @@ export class ChatGPTDirectoryController {
                     documentKey: entry.target.documentKey,
                     source: 'directory',
                 }, { align: 'start', signal, timeoutMs: 15_000 });
+                if (!result.ok && result.reason !== 'cancelled' && !signal.aborted) {
+                    showToast({ text: t('chatgptDirectoryNavigationFailed'), tone: 'error' });
+                }
                 return;
             }
             const located = await this.surface.materialization.locate(entry.target, signal);
@@ -455,8 +476,12 @@ export class ChatGPTDirectoryController {
                 const anchor = current?.materialization?.jumpAnchorElement;
                 if (anchor && typeof anchor.scrollIntoView === 'function') {
                     anchor.scrollIntoView({ behavior: 'auto', block: 'start' });
+                    return;
                 }
             }
+            if (!signal.aborted) showToast({ text: t('chatgptDirectoryNavigationFailed'), tone: 'error' });
+        } catch {
+            if (!signal.aborted) showToast({ text: t('chatgptDirectoryNavigationFailed'), tone: 'error' });
         } finally {
             if (this.activeLocateAbortController === locateController) {
                 this.activeLocateAbortController = null;

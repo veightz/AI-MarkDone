@@ -6,8 +6,7 @@ export const GOOGLE_OAUTH_REVOKE_HOST_PERMISSION = 'https://oauth2.googleapis.co
 
 export type CloudBackupAuthStrategy =
     | 'browserManagedGoogleIdentity'
-    | 'webExtensionAccessToken'
-    | 'nativeOrUnsupported';
+    | 'webExtensionAccessToken';
 
 export type GoogleDriveCloudBackupTarget = {
     enabled: boolean;
@@ -35,13 +34,6 @@ export const cloudBackupTargets = {
             enabled: Boolean(GOOGLE_DRIVE_WEB_AUTH_CLIENT_ID),
             authStrategy: 'webExtensionAccessToken',
             webAuthClientId: GOOGLE_DRIVE_WEB_AUTH_CLIENT_ID || undefined,
-            scopes: [GOOGLE_DRIVE_FILE_SCOPE],
-        },
-    },
-    safari: {
-        googleDrive: {
-            enabled: false,
-            authStrategy: 'nativeOrUnsupported',
             scopes: [GOOGLE_DRIVE_FILE_SCOPE],
         },
     },

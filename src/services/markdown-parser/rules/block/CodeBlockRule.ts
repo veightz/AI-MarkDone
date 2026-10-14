@@ -5,17 +5,15 @@ type AdapterWithCustomCodeExtraction = {
 };
 
 function normalizeCodeBlockText(raw: string): string {
-    let code = raw.replace(/\r\n?/g, '\n');
-    code = code.replace(/^\n/, '').replace(/\n$/, '');
+    return raw.replace(/\r\n?/g, '\n');
+}
 
-    const lines = code.split('\n');
-    const nonEmpty = lines.filter((line) => line.trim().length > 0);
-    if (nonEmpty.length === 0) return code;
-
-    const indents = nonEmpty.map((line) => line.match(/^[ \t]*/)?.[0].length ?? 0);
-    const commonIndent = Math.min(...indents);
-    if (commonIndent > 0) return lines.map((line) => line.slice(commonIndent)).join('\n');
-    return code;
+function fenceCodeBlock(raw: string, language: string): string {
+    const code = normalizeCodeBlockText(raw);
+    let longestRun = 0;
+    for (const match of code.matchAll(/`+/g)) longestRun = Math.max(longestRun, match[0].length);
+    const fence = '`'.repeat(Math.max(3, longestRun + 1));
+    return `${fence}${language}\n${code}\n${fence}\n\n`;
 }
 
 export function createCodeBlockRule(): Rule {
@@ -36,17 +34,13 @@ export function createCodeBlockRule(): Rule {
                     : ((blockElem.querySelector('code') as HTMLElement | null) || (blockElem.matches('pre') ? blockElem : null));
             if (customCode !== undefined && customCode !== null) {
                 const language = context.adapter.getCodeLanguage(blockElem);
-                const code = normalizeCodeBlockText(customCode);
-                if (language) return `\`\`\`${language}\n${code}\n\`\`\`\n\n`;
-                return `\`\`\`\n${code}\n\`\`\`\n\n`;
+                return fenceCodeBlock(customCode, language);
             }
             if (!codeElem) {
-                return `\`\`\`\n${blockElem.textContent || ''}\n\`\`\`\n\n`;
+                return fenceCodeBlock(blockElem.textContent || '', '');
             }
             const language = context.adapter.getCodeLanguage(codeElem);
-            const code = normalizeCodeBlockText(codeElem.textContent || '');
-            if (language) return `\`\`\`${language}\n${code}\n\`\`\`\n\n`;
-            return `\`\`\`\n${code}\n\`\`\`\n\n`;
+            return fenceCodeBlock(codeElem.textContent || '', language);
         },
     };
 }

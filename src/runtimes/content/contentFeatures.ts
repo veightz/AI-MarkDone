@@ -5,6 +5,18 @@ import type { copyMessagePng as copyMessagePngImplementation } from '../../servi
 import type { runFormulaAssetAction as runFormulaAssetActionImplementation } from '../../services/math/formulaAssetActions';
 import type { renderFormulaSvgAsset as renderFormulaSvgAssetImplementation } from '../../services/math/formulaAssetRenderer';
 import type { UiLocale } from '../../ui/content/components/i18n';
+import type { ReaderRichAssetSessions } from '../../services/reader/readerRichAssetSession';
+import { disposeLoadedRichContentAssets } from '../../drivers/content/export/richContentAssetLifecycle';
+
+export async function createReaderRichAssetSessions(): Promise<ReaderRichAssetSessions> {
+    const { ReaderRichAssetSessions } = await import('../../services/reader/readerRichAssetSession');
+    return new ReaderRichAssetSessions();
+}
+
+/** Teardown must not load an asset feature that has never been used. */
+export function disposeRichContentResources(): void {
+    disposeLoadedRichContentAssets();
+}
 
 export async function setContentFeatureLocale(locale: UiLocale): Promise<void> {
     const { setLocale } = await import('../../ui/content/components/i18n');

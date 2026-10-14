@@ -1,7 +1,9 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { SiteAdapter, type ConversationGroupRef } from '@/drivers/content/adapters/base';
 import { ChatGPTAdapter } from '@/drivers/content/adapters/sites/chatgpt';
 import { collectReaderItems } from '@/services/reader/collectReaderItems';
+import * as turnCopy from '@/services/copy/copy-turn-markdown';
+import { richSvgBlock } from '../../../helpers/richContentFixtures';
 
 class SkeletonRoundAdapter extends SiteAdapter {
     matches(): boolean { return true; }
@@ -53,6 +55,30 @@ class SkeletonRoundAdapter extends SiteAdapter {
 }
 
 describe('collectReaderItems', () => {
+    it('lazily shares one capture between Markdown and immutable rich blocks', async () => {
+        document.body.innerHTML = `
+            <main><article data-turn="user"><div data-message-author-role="user" data-message-id="u1">Question</div></article>
+            <article data-turn="assistant"><div data-message-author-role="assistant" data-message-id="a1"><div class="markdown prose">Diagram</div></div></article></main>`;
+        const source = { kind: 'svg' as const, svg: '<svg><rect fill="red"/></svg>' };
+        const blocks = [richSvgBlock({ source })];
+        const compile = vi.spyOn(turnCopy, 'copyMarkdownFromTurn').mockReturnValue({ ok: true, markdown: '![Diagram](aimd-rich:block-1)', richBlocks: blocks });
+        const adapter = new ChatGPTAdapter();
+        try {
+            const assistant = document.querySelector<HTMLElement>('[data-message-author-role="assistant"]')!;
+            const item = collectReaderItems(adapter, assistant).items[0]!;
+            expect(compile).not.toHaveBeenCalled();
+            const captured = item.richBlocks;
+            expect(captured).toEqual(blocks);
+            expect(captured).not.toBe(blocks);
+            expect(Object.isFrozen(captured?.[0]?.source)).toBe(true);
+            expect(await item.content()).toBe('![Diagram](aimd-rich:block-1)');
+            expect(item.richBlocks).toBe(captured);
+            expect(compile).toHaveBeenCalledTimes(1);
+            source.svg = '<svg><rect fill="blue"/></svg>';
+            expect(captured?.[0]?.source).toMatchObject({ svg: '<svg><rect fill="red"/></svg>' });
+        } finally { compile.mockRestore(); adapter.dispose(); }
+    });
+
     it('collects items and extracts corresponding user prompt', () => {
         document.body.innerHTML = `
           <div id="thread">

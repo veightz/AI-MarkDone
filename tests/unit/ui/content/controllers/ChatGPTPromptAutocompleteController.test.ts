@@ -765,6 +765,38 @@ describe('ChatGPTPromptAutocompleteController', () => {
         controller.dispose();
     });
 
+    it('keeps compact manager actions named and opens the editor through pointerdown and click', async () => {
+        setViewport(320, 360);
+        const composer = createComposer('');
+        const trigger = document.createElement('button');
+        document.body.append(trigger);
+        const prompt = createPrompt({ id: 'long', title: '很长的提示词名称 with an English explanation', enabled: false });
+        const client = { listPrompts: vi.fn(async () => [prompt]), recordUse: vi.fn(), savePrompt: vi.fn(async value => value), deletePrompt: vi.fn(), restoreDefaults: vi.fn() };
+        const controller = new ChatGPTPromptAutocompleteController({ getPlatformId: () => 'chatgpt', getComposerInputElement: () => composer } as any, client as any);
+        controller.init();
+        try {
+            await controller.openManager(trigger);
+            const shadow = document.getElementById('aimd-chatgpt-prompt-popover-host')!.shadowRoot!;
+            const add = shadow.querySelector<HTMLButtonElement>('[data-action="add-prompt"]')!;
+            expect(add.getAttribute('aria-label')).toBeTruthy();
+            expect(shadow.querySelector('[data-role="prompt-search"]')?.getAttribute('aria-label')).toBeTruthy();
+            expect(shadow.querySelector('[data-action="toggle-prompt-enabled"]')?.getAttribute('aria-label')).toContain(prompt.title);
+            add.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true, composed: true }));
+            add.click();
+            await tick();
+            const content = shadow.querySelector<HTMLTextAreaElement>('[data-role="prompt-content"]')!;
+            expect(content).toBeTruthy();
+            expect(shadow.querySelector('[data-action="save-prompt"]')?.getAttribute('aria-label')).toBeTruthy();
+            content.value = '保留这段正文 and its cursor position';
+            content.setSelectionRange(4, 4);
+            const insert = shadow.querySelector<HTMLButtonElement>('[data-action="insert-cursor-placeholder"]')!;
+            insert.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true, composed: true }));
+            insert.click();
+            expect(content.value).toBe('保留这段{{cursor}}正文 and its cursor position');
+            expect(insert.disabled).toBe(true);
+        } finally { controller.dispose(); }
+    });
+
     it('opens the unified prompt manager and edits from search results', async () => {
         const composer = createComposer('');
         const prompt = createPrompt({ id: 'sum', title: 'Summarize', triggerText: 'sum', content: 'Summarize:\n{{cursor}}' });
@@ -1056,7 +1088,7 @@ describe('ChatGPTPromptAutocompleteController', () => {
         expect(host.style.getPropertyValue('--_prompt-popover-max-height')).toBe('630px');
         expect(host.style.getPropertyValue('--aimd-prompt-popover-max-height')).toBe('');
         expect(styles).toContain('.prompt-popover--manager');
-        expect(styles).toContain('grid-template-rows: auto auto auto minmax(0, 1fr);');
+        expect(host.shadowRoot!.querySelector('.prompt-manager-body .manager-list')).toBeTruthy();
         expect(styles).toContain('.manager-list');
         expect(styles).toContain('overflow-y: auto;');
         controller.dispose();

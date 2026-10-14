@@ -1,6 +1,6 @@
 # Browser Compatibility (Chrome MV3 / Firefox MV2)
 
-本文档是 AI-MarkDone 的浏览器兼容性权威说明。当前正式支持范围只有 Chrome MV3 与 Firefox MV2。仓库中遗留的 Safari 构建代码不属于产品支持、发布门禁或发布产物，后续功能不需要为其适配。
+本文档是 AI-MarkDone 的浏览器兼容性权威说明。当前正式支持范围只有 Chrome MV3 与 Firefox MV2。2026-10-12 决定永久停止 Safari 适配；6.2.0 删除专用 manifest、构建/打包脚本、资源裁剪和界面功能开关。后续设计、测试、发版与反馈修复均只面向 Chrome / Firefox；历史记录保留，不代表当前支持。
 
 ---
 
@@ -77,7 +77,6 @@ dist-firefox/
 - 支持网站唯一来源：`config/extension/hosts.ts`
 - icons、popup、web accessible resources、entry 文件名唯一来源：`config/extension/assets.ts`
 - target 差异唯一来源：`config/extension/targets.ts`
-- target surface policy 唯一来源：`config/extension/surface.ts`
 - manifest 生成入口：`scripts/generate-manifest.ts`
 - dist 资源准备入口：`scripts/prepare-extension-target.ts`
 

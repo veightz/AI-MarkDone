@@ -16,7 +16,7 @@ describe('ModalHost', () => {
         expect(css).toContain('font-weight: var(--aimd-modal-title-weight);');
         expect(css).toContain('width: var(--aimd-size-control-icon-panel);');
         expect(css).toContain('background: var(--aimd-button-icon-hover);');
-        expect(css).toContain('background: var(--aimd-button-secondary-hover);');
+        expect(css).toContain('background: var(--aimd-workspace-surface);');
         expect(css).toContain('min-height: var(--aimd-size-control-action-panel);');
     });
 

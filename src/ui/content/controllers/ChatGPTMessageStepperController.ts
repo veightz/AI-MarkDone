@@ -1,6 +1,14 @@
+import { getChatGPTPageControlsCss } from '../components/pageControlsCss';
+import {
+    softRefreshChatGPTMessageNavigation,
+} from '../../../drivers/content/chatgpt/softMessageNavigationRefresh';
+import type { ChatGPTOfficialNavigationSnapshot } from '../../../drivers/content/chatgpt/ChatGPTOfficialNavigation';
+import { showToast } from '../../../utils/toast';
 import type { SiteAdapter } from '../../../drivers/content/adapters/base';
+import type { PageControlAction } from '../../../core/settings/types';
+import { textCursorIcon } from '../../../assets/workspaceIcons';
 import { createBrandIcon } from '../../../assets/icons';
-import { settingsIcon, bookmarkCheckIcon, bookmarkIcon, chevronRightIcon, messageSquareTextIcon, refreshCwIcon, splitViewIcon } from '../../../assets/workspaceIcons';
+import { settingsIcon, bookmarkCheckIcon, bookmarkIcon, chevronRightIcon, promptIcon, refreshCwIcon, splitViewIcon } from '../../../assets/workspaceIcons';
 import {
     areAppearanceSnapshotsEqual,
     createAppearanceSnapshot,
@@ -15,11 +23,6 @@ import {
 } from '../chatgptDirectory/navigation';
 import { ChatGPTActivePositionTracker } from './ChatGPTActivePositionTracker';
 import { TooltipDelegate, showEphemeralTooltip } from '../../../utils/tooltip';
-import { showToast } from '../../../utils/toast';
-import {
-    softRefreshChatGPTMessageNavigation,
-} from '../../../drivers/content/chatgpt/softMessageNavigationRefresh';
-import type { ChatGPTOfficialNavigationSnapshot } from '../../../drivers/content/chatgpt/ChatGPTOfficialNavigation';
 import type { ConversationNavigationPortV1 } from '../../../contracts/conversationNavigation';
 import {
     AIMD_CONVERSATION_SURFACE_CONSUMER_ATTRIBUTE,
@@ -73,6 +76,11 @@ export class ChatGPTMessageStepperController {
     private pageBookmarkVisibleEnabled = true;
     private detachedReaderVisibleEnabled = true;
     private promptVisibleEnabled = true;
+    private inputEnhancementVisibleEnabled = true;
+    private refreshNavigationVisibleEnabled = true;
+    private inputEnhancementButton: HTMLButtonElement | null = null;
+    private inputEnhancementEnabled = false;
+    private pinnedActions: PageControlAction[] = [];
     private pageBookmarkState: PageBookmarkState = 'unknown';
     private pageBookmarkError: string | null = null;
     private pageBookmarkMutationPending = false;
@@ -106,14 +114,12 @@ export class ChatGPTMessageStepperController {
         private readonly adapter: SiteAdapter,
         private readonly options: {
             onOpenBookmarksPanel?: () => Promise<void> | void;
+            onNavigationControlsReady?: (previous: HTMLButtonElement, next: HTMLButtonElement) => void;
             onOpenDetachedReader?: () => Promise<void> | void;
+            onOpenInputEnhancement?: (anchor: HTMLElement) => void;
             onOpenPrompts?: (anchor: HTMLElement) => Promise<void> | void;
-            /**
-             * Explicit full-page fallback. Not invoked by the primary click.
-             * Primary click rescans mounted DOM via PageIndex + surface.
-             */
             onRefreshMessageNavigation?: () => Promise<void> | void;
-            /** Shared PageIndex. Omitted in tests that only mock the surface. */
+            /** Shared PageIndex — soft refresh invalidates it before rebuild. */
             pageIndex?: { invalidate(): void } | null;
             readOfficialNavigation?: () => ChatGPTOfficialNavigationSnapshot;
             onTogglePageBookmark?: (url: string) => Promise<PageBookmarkMutationResult> | PageBookmarkMutationResult;
@@ -143,7 +149,7 @@ export class ChatGPTMessageStepperController {
         });
         this.refreshState();
         document.addEventListener('keydown', this.onKeyDownCapture, { capture: true });
-        // Always-visible page control: do not auto-collapse on outside pointer.
+        document.addEventListener('pointerdown', this.onOutsidePointerDown, true);
         this.unsubscribeSurface = this.surface.subscribeFrame(() => {
             this.activePositionTracker.invalidate();
             this.scheduleRefreshState();
@@ -154,6 +160,7 @@ export class ChatGPTMessageStepperController {
         if (!this.initialized) return;
         this.initialized = false;
         document.removeEventListener('keydown', this.onKeyDownCapture, { capture: true } as any);
+        document.removeEventListener('pointerdown', this.onOutsidePointerDown, true);
         this.unsubscribeActivePosition?.();
         this.unsubscribeActivePosition = null;
         this.unsubscribeSurface?.();
@@ -177,6 +184,8 @@ export class ChatGPTMessageStepperController {
         this.detachedReaderButton = null;
         this.promptsButton = null;
         this.messageNavigationButton = null;
+        this.previousButton?.remove();
+        this.nextButton?.remove();
         this.previousButton = null;
         this.nextButton = null;
         this.rounds = [];
@@ -192,6 +201,7 @@ export class ChatGPTMessageStepperController {
 
     setKeyboardEnabled(enabled: boolean): void {
         this.keyboardEnabled = enabled;
+        this.syncControlLabels();
     }
 
     setVisible(enabled: boolean): void {
@@ -226,6 +236,34 @@ export class ChatGPTMessageStepperController {
         this.refreshState();
     }
 
+    setInputEnhancementEnabled(enabled: boolean): void {
+        this.inputEnhancementEnabled = enabled;
+        this.syncInputEnhancementState();
+    }
+
+    private syncInputEnhancementState(): void {
+        const button = this.inputEnhancementButton;
+        if (!button) return;
+        button.dataset.active = this.inputEnhancementEnabled ? '1' : '0';
+        const state = t(this.inputEnhancementEnabled ? 'inputEnhancementStateEnabled' : 'inputEnhancementStateDisabled');
+        button.setAttribute('aria-description', state);
+        button.dataset.tooltip = `${button.getAttribute('aria-label')} · ${state}`;
+    }
+
+    setInputEnhancementControlVisible(enabled: boolean): void {
+        this.inputEnhancementVisibleEnabled = enabled;
+        this.syncAuxiliaryButtonVisibility();
+    }
+
+    setRefreshNavigationControlVisible(enabled: boolean): void {
+        this.refreshNavigationVisibleEnabled = enabled; this.syncAuxiliaryButtonVisibility();
+    }
+
+    setPinnedActions(actions: readonly PageControlAction[]): void {
+        this.pinnedActions = [...actions];
+        this.syncPinnedControls();
+    }
+
     setPageBookmarked(saved: boolean): void {
         this.pageBookmarkState = saved ? 'saved' : 'unsaved';
         this.pageBookmarkError = null;
@@ -240,6 +278,7 @@ export class ChatGPTMessageStepperController {
 
     private ensureHost(): void {
         if (this.host?.isConnected) {
+            this.ensureStyle();
             this.appearanceScope?.apply(this.appearance);
             return;
         }
@@ -256,7 +295,7 @@ export class ChatGPTMessageStepperController {
         host.dataset.visible = '0';
 
         const bookmarksPanel = this.createButton('open-bookmarks-panel', this.getLabel('tabSettings', 'Settings'), () => {
-            this.suppressRestoredFocus = true;
+            this.suppressRestoredFocus = true; this.setDrawerOpen(false);
             void this.options.onOpenBookmarksPanel?.();
         }, createBrandIcon());
         const pageBookmark = this.createButton('toggle-page-bookmark', this.getLabel('chatgptPageControlBookmark', 'Bookmark current page'), () => {
@@ -270,7 +309,10 @@ export class ChatGPTMessageStepperController {
         const prompts = this.createButton('open-prompts', this.getLabel('chatgptPageControlPrompts', 'Prompts'), () => {
             if (prompts.hidden || prompts.disabled) return;
             void this.options.onOpenPrompts?.(prompts);
-        }, messageSquareTextIcon);
+        }, promptIcon);
+        const inputEnhancement = this.createButton('open-input-enhancement', this.getLabel('settingsInputEnhancementControl', 'Input enhancement'), () => {
+            this.options.onOpenInputEnhancement?.(inputEnhancement);
+        }, textCursorIcon);
         const refreshMessageNavigation = this.createButton(
             'chatgpt-refresh-message-navigation',
             this.getLabel('chatgptRefreshMessageNavigation', 'Refresh message navigation'),
@@ -284,7 +326,12 @@ export class ChatGPTMessageStepperController {
         const drawerActions = document.createElement('div');
         drawerActions.id = `${HOST_ID}-actions`;
         drawerActions.className = 'aimd-chatgpt-message-stepper__actions';
-        drawerActions.append(pageBookmark, detachedReader, prompts, refreshMessageNavigation, previous, next);
+        for (const button of [pageBookmark, detachedReader, prompts, inputEnhancement, refreshMessageNavigation]) {
+            const slot = document.createElement('div');
+            slot.className = 'aimd-chatgpt-message-stepper__slot';
+            slot.append(button);
+            drawerActions.append(slot);
+        }
         const trigger = bookmarksPanel;
         const settingGlyph = document.createElement('span'); settingGlyph.className = 'aimd-chatgpt-message-stepper__settings'; settingGlyph.innerHTML = settingsIcon; settingGlyph.setAttribute('aria-hidden', 'true');
         trigger.append(settingGlyph);
@@ -292,7 +339,7 @@ export class ChatGPTMessageStepperController {
         trigger.setAttribute('aria-controls', drawerActions.id);
         // Put the disclosure first in keyboard order while keeping it at the right edge.
         host.append(trigger, drawerActions);
-        // Always-visible MarkDone page control: keep actions expanded; brand icon stays shown.
+        // Always-visible MarkDone page control: keep actions expanded.
         host.addEventListener('pointerenter', () => {
             this.suppressRestoredFocus = false;
             this.setDrawerOpen(true);
@@ -317,13 +364,22 @@ export class ChatGPTMessageStepperController {
         this.pageBookmarkButton = pageBookmark;
         this.detachedReaderButton = detachedReader;
         this.promptsButton = prompts;
+        this.inputEnhancementButton = inputEnhancement;
         this.messageNavigationButton = refreshMessageNavigation;
         this.previousButton = previous;
         this.nextButton = next;
+        this.options.onNavigationControlsReady?.(previous, next);
+        this.syncControlLabels();
         this.syncNavigationVisibility();
         this.syncPageBookmarkButton();
         this.syncAuxiliaryButtonVisibility();
     }
+
+    private getLabel(key: string, fallback: string): string {
+        const label = t(key);
+        return !label || label === key ? fallback : label;
+    }
+
 
     /**
      * Primary 「刷新消息导航」: rescan mounted DOM and recompute message nav
@@ -350,34 +406,32 @@ export class ChatGPTMessageStepperController {
             action: hardRefresh
                 ? {
                     label: this.getLabel('chatgptHardRefreshMessageNavigation', 'Full page refresh'),
-                    onClick: () => {
-                        void hardRefresh();
-                    },
+                    onClick: () => { void hardRefresh(); },
                 }
                 : undefined,
         });
-    }
-
-    private getLabel(key: string, fallback: string): string {
-        const label = t(key);
-        return !label || label === key ? fallback : label;
     }
 
     private syncControlLabels(): void {
         const labels: ReadonlyArray<[HTMLButtonElement | null, string]> = [
             [this.drawerTrigger, this.getLabel('tabSettings', 'Settings')],
             [this.detachedReaderButton, this.getLabel('chatgptPageControlSplitView', 'Reader · detached window')],
+            [this.inputEnhancementButton, this.getLabel('settingsInputEnhancementControl', 'Input enhancement')],
             [this.promptsButton, this.getLabel('chatgptPageControlPrompts', 'Prompts')],
             [this.messageNavigationButton, this.getLabel('chatgptRefreshMessageNavigation', 'Refresh message navigation')],
-            [this.previousButton, this.getLabel('previousMessage', 'Previous message')],
-            [this.nextButton, this.getLabel('nextMessage', 'Next message')],
+            [this.previousButton, this.keyboardEnabled
+                ? this.getLabel('previousMessageShortcut', 'Previous message · ←') : this.getLabel('previousMessage', 'Previous message')],
+            [this.nextButton, this.keyboardEnabled
+                ? this.getLabel('nextMessageShortcut', 'Next message · →') : this.getLabel('nextMessage', 'Next message')],
         ];
         for (const [button, label] of labels) {
             if (!button) continue;
             button.setAttribute('aria-label', label);
             button.dataset.tooltip = label;
         }
+        this.syncInputEnhancementState();
         this.syncPageBookmarkButton();
+        this.syncPinnedControls();
     }
 
     private createButton(action: string, label: string, onClick: () => void, icon: string | HTMLElement = chevronRightIcon): HTMLButtonElement {
@@ -414,133 +468,36 @@ export class ChatGPTMessageStepperController {
         style.textContent = this.getCss();
     }
 
-    private getCss(): string {
-        return `.aimd-chatgpt-message-stepper {
-  --_page-control-size: var(--aimd-size-control-icon-toolbar);
-  --_page-control-gap: calc(var(--aimd-space-1) / 2);
-  --_page-control-glyph: calc(var(--aimd-size-control-glyph-panel) + var(--aimd-space-1) / 2);
-  position: fixed;
-  right: var(--aimd-space-2);
-  bottom: calc(var(--aimd-space-3) / 2);
-  z-index: var(--aimd-z-panel);
-  display: inline-flex;
-  align-items: center;
-  padding: calc(var(--aimd-space-1) / 4);
-  max-width: calc(100vw - var(--aimd-space-2) * 2);
-  box-sizing: border-box;
-  border-radius: var(--aimd-radius-full);
-  border: 1px solid var(--aimd-workspace-border);
-  background: color-mix(in srgb, var(--aimd-bg-surface) 78%, transparent);
-  box-shadow: var(--aimd-workspace-raised);
-  -webkit-backdrop-filter: blur(var(--aimd-space-4)) saturate(1.5);
-  backdrop-filter: blur(var(--aimd-space-4)) saturate(1.5);
-  pointer-events: auto;
-  font-family: var(--aimd-font-family-sans);
-}
-.aimd-chatgpt-message-stepper__actions {
-  order: 1;
-  display: flex;
-  align-items: center;
-  gap: var(--_page-control-gap);
-  max-width: 0;
-  min-width: 0;
-  overflow: hidden;
-  opacity: 0;
-  visibility: hidden;
-  transform: translateX(var(--aimd-space-3));
-  transition: max-width calc(var(--aimd-duration-base) * 2) var(--aimd-ease-out),
-    opacity var(--aimd-duration-base) var(--aimd-ease-out),
-    transform calc(var(--aimd-duration-base) * 2) var(--aimd-ease-out),
-    visibility var(--aimd-duration-base);
-}
-.aimd-chatgpt-message-stepper[data-expanded="1"] .aimd-chatgpt-message-stepper__actions {
-  max-width: calc(var(--_page-control-size) * 6 + var(--_page-control-gap) * 5);
-  opacity: 1;
-  visibility: visible;
-  transform: translateX(0);
-  overflow-x: auto;
-  scrollbar-width: none;
-}
-.aimd-chatgpt-message-stepper__actions::-webkit-scrollbar { display: none; }
-.aimd-chatgpt-message-stepper .aimd-chatgpt-message-stepper__trigger {
-  order: 2;
-  border-radius: var(--aimd-radius-full);
-  background: color-mix(in srgb, var(--aimd-bg-surface) 60%, transparent);
-}
-@media (prefers-reduced-motion: reduce) {
-  .aimd-chatgpt-message-stepper__actions { transition: none; }
-}
-@supports not (backdrop-filter: blur(1px)) {
-  .aimd-chatgpt-message-stepper { background: var(--aimd-bg-surface); }
-}
-.aimd-chatgpt-message-stepper[data-visible="0"] {
-  display: none;
-}
-.aimd-chatgpt-message-stepper__button {
-  all: unset;
-  box-sizing: border-box;
-  cursor: pointer;
-  flex: 0 0 auto;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: var(--_page-control-size);
-  height: var(--_page-control-size);
-  border-radius: var(--aimd-radius-full);
-  color: var(--aimd-text-secondary);
-  background: transparent;
-  transition: background var(--aimd-duration-fast) var(--aimd-ease-in-out), color var(--aimd-duration-fast) var(--aimd-ease-in-out);
-}
-.aimd-chatgpt-message-stepper__button:hover:not(:disabled),
-.aimd-chatgpt-message-stepper__button:focus-visible:not(:disabled) {
-  color: var(--aimd-interactive-primary);
-  background: var(--aimd-button-icon-hover);
-}
-.aimd-chatgpt-message-stepper__button:focus-visible {
-  outline: 2px solid color-mix(in srgb, var(--aimd-interactive-primary) 78%, transparent);
-  outline-offset: 2px;
-}
-.aimd-chatgpt-message-stepper__button:disabled {
-  cursor: not-allowed;
-  opacity: 0.42;
-}
-.aimd-chatgpt-message-stepper__button[data-active="1"] {
-  color: var(--aimd-interactive-primary);
-}
-.aimd-chatgpt-message-stepper__button[data-running="1"] {
-  color: var(--aimd-interactive-primary);
-  background: var(--aimd-button-icon-hover);
-}
-.aimd-chatgpt-message-stepper__button[hidden] {
-  display: none;
-}
-.aimd-chatgpt-message-stepper__icon,
-.aimd-chatgpt-message-stepper__icon svg,
-.aimd-chatgpt-message-stepper__icon img {
-  width: var(--_page-control-glyph);
-  height: var(--_page-control-glyph);
-}
-.aimd-chatgpt-message-stepper__icon img { object-fit: contain; }
-.aimd-chatgpt-message-stepper__settings { display: none; }
-.aimd-chatgpt-message-stepper__settings svg { width: var(--_page-control-glyph); height: var(--_page-control-glyph); }
-/* Always-visible: keep the MarkDone brand glyph; settings glyph stays decorative/hidden. */
-.aimd-chatgpt-message-stepper[data-expanded="1"] .aimd-chatgpt-message-stepper__trigger>.aimd-chatgpt-message-stepper__icon { display: inline-flex; }
-.aimd-chatgpt-message-stepper[data-expanded="1"] .aimd-chatgpt-message-stepper__settings { display: none; }
-.aimd-chatgpt-message-stepper__icon[data-direction="left"] {
-  transform: scaleX(-1);
-}
-`;
-    }
+    private getCss(): string { return getChatGPTPageControlsCss(); }
 
     private setDrawerOpen(_open: boolean): void {
         if (!this.host || !this.drawerActions || !this.drawerTrigger) return;
         // Always-visible: MarkDone page control stays expanded.
+        void _open;
         this.host.dataset.expanded = '1';
         this.drawerTrigger.setAttribute('aria-expanded', 'true');
-        this.drawerActions.setAttribute('aria-hidden', 'false');
-        this.drawerActions.toggleAttribute('inert', false);
+        this.syncPinnedControls();
     }
 
+    private syncPinnedControls(): void {
+        if (!this.host || !this.drawerActions) return;
+        const open = this.host.dataset.expanded === '1';
+        let visible = false;
+        for (const slot of this.drawerActions.querySelectorAll<HTMLElement>('.aimd-chatgpt-message-stepper__slot')) {
+            const button = slot.querySelector<HTMLButtonElement>('[data-action]')!;
+            const pinned = this.pinnedActions.includes(button.dataset.action as PageControlAction);
+            slot.hidden = button.hidden || (!open && !pinned);
+            visible ||= !slot.hidden;
+
+        }
+        this.host.dataset.hasPins = !open && visible ? '1' : '0';
+        this.drawerActions.setAttribute('aria-hidden', String(!visible));
+        this.drawerActions.toggleAttribute('inert', !visible);
+    }
+
+    private onOutsidePointerDown = (event: PointerEvent): void => {
+        if (this.host && !event.composedPath().includes(this.host)) this.setDrawerOpen(false);
+    };
 
     private scheduleRefreshState(): void {
         if (!this.initialized || this.refreshAnimationFrame !== null) return;
@@ -663,11 +620,15 @@ export class ChatGPTMessageStepperController {
             if (!button) continue;
             button.hidden = !this.navigationVisibleEnabled;
         }
+        this.syncPinnedControls();
     }
 
     private syncAuxiliaryButtonVisibility(): void {
         if (this.detachedReaderButton) this.detachedReaderButton.hidden = !this.detachedReaderVisibleEnabled;
         if (this.promptsButton) this.promptsButton.hidden = !this.promptVisibleEnabled;
+        if (this.inputEnhancementButton) this.inputEnhancementButton.hidden = !this.inputEnhancementVisibleEnabled;
+        if (this.messageNavigationButton) this.messageNavigationButton.hidden = !this.refreshNavigationVisibleEnabled;
+        this.syncPinnedControls();
     }
 
     private syncPageBookmarkButton(): void {
@@ -692,6 +653,7 @@ export class ChatGPTMessageStepperController {
         this.pageBookmarkButton.dataset.tooltip = this.pageBookmarkError ?? label;
         const iconEl = this.pageBookmarkButton.querySelector<HTMLElement>('.aimd-chatgpt-message-stepper__icon');
         if (iconEl) iconEl.innerHTML = this.pageBookmarkState === 'saved' ? bookmarkCheckIcon : bookmarkIcon;
+        this.syncPinnedControls();
     }
 
     private refreshPageBookmarkStatusIfNeeded(): void {

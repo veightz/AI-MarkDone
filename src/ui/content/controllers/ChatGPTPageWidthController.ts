@@ -3,6 +3,7 @@ import {
     MAX_CHATGPT_PAGE_WIDTH_SCALE,
     MIN_CHATGPT_PAGE_WIDTH_SCALE,
 } from '../../../core/settings/types';
+import { resolveChatGPTActiveSurface } from '../../../drivers/content/chatgpt/chatgptActiveSurface';
 
 const CHATGPT_PAGE_WIDTH_STYLE_ID = 'aimd-chatgpt-page-width-style';
 const CHATGPT_PAGE_WIDTH_DATASET = 'aimdChatgptPageWidth';
@@ -102,8 +103,10 @@ export class ChatGPTPageWidthController {
         if (this.styleEl) this.styleEl.textContent = '';
         delete document.documentElement.dataset[CHATGPT_PAGE_WIDTH_DATASET];
 
+        const activeRoot = resolveChatGPTActiveSurface()?.contentRoot ?? null;
         for (const selector of missing) {
-            const candidates = document.querySelectorAll<HTMLElement>(selector);
+            const scope: ParentNode = activeRoot ?? document;
+            const candidates = scope.querySelectorAll<HTMLElement>(selector);
             for (const element of candidates) {
                 const value = window.getComputedStyle(element).maxWidth;
                 const numericValue = Number.parseFloat(value);

@@ -4,6 +4,7 @@ import type { ParserContext, ParserOptions } from './types';
 import type { MarkdownParserAdapter } from '../../../drivers/content/adapters/parser/MarkdownParserAdapter';
 import type { RuleContext } from './Rule';
 import { logger } from '../../../core/logger';
+import { normalizeMarkdownWhitespace } from '../../../core/content/markdownCodeProtection';
 
 const DEFAULT_OPTIONS: Required<ParserOptions> = {
     maxProcessingTimeMs: 5000,
@@ -70,7 +71,7 @@ export class Parser {
                 });
             }
 
-            return markdown.replace(/\n{3,}/g, '\n\n').trim();
+            return normalizeMarkdownWhitespace(markdown);
         } catch (error) {
             if (error instanceof ParserError && error.recoveryAction === 'abort') {
                 logger.error('[AI-MarkDone][Parser] Parsing aborted', error.message);

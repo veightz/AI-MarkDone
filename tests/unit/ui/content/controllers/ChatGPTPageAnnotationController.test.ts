@@ -8,6 +8,8 @@ import { toReaderAnnotationRecord } from '@/services/reader/commentSession';
 import { createPageCommentRecord, resolveReaderCommentAnchor } from '@/services/reader/commentAnchoring';
 import { createHighlightRecord } from '@/ui/content/highlights/HighlightSession';
 import { RuntimeClientRequestError } from '@/drivers/shared/clients/clientResult';
+import * as clipboard from '@/drivers/content/clipboard/clipboard';
+import { setCanonicalMarkdownCopyFormulaFormat } from '@/services/copy/canonicalMarkdownCopy';
 
 const annotationClientMock = vi.hoisted(() => ({
     list: vi.fn(async () => ({ ok: true, data: { entries: [] } })),
@@ -364,6 +366,7 @@ describe('ChatGPTPageAnnotationController', () => {
             selectionToolbarButton('page-comment-add')!.click();
             const shadow = controller['overlay']!.getShadow();
             const textarea = shadow.querySelector('textarea')!;
+            expect(textarea.getAttribute('aria-label')).toBe(textarea.placeholder);
             textarea.value = 'A note'; textarea.dispatchEvent(new Event('input', { bubbles: true }));
             document.title = '研究笔记';
             shadow.querySelector<HTMLButtonElement>('[data-action="save"]')!.click();
@@ -410,6 +413,46 @@ describe('ChatGPTPageAnnotationController', () => {
             await vi.waitFor(() => expect(shadow.querySelectorAll('.page-annotation-manager__item')).toHaveLength(0));
             expect(document.querySelector('[data-aimd-role="page-annotation-composer-chip"]')).toBeNull();
         } finally { controller.dispose(); }
+    });
+
+    it('centers the saved passage after a real manager click in a reverse scroll container', async () => {
+        const message = mountMessage('<p>Quoted answer</p>');
+        const root = message.querySelector<HTMLElement>('.markdown')!;
+        document.body.insertAdjacentHTML('beforeend', '<form><button type="button" id="composer-plus-btn">+</button><textarea name="prompt-textarea"></textarea></form>');
+        const scrollRoot = document.createElement('div');
+        scrollRoot.scrollTop = -1800;
+        scrollRoot.getBoundingClientRect = () => new DOMRect(0, 0, 800, 600);
+        const scrollBy = vi.fn(({ top }: ScrollToOptions) => { scrollRoot.scrollTop += Number(top); });
+        scrollRoot.scrollBy = scrollBy;
+        const adapter = new ChatGPTAdapter();
+        vi.spyOn(adapter, 'getConversationScrollRoot').mockReturnValue(scrollRoot);
+        const oldRects = Object.getOwnPropertyDescriptor(Range.prototype, 'getClientRects');
+        Object.defineProperty(Range.prototype, 'getClientRects', { configurable: true, value: () => [new DOMRect(40, 1200 - (scrollRoot.scrollTop + 1800), 120, 18)] });
+        root.getBoundingClientRect = () => new DOMRect(0, -(scrollRoot.scrollTop + 1800), 800, 2400);
+        const navigate = vi.fn(async () => ({ ok: true }));
+        const controller = new ChatGPTPageAnnotationController(adapter, {
+            contentSource: createContentSource('Quoted answer'), materialization: createMaterialization(message),
+            navigation: { navigate, cancelActive: vi.fn() } as any,
+        });
+        controller.init();
+        try {
+            await vi.waitFor(() => expect(annotationClientMock.listeners.size).toBe(1));
+            const range = document.createRange(); range.selectNodeContents(root);
+            const record = createPageCommentRecord({ id: 'offscreen-note', itemId: 'chatgpt-assistant-1', comment: 'Saved', range, root, sourceMarkdown: 'Quoted answer' });
+            annotationClientMock.list.mockResolvedValue({ ok: true, data: { entries: [{ document: controller['store'].getDocument()!, annotation: toReaderAnnotationRecord(record, { assistantMessageId: 'assistant-1', position: 50 }) }] } } as any);
+            for (const listener of annotationClientMock.listeners) listener();
+            await vi.waitFor(() => expect(document.querySelector('[data-aimd-role="page-annotation-composer-chip"]')).toBeTruthy());
+            document.querySelector('[data-aimd-role="page-annotation-composer-chip"]')!.shadowRoot!.querySelector<HTMLButtonElement>('button')!.click();
+            document.querySelector('#aimd-chatgpt-page-annotation-manager-host')!.shadowRoot!.querySelector<HTMLButtonElement>('.page-annotation-manager__item button')!.click();
+            await vi.waitFor(() => expect(scrollBy).toHaveBeenCalledOnce());
+            expect(navigate).toHaveBeenCalledWith(expect.objectContaining({ position: 0, assistantMessageId: 'assistant-1' }), expect.any(Object));
+            expect(scrollBy).toHaveBeenCalledWith({ top: 909, behavior: 'auto' });
+            expect(scrollRoot.scrollTop).toBe(-891);
+        } finally {
+            controller.dispose(); adapter.dispose();
+            if (oldRects) Object.defineProperty(Range.prototype, 'getClientRects', oldRects);
+            else Reflect.deleteProperty(Range.prototype, 'getClientRects');
+        }
     });
 
     it('places the annotation entry beside the current add-context button and opens the existing insert flow', async () => {
@@ -892,6 +935,56 @@ describe('ChatGPTPageAnnotationController', () => {
         controller.dispose();
     });
 
+    it('updates shared copy, annotation and highlight visibility on an unchanged selection', async () => {
+        const message = mountMessage('<p>selected text</p>');
+        const root = message.querySelector<HTMLElement>('.markdown.prose')!;
+        const text = message.querySelector<HTMLElement>('p')!;
+        const range = document.createRange(); range.selectNodeContents(text);
+        selectRange(range); mockGeometry(root, text, range);
+        const controller = new ChatGPTPageAnnotationController(new ChatGPTAdapter()); controller.init();
+        try {
+            dispatchPointerUp(320, 240); await flushSelectionFrame();
+            controller.setReaderSettings({ selectionToolbar: { copy: false, annotation: true, highlight: false } });
+            expect(selectionToolbarButton('page-selection-copy')).toBeNull();
+            expect(selectionToolbarButton('page-comment-add')).not.toBeNull();
+            expect(selectionToolbarHost()!.querySelector('[data-action="highlight-selection"]')).toBeNull();
+            controller.setReaderSettings({ selectionToolbar: { copy: false, annotation: false, highlight: false } });
+            expect(selectionToolbarHost()).toBeNull();
+            mockGeometry(root, text, controller['selectionCoordinator'].getCurrentFrame()!.location.range);
+            controller.setReaderSettings({ selectionToolbar: { copy: true, annotation: true, highlight: true } });
+            expect(selectionToolbarButton('page-selection-copy')).not.toBeNull();
+        } finally { controller.dispose(); }
+    });
+
+    it('copies a literal code fragment through the floating toolbar pointerdown and click path', async () => {
+        const message = mountMessage('<pre><code>prefix  $x$\nsuffix</code></pre>');
+        const root = message.querySelector<HTMLElement>('.markdown.prose')!;
+        const code = message.querySelector<HTMLElement>('code')!;
+        const range = document.createRange();
+        range.setStart(code.firstChild!, 6);
+        range.setEnd(code.firstChild!, 12);
+        selectRange(range);
+        mockGeometry(root, code, range);
+        const copy = vi.spyOn(clipboard, 'copyTextToClipboard').mockResolvedValue(true);
+        const controller = new ChatGPTPageAnnotationController(new ChatGPTAdapter());
+        setCanonicalMarkdownCopyFormulaFormat('raw');
+        controller.init();
+        try {
+            dispatchPointerUp(320, 240);
+            await flushSelectionFrame();
+            const button = selectionToolbarButton('page-selection-copy')!;
+            expect(button).not.toBeNull();
+            button.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true, composed: true, cancelable: true }));
+            button.click();
+            await Promise.resolve();
+            expect(copy).toHaveBeenCalledWith('  $x$\n');
+        } finally {
+            controller.dispose();
+            copy.mockRestore();
+            setCanonicalMarkdownCopyFormulaFormat('markdown-dollar');
+        }
+    });
+
     it('can open the same selection again after saving a page annotation', async () => {
         const message = mountMessage('<p>before <code>inline code</code> after</p>');
         const root = message.querySelector('.markdown.prose') as HTMLElement;
@@ -916,6 +1009,18 @@ describe('ChatGPTPageAnnotationController', () => {
         expect(input).not.toBeNull();
         input!.value = 'Keep this context';
         input!.dispatchEvent(new Event('input', { bubbles: true }));
+        document.body.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true, composed: true }));
+        document.body.dispatchEvent(new MouseEvent('click', { bubbles: true, composed: true }));
+        expect(controller['commentPopover'].isOpen()).toBe(true);
+        expect(controller['store'].listForConversation()).toHaveLength(0);
+        shadow.querySelector<HTMLButtonElement>('[data-action="close"]')!.click();
+        await vi.waitFor(() => expect(controller['commentPopover'].isOpen()).toBe(false));
+        dispatchPointerDown(320, 240); selectRange(range); dispatchPointerCancel(320, 240); await flushSelectionFrame();
+        selectionToolbarButton('page-comment-add')!.click();
+        expect(shadow.querySelector<HTMLTextAreaElement>('[data-role="input"]')!.value).toBe('');
+        expect(controller['store'].listForConversation()).toHaveLength(0);
+        const freshInput = shadow.querySelector<HTMLTextAreaElement>('[data-role="input"]')!;
+        freshInput.value = 'Explicitly saved note'; freshInput.dispatchEvent(new Event('input', { bubbles: true }));
         shadow.querySelector<HTMLButtonElement>('[data-action="save"]')?.click();
         await vi.waitFor(() => expect(controller['store'].listForConversation()).toHaveLength(1));
 
@@ -927,6 +1032,25 @@ describe('ChatGPTPageAnnotationController', () => {
         expect(selectionToolbarButton('page-comment-add')).toBeTruthy();
 
         controller.dispose();
+    });
+
+    it('closes the old conversation editor through the source-change trigger before rebinding records', async () => {
+        const message = mountMessage('<p>before <code>inline code</code> after</p>');
+        const root = message.querySelector<HTMLElement>('.markdown.prose')!; const code = message.querySelector<HTMLElement>('code')!;
+        const range = document.createRange(); range.selectNodeContents(code); selectRange(range); mockGeometry(root, code, range);
+        const source = createContentSource(); const original = source.read();
+        const controller = new ChatGPTPageAnnotationController(new ChatGPTAdapter(), { contentSource: source, materialization: createMaterialization(message), surfaceAdapter: createEvidenceSurfaceAdapter(message) });
+        try {
+            controller.init(); await vi.waitFor(() => expect(controller['store'].getDocument()?.conversationId).toBe('test'));
+            dispatchPointerUp(320, 240); await flushSelectionFrame(); selectionToolbarButton('page-comment-add')!.click();
+            expect(controller['commentPopover'].isOpen()).toBe(true);
+            const nextDocument = { ...original.document!, key: 'chatgpt:conversation:next', conversationId: 'next' };
+            vi.spyOn(source, 'read').mockReturnValue({ ...original, document: nextDocument, snapshot: original.snapshot ? { ...original.snapshot, document: nextDocument } : null } as any);
+            controller['handleSourceChanged']();
+            await vi.waitFor(() => expect(controller['store'].getDocument()?.conversationId).toBe('next'));
+            expect(controller['commentPopover'].isOpen()).toBe(false);
+            expect(controller['mode']).toBe('closed');
+        } finally { controller.dispose(); }
     });
 
     it('keeps the toolbar available after saving when annotation markers mount into the message root', async () => {
@@ -1121,6 +1245,7 @@ describe('ChatGPTPageAnnotationController', () => {
         const targetText = message.querySelector('strong')!;
         const range = document.createRange(); range.selectNodeContents(targetText); mockGeometry(root, targetText, range);
         const original = Object.getOwnPropertyDescriptor(Range.prototype, 'getClientRects');
+        const pageScroll = vi.spyOn(window, 'scrollBy').mockImplementation(() => undefined);
         Object.defineProperty(Range.prototype, 'getClientRects', {configurable:true, value:() => [{left:40,top:50,width:90,height:18,right:130,bottom:68,x:40,y:50,toJSON:()=>({})}]});
         const controller = new ChatGPTPageAnnotationController(new ChatGPTAdapter(), {contentSource:createContentSource('before **target text** after'),materialization:createMaterialization(message),surfaceAdapter:createEvidenceSurfaceAdapter(message)});
         controller.init();
@@ -1142,14 +1267,13 @@ describe('ChatGPTPageAnnotationController', () => {
             expect(highlightClientMock.update.mock.calls[0]![1]).toMatchObject({id:'highlight-action',color:'red',revision:1});
             await vi.waitFor(() => expect(markerShadow.querySelector<HTMLButtonElement>('.reader-highlight-anchor')?.dataset.color).toBe('red'));
             expect(actionShadow.querySelector('[data-role="page-highlight-actions"]')).toBeNull();
-            const scrollIntoView = vi.fn();
-            Object.assign(targetText, { scrollIntoView });
             Object.assign(root, { getBoundingClientRect: () => ({ left: 0, top: -1000, width: 800, height: 600, right: 800, bottom: -400 }) });
             marker = markerShadow.querySelector<HTMLButtonElement>('.reader-highlight-anchor')!;
             marker.dispatchEvent(new MouseEvent('pointerdown', {bubbles:true,composed:true,button:0}));
             marker.dispatchEvent(new MouseEvent('pointerup', {bubbles:true,composed:true,button:0}));
             marker.click();
-            expect(scrollIntoView).toHaveBeenCalledWith({ block: 'center', inline: 'nearest' });
+            expect(pageScroll).toHaveBeenCalledWith({ top: expect.any(Number), behavior: 'auto' });
+            expect(Number((pageScroll.mock.calls[0]![0] as ScrollToOptions).top)).toBeLessThan(0);
             await flushSelectionFrame();
             actionShadow.querySelector<HTMLButtonElement>('[data-action="page-highlight-delete"]')!.click();
             await vi.waitFor(() => expect(highlightClientMock.remove).toHaveBeenCalledOnce());
@@ -1157,6 +1281,7 @@ describe('ChatGPTPageAnnotationController', () => {
             await vi.waitFor(() => expect(root.querySelector('[data-aimd-role="chatgpt-page-annotation-markers"]')).toBeNull());
         } finally {
             controller.dispose();
+            pageScroll.mockRestore();
             if (original) Object.defineProperty(Range.prototype, 'getClientRects', original);
             else delete (Range.prototype as any).getClientRects;
         }

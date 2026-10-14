@@ -1,12 +1,10 @@
 (() => {
-    const approvedAccentColors = new Set(['#2563eb', '#059669', '#7c3aed', '#e11d48', '#d97706']);
-
     const normalizeHexColor = (value) => {
         if (typeof value !== 'string') return null;
         const trimmed = value.trim();
         if (!/^#[0-9a-fA-F]{6}$/.test(trimmed)) return null;
         const normalized = trimmed.toLowerCase();
-        return approvedAccentColors.has(normalized) ? normalized : null;
+        return normalized;
     };
 
     const applyAccentColor = (accentColor) => {
@@ -63,25 +61,33 @@
         document.documentElement.lang = locale === 'zh_CN' ? 'zh-CN' : 'en';
     };
 
+    let themeMode = 'auto';
     const colorScheme = globalThis.matchMedia?.('(prefers-color-scheme: dark)');
     const applyColorScheme = () => {
-        document.documentElement.setAttribute('data-aimd-theme', colorScheme?.matches ? 'dark' : 'light');
+        const theme = themeMode === 'dark' || themeMode === 'light' ? themeMode : colorScheme?.matches ? 'dark' : 'light';
+        document.documentElement.setAttribute('data-aimd-theme', theme);
     };
 
     void localizePopup();
     applyColorScheme();
     colorScheme?.addEventListener?.('change', applyColorScheme);
 
+    const applyAppearance = (appearance) => {
+        themeMode = appearance?.themeMode ?? 'auto';
+        applyColorScheme();
+        applyAccentColor(appearance?.accentColor);
+    };
+
     const storage = globalThis.browser?.storage ?? globalThis.chrome?.storage;
     const result = storage?.sync?.get?.('app_settings', (next) => {
         const settings = next?.app_settings;
-        applyAccentColor(settings?.appearance?.accentColor);
+        applyAppearance(settings?.appearance);
         void localizePopup(settings?.language);
     });
 
     result?.then?.((next) => {
         const settings = next?.app_settings;
-        applyAccentColor(settings?.appearance?.accentColor);
+        applyAppearance(settings?.appearance);
         void localizePopup(settings?.language);
     });
 })();

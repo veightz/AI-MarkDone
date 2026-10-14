@@ -1,8 +1,14 @@
 import type { ImageExportProgressEvent } from './imageExportContracts';
+import type { RichBlockV1, RichContentImageV1 } from '../../contracts/richContent';
 
 export interface ChatTurn {
     user: string;
     assistant: string; // markdown
+    assistantSource?: string;
+    richBlocks?: readonly RichBlockV1[];
+    richImages?: readonly RichContentImageV1[];
+    messageId?: string;
+    documentUrl?: string;
     index: number;
 }
 
@@ -14,7 +20,7 @@ export interface ConversationMetadata {
     platform: string;
 }
 
-export type SaveFormat = 'markdown' | 'pdf' | 'png';
+export type SaveFormat = 'markdown' | 'markdown-zip' | 'pdf' | 'png';
 
 export type TranslateFn = (key: string, args?: unknown) => string;
 

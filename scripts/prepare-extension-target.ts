@@ -1,45 +1,16 @@
-import { cpSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { cpSync, mkdirSync, readdirSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { extensionIconFiles, safariExcludedLocaleMessageKeys } from '../config/extension/surface';
 import { extensionTargets, type ExtensionTarget } from '../config/extension/targets';
 import { isExtensionTarget, writeManifest } from './generate-manifest';
+import { getPageTokenCss } from '../src/style/tokens';
+import { getSurfaceMaterialCss } from '../src/ui/content/components/styles/surfaceMaterialCss';
 
-function copyPngFiles(sourceDir: string, targetDir: string, allowlist?: readonly string[]): void {
+function copyPngFiles(sourceDir: string, targetDir: string): void {
     mkdirSync(targetDir, { recursive: true });
-    const allowed = allowlist ? new Set(allowlist) : null;
     for (const entry of readdirSync(sourceDir)) {
         if (!entry.endsWith('.png')) continue;
-        if (allowed && !allowed.has(entry)) continue;
         cpSync(join(sourceDir, entry), join(targetDir, entry));
-    }
-}
-
-function copyLocales(target: ExtensionTarget, sourceDir: string, targetDir: string): void {
-    const locales = readdirSync(sourceDir, { withFileTypes: true })
-        .filter((entry) => entry.isDirectory())
-        .map((entry) => entry.name);
-
-    if (target !== 'safari') {
-        mkdirSync(targetDir, { recursive: true });
-        for (const locale of locales) {
-            cpSync(join(sourceDir, locale), join(targetDir, locale), { recursive: true });
-        }
-        return;
-    }
-
-    mkdirSync(targetDir, { recursive: true });
-    const excludedKeys = new Set(safariExcludedLocaleMessageKeys);
-    for (const locale of locales) {
-        const sourceFile = join(sourceDir, locale, 'messages.json');
-        const localeTargetDir = join(targetDir, locale);
-        const targetFile = join(localeTargetDir, 'messages.json');
-        const messages = JSON.parse(readFileSync(sourceFile, 'utf8')) as Record<string, unknown>;
-        for (const key of excludedKeys) {
-            delete messages[key];
-        }
-        mkdirSync(localeTargetDir, { recursive: true });
-        writeFileSync(targetFile, `${JSON.stringify(messages, null, 4)}\n`);
     }
 }
 
@@ -50,14 +21,15 @@ export function prepareExtensionTarget(target: ExtensionTarget): void {
     copyPngFiles(
         resolve(process.cwd(), 'public/icons'),
         join(distDir, 'icons'),
-        target === 'safari' ? extensionIconFiles : undefined,
     );
-    copyLocales(target, resolve(process.cwd(), 'public/_locales'), join(distDir, '_locales'));
+    cpSync(resolve(process.cwd(), 'public/_locales'), join(distDir, '_locales'), { recursive: true });
     cpSync(resolve(process.cwd(), 'public/export-renderer.html'), join(distDir, 'export-renderer.html'));
+    cpSync(resolve(process.cwd(), 'public/rich-asset-relay.html'), join(distDir, 'rich-asset-relay.html'));
     cpSync(resolve(process.cwd(), 'public/reader.html'), join(distDir, 'reader.html'));
     mkdirSync(join(distDir, 'src/popup'), { recursive: true });
     cpSync(resolve(process.cwd(), 'src/popup/popup.html'), join(distDir, 'src/popup/popup.html'));
     cpSync(resolve(process.cwd(), 'src/popup/popup.js'), join(distDir, 'src/popup/popup.js'));
+    writeFileSync(join(distDir, 'src/popup/popup-tokens.css'), `${getPageTokenCss()}\n${getSurfaceMaterialCss()}`);
     mkdirSync(join(distDir, 'vendor/katex'), { recursive: true });
     cpSync(resolve(process.cwd(), 'node_modules/katex/dist/katex.min.css'), join(distDir, 'vendor/katex/katex.min.css'));
     cpSync(resolve(process.cwd(), 'node_modules/katex/dist/fonts'), join(distDir, 'vendor/katex/fonts'), { recursive: true });
@@ -71,7 +43,7 @@ export function prepareExtensionTarget(target: ExtensionTarget): void {
 function runCli(): void {
     const target = process.argv[2] ?? '';
     if (!isExtensionTarget(target)) {
-        console.error('Usage: tsx scripts/prepare-extension-target.ts <chrome|firefox|safari>');
+        console.error('Usage: tsx scripts/prepare-extension-target.ts <chrome|firefox>');
         process.exit(1);
     }
     prepareExtensionTarget(target);

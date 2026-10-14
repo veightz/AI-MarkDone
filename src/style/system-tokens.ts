@@ -37,6 +37,10 @@ function getUserThemeOverrideCss(overrides: UserThemeOverrides): string {
     const { accentColor, baseFontScale: fontScale } = normalized;
 
     if (accentColor) {
+        const rgb = [1, 3, 5].map(offset => parseInt(accentColor.slice(offset, offset + 2), 16) / 255);
+        const linear = rgb.map(channel => channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4);
+        const luminance = linear[0] * 0.2126 + linear[1] * 0.7152 + linear[2] * 0.0722;
+        declarations.push(`  --aimd-sys-color-on-accent: ${luminance > 0.179 ? 'var(--aimd-ref-color-neutral-black)' : 'var(--aimd-ref-color-neutral-white)'};`);
         declarations.push(`  --aimd-sys-color-accent: ${accentColor};`);
         declarations.push(`  --aimd-sys-color-accent-hover: color-mix(in srgb, ${accentColor} 82%, var(--aimd-sys-color-text-primary));`);
         declarations.push(`  --aimd-sys-color-accent-soft: color-mix(in srgb, ${accentColor} 14%, transparent);`);
@@ -109,9 +113,7 @@ export function getSystemTokenCss(theme: Theme, overrides: UserThemeOverrides = 
   --aimd-sys-shadow-xs: var(--aimd-ref-shadow-xs);
   --aimd-sys-shadow-sm: var(--aimd-ref-shadow-sm);
   --aimd-sys-shadow-lg: var(--aimd-ref-shadow-lg);
-  --aimd-sys-shadow-xl: var(--aimd-ref-shadow-xl);
   --aimd-sys-shadow-focus: var(--aimd-ref-shadow-focus);
-  --aimd-sys-shadow-field-inset: inset 0 1px 0 color-mix(in srgb, var(--aimd-sys-color-surface) 72%, transparent);
   --aimd-sys-shadow-panel: var(--aimd-ref-shadow-500);
   --aimd-sys-shadow-interactive-halo: 0 0 0 3px color-mix(in srgb, var(--aimd-sys-color-accent) 10%, transparent);
   --aimd-sys-shadow-bookmark-marker: 0 0 0 2px var(--aimd-sys-color-bookmark-marker-glow);

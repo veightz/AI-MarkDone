@@ -1,10 +1,12 @@
 import type { ChatGPTDomRoundRef } from './domConversationDiscovery';
 import { logger } from '../../../core/logger';
 import { AIMD_CONVERSATION_SURFACE_CONSUMER_ATTRIBUTE } from '../../../contracts/conversationSurface';
+import { isChatGPTRichVisualMutationTarget } from './chatgptRichContent';
+import { CHATGPT_ACTIVE_PAGE_ATTRIBUTE } from './chatgptActiveSurface';
 
 type ChatGPTPageIndexOptions = {
     resolveRoot: () => ParentNode;
-    resolveSurfaceRoot?: () => ParentNode;
+    resolveSurfaceRoot?: () => ParentNode | null;
     discover: () => ChatGPTDomRoundRef[];
 };
 
@@ -52,6 +54,9 @@ const ROUND_IDENTITY_ATTRIBUTES = new Set([
     'data-turn-id',
     'data-turn',
     'data-message-author-role',
+    'data-chatgpt-selection-message-id',
+    'data-dil-source-message-id',
+    'data-dil-message-id',
 ]);
 
 // ChatGPT changes its semantic stop/copy test id when streaming completes.
@@ -59,11 +64,14 @@ const ROUND_IDENTITY_ATTRIBUTES = new Set([
 // to re-read the same typed turn without observing every text mutation.
 const HOST_LIFECYCLE_ATTRIBUTES = new Set([
     ...ROUND_IDENTITY_ATTRIBUTES,
+    CHATGPT_ACTIVE_PAGE_ATTRIBUTE,
     'data-testid',
+    'src', 'srcset', 'd', 'fill', 'stroke', 'viewBox', 'points', 'transform', 'width', 'height',
 ]);
 const GENERATION_LIFECYCLE_SELECTOR = [
     'button[data-testid="stop-button"]',
     'button[data-testid="copy-turn-action-button"]',
+    '.turn-action-controls',
     '[data-conversation-screenshot-content] iframe[title="internal://deep-research"]',
 ].join(',');
 const CONVERSATION_SURFACE_CONSUMER_SELECTOR = `[${AIMD_CONVERSATION_SURFACE_CONSUMER_ATTRIBUTE}]`;
@@ -102,6 +110,8 @@ function mutationAffectsHostPage(mutation: MutationRecord): boolean {
         if (isExtensionOwnedNode(mutation.target)) return false;
         const target = getElementForOwnershipCheck(mutation.target);
         if (!target || !mutation.attributeName) return false;
+        if (mutation.attributeName === CHATGPT_ACTIVE_PAGE_ATTRIBUTE) return true;
+        if (isRichVisualAttributeMutation(mutation)) return true;
         if (ROUND_IDENTITY_ATTRIBUTES.has(mutation.attributeName)) {
             return target.matches(ROUND_STRUCTURE_SELECTOR)
                 || target.closest(ROUND_STRUCTURE_SELECTOR) !== null;
@@ -256,7 +266,7 @@ export class ChatGPTPageIndex {
         this.observer?.disconnect();
         this.observer = null;
         this.observedRoot = nextRoot;
-        this.surfaceRoot = this.options.resolveSurfaceRoot?.() ?? nextRoot;
+        this.surfaceRoot = this.options.resolveSurfaceRoot ? this.options.resolveSurfaceRoot() : nextRoot;
         if (hadRoot) this.invalidate();
         this.advanceSurface(window.location.href, rootChanged);
 
@@ -268,17 +278,6 @@ export class ChatGPTPageIndex {
             if (typeof window === 'undefined') return;
             const hostMutations = mutations.filter(mutationAffectsHostPage);
             if (hostMutations.length === 0) return;
-            const nextSurfaceRoot = this.options.resolveSurfaceRoot?.() ?? this.observedRoot;
-            const surfaceRebased = Boolean(
-                this.surfaceRoot
-                && nextSurfaceRoot
-                && nextSurfaceRoot !== this.surfaceRoot,
-            );
-            if (surfaceRebased) {
-                this.activeGenerationAssistantIds.clear();
-                this.assistantIdByOwner = new WeakMap<HTMLElement, string>();
-            }
-            if (nextSurfaceRoot) this.surfaceRoot = nextSurfaceRoot;
             const kinds = new Set<ChatGPTHostObservationKind>();
             const assistantMessageIds = new Set<string>();
             const removedAssistantMessageIds = new Set<string>();
@@ -287,8 +286,19 @@ export class ChatGPTPageIndex {
                 collectAssistantMessageIds(mutation).forEach((id) => assistantMessageIds.add(id));
                 collectRemovedAssistantMessageIds(mutation).forEach((id) => removedAssistantMessageIds.add(id));
             }
+            // Body/visual changes cannot select another app-shell page. Keep
+            // root selection on the same structural/lifecycle boundary.
+            const contentOnly = Array.from(kinds).every(kind => kind === 'content');
+            const nextSurfaceRoot = contentOnly ? this.surfaceRoot
+                : this.options.resolveSurfaceRoot ? this.options.resolveSurfaceRoot() : this.observedRoot;
+            const surfaceRebased = nextSurfaceRoot !== this.surfaceRoot;
+            if (surfaceRebased) {
+                this.activeGenerationAssistantIds.clear();
+                this.assistantIdByOwner = new WeakMap<HTMLElement, string>();
+            }
+            this.surfaceRoot = nextSurfaceRoot;
             const hostEvidenceChanged = Array.from(kinds).some((kind) => kind !== 'surface');
-            if (hostEvidenceChanged) this.invalidate();
+            if (hostEvidenceChanged || surfaceRebased) this.invalidate();
             this.advanceSurface(window.location.href, surfaceRebased);
             this.observationRevision += 1;
             const shouldReadGenerationState = Array.from(kinds).some((kind) => (
@@ -365,6 +375,12 @@ export class ChatGPTPageIndex {
         this.pageUrl = pageUrl;
         this.surfaceRouteKey = nextRouteKey;
         if (firstSurface || force || routeChanged) this.surfaceEpoch += 1;
+        if (routeChanged) {
+            // SPA navigation may recycle the same owner element for another
+            // conversation. Its previous identity/generation is not evidence.
+            this.activeGenerationAssistantIds.clear();
+            this.assistantIdByOwner = new WeakMap<HTMLElement, string>();
+        }
     }
 
     private notify(subscribers: Set<() => void>, label: string): void {
@@ -434,6 +450,8 @@ function resolveSurfaceRouteKey(pageUrl: string): string {
 function mutationKinds(mutation: MutationRecord): ChatGPTHostObservationKind[] {
     if (mutation.type === 'characterData') return ['content'];
     if (mutation.type === 'attributes') {
+        if (mutation.attributeName === CHATGPT_ACTIVE_PAGE_ATTRIBUTE) return ['structure'];
+        if (isRichVisualAttributeMutation(mutation)) return ['content'];
         if (mutation.attributeName === 'data-testid') {
             const current = getElementForOwnershipCheck(mutation.target)?.getAttribute('data-testid') ?? '';
             const previous = mutation.oldValue ?? '';
@@ -452,6 +470,12 @@ function mutationKinds(mutation: MutationRecord): ChatGPTHostObservationKind[] {
     if (nodeMayContainContentLifecycleFromMutation(mutation)) kinds.add('lifecycle');
     if (kinds.size === 0) kinds.add('content');
     return Array.from(kinds);
+}
+
+function isRichVisualAttributeMutation(mutation: MutationRecord): boolean {
+    if (!mutation.attributeName || !['src', 'srcset', 'd', 'fill', 'stroke', 'viewBox', 'points', 'transform', 'width', 'height'].includes(mutation.attributeName)) return false;
+    const target = getElementForOwnershipCheck(mutation.target);
+    return target !== null && isAssistantContentNode(target) && isChatGPTRichVisualMutationTarget(target);
 }
 
 function nodeMayContainContentLifecycleFromMutation(mutation: MutationRecord): boolean {

@@ -79,8 +79,11 @@ describe('SendPopover', () => {
         expect(styleNode?.textContent).not.toContain('rgba(255,255,255,0.72)');
         expect(styleNode?.textContent).not.toContain('#0f172a');
         expect(styleNode?.textContent).toContain('z-index: var(--aimd-z-tooltip);');
-        expect(styleNode?.textContent).toContain('background: color-mix(in srgb, var(--aimd-button-icon-hover) 90%, var(--aimd-surface-hover));');
-        expect(styleNode?.textContent).toContain('background: color-mix(in srgb, var(--aimd-button-secondary-hover) 90%, var(--aimd-surface-hover));');
+        expect(opened?.classList.contains('aimd-material-surface')).toBe(true);
+        expect(opened?.querySelector('[data-action="cancel"]')?.classList.contains('aimd-material-button--quiet')).toBe(true);
+        expect(opened?.querySelector('[data-action="send"]')?.classList.contains('aimd-material-button--primary')).toBe(true);
+        expect(styleNode?.textContent).toContain('background: var(--aimd-workspace-card);');
+        expect(styleNode?.textContent).toContain('box-shadow: var(--aimd-workspace-inset);');
         expect(styleNode?.textContent).toContain('background: var(--aimd-interactive-primary-hover);');
         expect(styleNode?.textContent).toContain('.send-popover__foot .status-line {');
         expect(styleNode?.textContent).toContain('font-size: var(--aimd-text-xs);');
@@ -165,7 +168,8 @@ describe('SendPopover', () => {
         expect(Number.parseFloat(surface.style.height)).toBeLessThanOrEqual(268);
 
         const css = shadow.querySelector<HTMLStyleElement>('style[data-aimd-send-popover-style]')!.textContent ?? '';
-        expect(css).toContain('min-width: min(320px, calc(100vw - var(--aimd-space-4)));');
+        expect(css).toMatch(/\.send-popover\s*\{[^}]*min-width:\s*0;/);
+        expect(css).toMatch(/\.send-popover\s*\{[^}]*min-height:\s*0;/);
         expect(css).toContain('min-height: 0;');
 
         pop.close(shadow, { syncBack: false });
@@ -876,13 +880,13 @@ describe('SendPopover', () => {
         pop.open({ shadow, anchor: footerLeft, sendPort: createContentSendPort(adapter), theme: 'light', initialText: 'hi' });
 
         expect(footerLeft.querySelector('.send-popover__head strong')?.textContent).toBe('Send');
-        expect(footerLeft.querySelector('.send-popover__resize-handle')?.getAttribute('aria-label')).toBe('Resize send popover');
+        expect(footerLeft.querySelector('.send-popover__resize-handle')?.getAttribute('aria-label')).toBe('Resize message window');
 
         await setLocale('zh_CN');
         await Promise.resolve();
 
         expect(footerLeft.querySelector('.send-popover__head strong')?.textContent).toBe('发送');
-        expect(footerLeft.querySelector('.send-popover__resize-handle')?.getAttribute('aria-label')).toBe('调整发送浮层大小');
+        expect(footerLeft.querySelector('.send-popover__resize-handle')?.getAttribute('aria-label')).toBe('调整消息窗口大小');
 
         pop.close(shadow, { syncBack: false });
     });

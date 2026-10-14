@@ -22,6 +22,11 @@ const prompts = [
     { id: 'summarize', title: 'Summarize with decisions', content: 'Summarize decisions and open questions:\n{{cursor}}', triggerText: 'summary' },
     { id: 'translate', title: 'Translate naturally', content: 'Translate naturally while preserving tone:\n{{cursor}}', triggerText: 'translate' },
     { id: 'review', title: 'Review edge cases', content: 'Review this for missing states and edge cases:\n{{cursor}}', triggerText: 'review' },
+    ...Array.from({ length: 12 }, (_, index) => ({
+        id: `long-${index}`, title: `长标题与中英文边界检查 ${index + 1} — A long reusable research Prompt`,
+        content: '保持原始引用、公式和长段落，检查窄屏下的阅读与输入边界。 Preserve source, math and long paragraphs while keeping the editor usable.\n{{cursor}}',
+        triggerText: `research${index + 1}`,
+    })),
 ].map((prompt, index) => ({
     ...prompt,
     contexts: ['composer', 'readerComment'] as const,
@@ -31,9 +36,13 @@ const prompts = [
     updatedAt: index + 1,
     lastUsedAt: null,
 }));
+let failLoad = false;
 
 const client = {
-    listPrompts: async (options?: { includeDisabled?: boolean }) => prompts.filter((prompt) => options?.includeDisabled || prompt.enabled),
+    listPrompts: async (options?: { includeDisabled?: boolean }) => {
+        if (failLoad) throw new Error('The local fixture cannot load its Prompt records.');
+        return prompts.filter((prompt) => options?.includeDisabled || prompt.enabled);
+    },
     recordUse: async () => undefined,
     savePrompt: async (prompt: (typeof prompts)[number]) => prompt,
     deletePrompt: async () => undefined,
@@ -64,8 +73,20 @@ async function showManager(): Promise<void> {
     await controller.openManager(managerTrigger);
 }
 
+async function showEditor(): Promise<void> {
+    await showManager();
+    const button = document.getElementById('aimd-chatgpt-prompt-popover-host')?.shadowRoot?.querySelector<HTMLButtonElement>('[data-action="edit-prompt"]');
+    button?.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, composed: true }));
+    button?.click();
+    await Promise.resolve();
+    await Promise.resolve();
+}
+
 async function prepareForAudit(): Promise<void> {
-    if (document.documentElement.clientWidth <= 390) await showAutocomplete();
+    const requested = new URLSearchParams(location.search).get('mode');
+    if (requested === 'editor') await showEditor();
+    else if (requested === 'manager') await showManager();
+    else if (document.documentElement.clientWidth <= 390) await showAutocomplete();
     else await showManager();
 }
 
@@ -80,6 +101,8 @@ async function applyVariant(next: VisualHarnessVariant): Promise<void> {
 
 document.getElementById('autocomplete-trigger')?.addEventListener('click', () => void showAutocomplete());
 managerTrigger.addEventListener('click', () => void showManager());
+document.getElementById('editor-trigger')?.addEventListener('click', () => { failLoad = false; void showEditor(); });
+document.getElementById('error-trigger')?.addEventListener('click', () => { failLoad = !failLoad; void showManager(); });
 
 installVisualHarnessBridge({
     applyVariant,

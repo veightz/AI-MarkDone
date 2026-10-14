@@ -1,13 +1,12 @@
+import { FormulaPreviewPipeline } from '../../../services/math/formulaPreviewPipeline';
 import type { SiteAdapter } from '../../../drivers/content/adapters/base';
 import { armChatGPTSendPositionRestore } from '../../../drivers/content/chatgpt/sendPositionRestoreEvents';
 import { applyComposerNativeTextEdit, readComposer } from '../../../drivers/content/sending/composerPort';
 import {
     getContenteditableCaretClientRect,
-    getContenteditablePlainTextOffsetFromPoint,
     getContenteditablePlainTextSelection,
     setContenteditablePlainTextSelection,
 } from '../../../core/sending/contenteditable';
-import { logger } from '../../../core/logger';
 import { resolveChatGPTInputEnhancement } from '../../../core/settings/inputEnhancement';
 import {
     DEFAULT_CHATGPT_INPUT_ENHANCEMENT_SETTINGS,
@@ -46,17 +45,22 @@ import {
 } from '../../../style/appearance';
 import { FormulaComposerAssistantPopover } from '../components/FormulaComposerAssistantPopover';
 import { ChatGPTComposerBindingSource, type ChatGPTComposerInput } from './ChatGPTComposerBindingSource';
+import type { runFormulaAssetAction } from '../../../services/math/formulaAssetActions';
+import { DEFAULT_FORMULA_ASSET_FONT_SIZE_PX, type FormulaAssetActionSettings } from '../../../core/settings/formula';
+import { showToast } from '../../../utils/toast';
+import { t } from '../components/i18n';
 
 type ComposerInput = ChatGPTComposerInput;
 const FORMULA_REFRESH_DELAY_MS = 120;
-const FORMULA_HOVER_DELAY_MS = 160;
 const FORMULA_PREVIEW_MAX_SOURCE_LENGTH = 4000;
 
 export type ChatGPTComposerEditingControllerOptions = {
+    onOpenInputEnhancement?: (anchor: HTMLElement) => void;
     loadFormulaSnippets?: () => Promise<LatexSnippetCatalog>;
     renderFormula?: (options: FormulaRenderOptions) => Promise<FormulaSvgAsset>;
     prewarmFormula?: () => void;
     bindingSource?: ChatGPTComposerBindingSource;
+    runFormulaAssetAction?: typeof runFormulaAssetAction;
 };
 
 type FormulaSnippetSession = {
@@ -78,8 +82,15 @@ export class ChatGPTComposerEditingController {
     private isTriggeringSend = false;
     private composing = false;
     private formulaRefreshTimer: number | null = null;
-    private formulaHoverTimer: number | null = null;
     private formulaRequestId = 0;
+    private formulaKey = '';
+    private formulaTokenQuery = '';
+    private snippetsRequestId = 0;
+    private snippetsCatalog: Promise<LatexSnippetCatalog> | null = null;
+    private readonly formulaPipeline = new FormulaPreviewPipeline(options => {if(!this.options.renderFormula)return Promise.reject(new Error('Formula renderer unavailable'));return this.options.renderFormula(options);});
+    private formulaExportAbort:AbortController|null=null;
+    private formulaAssetActionSettings: FormulaAssetActionSettings | undefined;
+    private formulaAssetFontSizePx = DEFAULT_FORMULA_ASSET_FONT_SIZE_PX;
     private formulaAssistant: FormulaComposerAssistantPopover | null = null;
     private formulaSuggestions: LatexSnippetItem[] = [];
     private formulaSelectedIndex = 0;
@@ -114,6 +125,8 @@ export class ChatGPTComposerEditingController {
         this.clearFormulaTimers();
         this.formulaAssistant?.dispose();
         this.formulaAssistant = null;
+        this.formulaPipeline.clear();
+        this.formulaExportAbort?.abort();
     }
 
     setInputEnhancementSettings(settings: ChatGPTInputEnhancementSettings): void {
@@ -121,10 +134,24 @@ export class ChatGPTComposerEditingController {
         if (this.initialized) this.bindComposer();
     }
 
+    /** @deprecated Composer entry was removed; retained for old callers. */
+    setComposerControlVisible(_visible: boolean): void {}
+
     setAppearance(snapshot: AppearanceSnapshot): void {
         if (areAppearanceSnapshotsEqual(this.appearance, snapshot)) return;
         this.appearance = snapshot;
         this.formulaAssistant?.setAppearance(snapshot);
+    }
+
+    setFormulaAssetActions(settings: FormulaAssetActionSettings | undefined): void { this.formulaAssetActionSettings = settings; this.formulaAssistant?.setAssetActionSettings(settings); }
+
+    setFormulaAssetFontSize(fontSizePx: number): void {
+        if(this.formulaAssetFontSizePx===fontSizePx)return;
+        this.formulaAssetFontSizePx = fontSizePx;
+        this.formulaRequestId++;
+        this.formulaPipeline.cancel();
+        this.formulaKey='';this.formulaAssistant?.setExportAvailable(false);
+        if(this.initialized)this.scheduleFormulaRefresh(0);
     }
 
     private bindComposer(): void {
@@ -139,9 +166,10 @@ export class ChatGPTComposerEditingController {
             next.addEventListener('input', this.onComposerInput as EventListener);
             next.addEventListener('keyup', this.onComposerCaretChange as EventListener);
             next.addEventListener('click', this.onComposerCaretChange as EventListener);
+            next.addEventListener('focus', this.onComposerCaretChange as EventListener);
             next.addEventListener('compositionstart', this.onCompositionStart as EventListener);
             next.addEventListener('compositionend', this.onCompositionEnd as EventListener);
-            next.addEventListener('mousemove', this.onComposerMouseMove as EventListener);
+            if (document.activeElement === next && this.hasFormulaEnhancement()) this.scheduleFormulaRefresh(0);
         }
     }
 
@@ -151,9 +179,9 @@ export class ChatGPTComposerEditingController {
         this.composer?.removeEventListener('input', this.onComposerInput as EventListener);
         this.composer?.removeEventListener('keyup', this.onComposerCaretChange as EventListener);
         this.composer?.removeEventListener('click', this.onComposerCaretChange as EventListener);
+        this.composer?.removeEventListener('focus', this.onComposerCaretChange as EventListener);
         this.composer?.removeEventListener('compositionstart', this.onCompositionStart as EventListener);
         this.composer?.removeEventListener('compositionend', this.onCompositionEnd as EventListener);
-        this.composer?.removeEventListener('mousemove', this.onComposerMouseMove as EventListener);
         this.composer = null;
         this.formulaSnippetSession = null;
         this.closeFormulaAssistant();
@@ -237,12 +265,18 @@ export class ChatGPTComposerEditingController {
     };
 
     private onComposerInput = (): void => {
+        // Invalidate before the debounce so an older render cannot re-enable exports.
+        this.formulaRequestId++;
+        this.formulaKey = '';
+        this.formulaPipeline.cancel();
+        this.formulaAssistant?.setExportAvailable(false);
         if (!this.hasFormulaEnhancement() || this.composing || this.applyingFormulaSnippet) return;
         this.formulaSnippetSession = null;
         this.scheduleFormulaRefresh(FORMULA_REFRESH_DELAY_MS);
     };
 
     private onComposerCaretChange = (): void => {
+        this.formulaAssistant?.setExportAvailable(false);
         if (!this.hasFormulaEnhancement() || this.composing) return;
         this.scheduleFormulaRefresh(FORMULA_REFRESH_DELAY_MS);
     };
@@ -255,17 +289,6 @@ export class ChatGPTComposerEditingController {
     private onCompositionEnd = (): void => {
         this.composing = false;
         if (this.hasFormulaEnhancement()) this.scheduleFormulaRefresh(FORMULA_REFRESH_DELAY_MS);
-    };
-
-    private onComposerMouseMove = (event: MouseEvent): void => {
-        if (!this.isFormulaPreviewEnabled() || this.composing || !(event.currentTarget instanceof HTMLElement)) return;
-        const input = event.currentTarget;
-        if (!this.isContentEditable(input)) return;
-        if (this.formulaHoverTimer != null) window.clearTimeout(this.formulaHoverTimer);
-        this.formulaHoverTimer = window.setTimeout(() => {
-            this.formulaHoverTimer = null;
-            void this.refreshFormulaFromPoint(input, event.clientX, event.clientY);
-        }, FORMULA_HOVER_DELAY_MS);
     };
 
     private handleMarkdownDeletion(
@@ -376,26 +399,13 @@ export class ChatGPTComposerEditingController {
             this.closeFormulaAssistant();
             return;
         }
-        const math = findMarkdownMathAt(snapshot.text, selection.start, { includeOpen: true });
+        const math = findMarkdownMathAt(snapshot.text, selection.start, { includeOpen: true, includeClosingBoundary: true });
         if (!math || !math.source.trim()) {
             this.closeFormulaAssistant();
             return;
         }
         const token = findLatexCommandToken(snapshot.text, selection.start);
         await this.showFormulaMath(math, this.getFormulaAnchorRect(input), token);
-    }
-
-    private async refreshFormulaFromPoint(input: HTMLElement, x: number, y: number): Promise<void> {
-        if (!this.isFormulaPreviewEnabled() || input !== this.composer) return;
-        const offset = getContenteditablePlainTextOffsetFromPoint(input, x, y);
-        const snapshot = readComposer(this.adapter);
-        if (offset == null || !snapshot.ok) return;
-        const math = findMarkdownMathAt(snapshot.text, offset);
-        if (!math?.closed || !math.source.trim()) return;
-        const anchor = typeof DOMRect === 'function'
-            ? new DOMRect(x, y, 0, 16)
-            : ({ left: x, right: x, top: y, bottom: y + 16, width: 0, height: 16 } as DOMRect);
-        await this.showFormulaMath(math, anchor, null);
     }
 
     private async showFormulaMath(
@@ -415,63 +425,51 @@ export class ChatGPTComposerEditingController {
             this.closeFormulaAssistant();
             return;
         }
-        const requestId = ++this.formulaRequestId;
-        if (previewEnabled) this.options.prewarmFormula?.();
-
-        let suggestions: LatexSnippetItem[] = [];
-        if (suggestionsEnabled && token) {
-            try {
-                const catalog = await (this.options.loadFormulaSnippets ?? loadLatexSnippetCatalog)();
-                if (requestId !== this.formulaRequestId || !this.hasFormulaEnhancement()) return;
-                suggestions = searchLatexSnippets(catalog, token.query);
-            } catch (error) {
-                logger.warn('[AI-MarkDone][ChatGPTComposerEditing] Formula snippets failed to load', error);
-            }
+        const key=JSON.stringify([source,math.kind,this.formulaAssetFontSizePx,previewEnabled,suggestionsEnabled]);
+        const changed=key!==this.formulaKey;const query=token?.query??'';
+        const suggestionsChanged=changed||query!==this.formulaTokenQuery;
+        this.formulaToken=suggestionsEnabled?token:null;
+        const assistant=this.ensureFormulaAssistant();
+        if(!changed&&!suggestionsChanged&&assistant.isOpen()){assistant.reposition(anchorRect);assistant.setExportAvailable(true);return;}
+        if(changed){this.formulaKey=key;this.formulaRequestId++;this.formulaSuggestions=[];this.formulaSelectedIndex=0;assistant.show({anchorRect,mathKind:math.kind,preview:previewEnabled?{status:'loading'}:null,suggestions:[],selectedIndex:0});}
+        this.formulaTokenQuery=query;
+        const requestId=this.formulaRequestId;
+        if(suggestionsChanged){
+            const suggestionsId=++this.snippetsRequestId;
+            if(suggestionsEnabled&&token){
+                this.snippetsCatalog??=(this.options.loadFormulaSnippets??loadLatexSnippetCatalog)();
+                void this.snippetsCatalog.then(catalog=>{if(suggestionsId!==this.snippetsRequestId||requestId!==this.formulaRequestId||!this.hasFormulaEnhancement())return;this.formulaSuggestions=searchLatexSnippets(catalog,token.query);this.formulaSelectedIndex=0;assistant.setSuggestions(this.formulaSuggestions,0);},()=>{this.snippetsCatalog=null;});
+            }else{this.formulaSuggestions=[];assistant.setSuggestions([],0);}
         }
-        if (requestId !== this.formulaRequestId || !this.hasFormulaEnhancement()) return;
-        this.formulaToken = suggestionsEnabled ? token : null;
-        this.formulaSuggestions = suggestions;
-        this.formulaSelectedIndex = 0;
-        const assistant = this.ensureFormulaAssistant();
-        assistant.show({
-            anchorRect,
-            mathKind: math.kind,
-            preview: previewEnabled ? { status: 'loading' } : null,
-            suggestions,
-            selectedIndex: 0,
-        });
-
-        if (!previewEnabled) return;
-
+        if(!changed||!previewEnabled)return;
         try {
-            if (!this.options.renderFormula) throw new Error('Formula preview renderer is unavailable.');
-            const asset = await this.options.renderFormula({
-                source,
-                displayMode: math.kind === 'display',
-            });
-            if (requestId !== this.formulaRequestId || !this.isFormulaPreviewEnabled()) return;
-            assistant.show({
-                anchorRect,
-                mathKind: math.kind,
-                preview: { status: 'ready', asset },
-                suggestions,
-                selectedIndex: this.formulaSelectedIndex,
-            });
-        } catch {
-            if (requestId !== this.formulaRequestId || !this.isFormulaPreviewEnabled()) return;
-            assistant.show({
-                anchorRect,
-                mathKind: math.kind,
-                preview: { status: 'error' },
-                suggestions,
-                selectedIndex: this.formulaSelectedIndex,
-            });
-        }
+            const asset=await this.formulaPipeline.request({source,displayMode:math.kind==='display',fontSizePx:this.formulaAssetFontSizePx});
+            if(requestId!==this.formulaRequestId||!this.isFormulaPreviewEnabled())return;
+            assistant.show({anchorRect,mathKind:math.kind,preview:{status:'ready',asset},suggestions:this.formulaSuggestions,selectedIndex:this.formulaSelectedIndex});
+        }catch{if(requestId===this.formulaRequestId&&this.isFormulaPreviewEnabled()){
+            assistant.show({anchorRect,mathKind:math.kind,preview:{status:'error'},suggestions:this.formulaSuggestions,selectedIndex:this.formulaSelectedIndex});
+        }}
     }
 
     private ensureFormulaAssistant(): FormulaComposerAssistantPopover {
         if (this.formulaAssistant) return this.formulaAssistant;
         this.formulaAssistant = new FormulaComposerAssistantPopover({
+            onExport: this.options.runFormulaAssetAction ? async (action, asset) => {
+                const exportAbort = new AbortController();
+                this.formulaExportAbort = exportAbort;
+                try {
+                    const result = await this.options.runFormulaAssetAction!({
+                        action, source: { kind: 'tex', value: asset.source, confidence: 'authoritative' },
+                        displayMode: asset.displayMode, fontSizePx: asset.fontSizePx, preparedSvg: asset, signal:exportAbort.signal,
+                    });
+                    if(!this.initialized||(!result.ok&&result.code==='CANCELLED'))return;
+                    showToast({ text: result.ok ? t(result.status === 'saved' ? 'formulaAssetSaved' : 'btnCopied') : result.message, tone: result.ok ? 'success' : 'error' });
+                } catch {
+                    if (this.initialized && !exportAbort.signal.aborted) showToast({ text: t('chatgptFormulaPreviewError'), tone: 'error' });
+                } finally {
+                    if (this.formulaExportAbort === exportAbort) this.formulaExportAbort = null;
+                }
+            } : undefined,
             onSelect: (index) => {
                 if (this.composer) this.insertFormulaSuggestion(this.composer, index);
             },
@@ -483,6 +481,7 @@ export class ChatGPTComposerEditingController {
             getDismissRoots: () => [this.composer],
         });
         this.formulaAssistant.setAppearance(this.appearance);
+        this.formulaAssistant.setAssetActionSettings(this.formulaAssetActionSettings);
         return this.formulaAssistant;
     }
 
@@ -581,6 +580,9 @@ export class ChatGPTComposerEditingController {
 
     private closeFormulaAssistant(): void {
         this.formulaRequestId += 1;
+        this.snippetsRequestId++;
+        this.formulaKey='';this.formulaTokenQuery='';
+        this.formulaPipeline.cancel();
         this.formulaSuggestions = [];
         this.formulaSelectedIndex = 0;
         this.formulaToken = null;
@@ -598,9 +600,7 @@ export class ChatGPTComposerEditingController {
 
     private clearFormulaTimers(): void {
         if (this.formulaRefreshTimer != null) window.clearTimeout(this.formulaRefreshTimer);
-        if (this.formulaHoverTimer != null) window.clearTimeout(this.formulaHoverTimer);
         this.formulaRefreshTimer = null;
-        this.formulaHoverTimer = null;
     }
 
     private insertNewline(input: ComposerInput): void {
@@ -687,8 +687,8 @@ export class ChatGPTComposerEditingController {
     }
 
     private triggerSend(input: ComposerInput): void {
-        if (document.activeElement !== input) input.focus();
         armChatGPTSendPositionRestore();
+        if (document.activeElement !== input) input.focus();
         this.isTriggeringSend = true;
         try {
             input.dispatchEvent(new KeyboardEvent('keydown', {

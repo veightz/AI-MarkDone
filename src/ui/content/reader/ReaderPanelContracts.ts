@@ -3,6 +3,7 @@ import type { ReaderItem } from '../../../services/reader/types';
 import type { ReaderCommentExportSettings } from '../../../services/reader/commentExport';
 import type { ReaderCommentRecord } from '../../../services/reader/commentSession';
 import type { ReaderAnnotationDocument } from '../../../contracts/readerAnnotations';
+import type { ReaderRichContentResolver } from './readerRichContent';
 
 export type ReaderPanelActionContext = {
     item: ReaderItem;
@@ -36,6 +37,7 @@ export type ReaderPanelShowOptions = {
     onOpenConversation?: (ctx: ReaderPanelActionContext) => void | Promise<void>;
     onRequestClose?: () => void | Promise<void>;
     actions?: ReaderPanelAction[];
+    resolveRichContent?: ReaderRichContentResolver;
 };
 
 export type ReaderPanelReplaceItemsOptions = {

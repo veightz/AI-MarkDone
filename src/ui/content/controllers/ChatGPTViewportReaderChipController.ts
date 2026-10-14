@@ -23,6 +23,7 @@ import {
     AIMD_CONVERSATION_SURFACE_CONSUMER_ATTRIBUTE,
     type ConversationSurfacePortV1,
 } from '../../../contracts/conversationSurface';
+import { resolveChatGPTActiveSurface } from '../../../drivers/content/chatgpt/chatgptActiveSurface';
 
 const HOST_ID = 'aimd-chatgpt-viewport-reader-chip';
 const STYLE_ID = 'aimd-chatgpt-viewport-reader-chip-style';
@@ -132,6 +133,18 @@ export class ChatGPTViewportReaderChipController {
         this.scheduleRefresh();
     };
 
+
+    /** Only rounds whose assistant root lives under the active ChatGPT main. */
+    private activeSurfaceRounds(): ChatGPTRoundPosition[] {
+        const rounds = collectChatGPTRoundPositions(this.options.surface);
+        const contentRoot = resolveChatGPTActiveSurface()?.contentRoot ?? null;
+        if (!contentRoot) return rounds;
+        return rounds.filter((round) => {
+            const root = round.assistantRoot;
+            return !root || contentRoot === root || contentRoot.contains(root);
+        });
+    }
+
     private scheduleRefresh(): void {
         if (!this.initialized) return;
         if (document.documentElement.dataset.aimdViewportResizing === '1') return;
@@ -185,7 +198,7 @@ export class ChatGPTViewportReaderChipController {
     }
 
     private collectEligibleRounds(): ChatGPTRoundPosition[] {
-        const rounds = collectChatGPTRoundPositions(this.options.surface);
+        const rounds = this.activeSurfaceRounds();
         return rounds.filter((round) => {
             const root = round.assistantRoot;
             if (!root?.isConnected) return false;
@@ -354,7 +367,7 @@ export class ChatGPTViewportReaderChipController {
   cursor: pointer;
   display: inline-flex;
   align-items: center;
-  gap: calc(var(--aimd-space-1) + 2px);
+  gap: var(--aimd-space-2);
   min-height: var(--aimd-size-control-icon-toolbar);
   padding: 0 var(--aimd-space-3) 0 var(--aimd-space-2);
   border-radius: var(--aimd-radius-full);
@@ -371,8 +384,8 @@ export class ChatGPTViewportReaderChipController {
 .aimd-chatgpt-viewport-reader-chip__button:hover,
 .aimd-chatgpt-viewport-reader-chip__button:focus-visible {
   background: var(--aimd-bg-surface);
-  border-color: color-mix(in srgb, var(--aimd-accent) 45%, var(--aimd-workspace-border));
-  color: var(--aimd-accent);
+  border-color: color-mix(in srgb, var(--aimd-interactive-primary) 45%, var(--aimd-workspace-border));
+  color: var(--aimd-interactive-primary);
 }
 .aimd-chatgpt-viewport-reader-chip__icon {
   display: inline-flex;

@@ -1,3 +1,5 @@
+import type { RichBlockV1, RichContentImageV1 } from '../../contracts/richContent';
+
 export type ExportDocumentV1 = {
     schemaVersion: 1;
     profile: 'message-card-v1';
@@ -11,6 +13,8 @@ export type ExportDocumentV1 = {
         heading: string;
         userText: string;
         assistantMarkdown: string;
+        richBlocks?: readonly RichBlockV1[];
+        richImages?: readonly RichContentImageV1[];
     }>;
 };
 

@@ -1,7 +1,7 @@
 import { resolveRuntimeApi } from './runtime';
 import { resolveStorageApi } from './storage';
 
-export type BrowserTarget = 'chrome' | 'firefox' | 'safari' | 'unknown';
+export type BrowserTarget = 'chrome' | 'firefox' | 'unknown';
 
 export type BrowserTargetDetectionInput = {
     userAgent?: string;
@@ -17,11 +17,6 @@ export type BrowserCapabilities = {
 export function detectBrowserTarget(input: BrowserTargetDetectionInput = {}): BrowserTarget {
     const userAgent = input.userAgent ?? '';
     if (userAgent.includes('Firefox')) return 'firefox';
-    const isSafari = userAgent.includes('Safari')
-        && !userAgent.includes('Chrome')
-        && !userAgent.includes('Chromium')
-        && !userAgent.includes('Firefox');
-    if (isSafari) return 'safari';
     if (input.hasChrome) return 'chrome';
     return 'unknown';
 }

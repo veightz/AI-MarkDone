@@ -1,4 +1,6 @@
 import type { MessageMetadataSource } from '../../../contracts/messageMetadata';
+import { DEFAULT_SETTINGS, type AppSettings, type MessageControlAction } from '../../../core/settings/types';
+import { DEFAULT_CONTENT_CLEANUP_SETTINGS, type ContentCleanupSettings } from '../../../core/settings/content';
 import {
     DEFAULT_EXPORT_SETTINGS,
     resolvePngExportPixelRatio,
@@ -23,6 +25,7 @@ import {
     type CopyPngDebugEvent,
 } from '../../../services/copy/copy-png-debug';
 import type { ImageExportProgressEvent } from '../../../services/export/imageExportContracts';
+import type { ChatTurn } from '../../../services/export/saveMessagesTypes';
 import { collectConversationTurnRefs, type ConversationTurnRef } from '../../../drivers/content/conversation/collectConversationTurnRefs';
 import { buildReaderItemFromTurn, stripHash as stripReaderUrl } from '../../../services/reader/collectReaderItems';
 import {
@@ -37,7 +40,7 @@ import {
 import type { ReaderItem } from '../../../services/reader/types';
 import type { ReaderAnnotationDocument } from '../../../contracts/readerAnnotations';
 import { resolveReaderReplacementIndex } from '../../../services/reader/readerItemIdentity';
-import { copyReaderItemMarkdownToClipboard, resolveReaderItemMarkdown } from '../../../services/reader/readerMarkdownCopy';
+import { copyReaderItemMarkdownToClipboard, copyReaderPromptReplyToClipboard, resolveReaderItemMarkdown } from '../../../services/reader/readerMarkdownCopy';
 import type { CanonicalBookmarkTurnRef } from '../../../services/bookmarks/conversationBookmarkResolver';
 import { MessageToolbar, type MessageToolbarAction, type ToolbarActionContext } from '../MessageToolbar';
 import type { BookmarksPanelController } from '../bookmarks/BookmarksPanelController';
@@ -47,7 +50,7 @@ import { createConversationReaderActions } from '../reader/conversationReaderAct
 import type { SendController } from '../sending/SendController';
 import { subscribeLocaleChange, t } from '../components/i18n';
 import { WordCounter } from '../../../core/text/wordCounter';
-import { bookmarkIcon, copyIcon, downloadIcon, bookOpenIcon, imageIcon } from '../../../assets/workspaceIcons';
+import { bookmarkIcon, copyIcon, promptReplyIcon, downloadIcon, bookOpenIcon, imageIcon } from '../../../assets/workspaceIcons';
 import type { BookmarkSaveDialogPort, SaveMessagesDialogPort } from '../ContentDialogPorts';
 import { resolveMessageKey, stripHash } from './messageToolbarKeys';
 import type {
@@ -76,7 +79,6 @@ import {
     createAppearanceSnapshot,
     type AppearanceSnapshot,
 } from '../../../style/appearance';
-import { targetSurfacePolicy } from '../../../config/targetSurface';
 
 type ToolbarRecord = {
     messageKey: string;
@@ -111,11 +113,7 @@ type BookmarkToggleResult =
     | { ok: true; saved: boolean; bookmarked: boolean; message: string; folderPath?: string }
     | { ok: false; message?: string; cancelled?: boolean };
 
-type MessageToolbarBehaviorFlags = {
-    showMessageToolbar: boolean;
-    showSaveMessages: boolean;
-    showWordCount: boolean;
-};
+type MessageToolbarBehaviorFlags = Pick<AppSettings['behavior'], 'showMessageToolbar' | 'showSaveMessages' | 'showWordCount' | 'showMessageTimestamp' | 'showCopyPng' | 'messageControls' | 'pinnedMessageControls'>;
 
 type ConversationMessageActionTarget = {
     messageElement: HTMLElement | null;
@@ -152,12 +150,11 @@ export class MessageToolbarOrchestrator {
     private conversationSurface: ConversationSurfacePortV1 | null = null;
     private conversationNavigation: ConversationNavigationPortV1 | null = null;
     private behavior: MessageToolbarBehaviorFlags = {
-        showMessageToolbar: true,
-        showSaveMessages: true,
-        showWordCount: true,
+        ...DEFAULT_SETTINGS.behavior,
     };
     private resolvedPngWidth = resolvePngExportWidth(DEFAULT_EXPORT_SETTINGS);
     private resolvedPngPixelRatio = resolvePngExportPixelRatio(DEFAULT_EXPORT_SETTINGS);
+    private contentCleanup: ContentCleanupSettings = DEFAULT_CONTENT_CLEANUP_SETTINGS;
     private wordCounter = new WordCounter();
     private messageOrder: HTMLElement[] = [];
     private messagePositionByElement = new WeakMap<HTMLElement, number>();
@@ -353,8 +350,10 @@ export class MessageToolbarOrchestrator {
                 || null;
             const item: ReaderItem = {
                 id: `chatgpt-${assistantMessageId ?? this.getReaderItemCacheKey(messageElement)}`,
-                userPrompt: turn?.userPrompt ?? this.adapter.extractUserPrompt(messageElement) ?? '',
+                userPrompt: canonicalTurn?.userText || turn?.userPrompt || this.adapter.extractUserPrompt(messageElement) || '',
                 content: markdown.markdown,
+                sourceContent: markdown.sourceMarkdown,
+                ...(markdown.richBlocks !== undefined ? { richBlocks: markdown.richBlocks } : {}),
                 meta: {
                     platformId: 'chatgpt',
                     messageId: assistantMessageId,
@@ -397,6 +396,13 @@ export class MessageToolbarOrchestrator {
                 .catch(() => {
                     this.currentReaderItemByMessageKey.delete(key);
                     return null;
+                })
+                .finally(() => {
+                    // ChatGPT shares concurrent preparation only. A later explicit
+                    // action must read the current DOM, even before pool admission.
+                    if (this.adapter.getPlatformId() === 'chatgpt' && this.currentReaderItemByMessageKey.get(key) === promise) {
+                        this.currentReaderItemByMessageKey.delete(key);
+                    }
                 });
             this.currentReaderItemByMessageKey.set(key, promise);
         }
@@ -436,12 +442,16 @@ export class MessageToolbarOrchestrator {
         };
     }
 
-    private async getReaderTurnForElement(messageElement: HTMLElement): Promise<{ user: string; assistant: string; index: number } | null> {
+    private async getReaderTurnForElement(messageElement: HTMLElement): Promise<ChatTurn | null> {
         const item = await this.prepareCurrentReaderItemForElement(messageElement);
         if (!item || item.meta?.sourceQuality === 'reconstructed') return null;
         return {
             user: item.userPrompt,
             assistant: await resolveReaderItemMarkdown(item),
+            ...(item.richBlocks !== undefined ? { richBlocks: item.richBlocks } : {}),
+            ...((item.meta?.assistantMessageId || item.meta?.messageId)
+                ? { messageId: item.meta!.assistantMessageId || item.meta!.messageId! } : {}),
+            ...(item.meta?.url ? { documentUrl: item.meta.url } : {}),
             index: 0,
         };
     }
@@ -470,12 +480,15 @@ export class MessageToolbarOrchestrator {
     private async runBookmarkToggle(params: BookmarkToggleParams): Promise<BookmarkToggleResult> {
         if (!this.bookmarksController) return { ok: false, message: t('contentNotFound') };
         let sourceRevision = params.sourceRevision ?? this.captureCurrentSourceRevision();
-        if (this.adapter.getPlatformId() === 'chatgpt') {
+        const revalidateInput = (): boolean => {
+            if (this.adapter.getPlatformId() !== 'chatgpt') return this.isSourceRevisionCurrent(sourceRevision);
             const canonical = this.resolveCanonicalBookmarkInput(params, sourceRevision);
-            if (!canonical) return { ok: false, message: t('bookmarkUnavailable') };
+            if (!canonical) return false;
             params = canonical.params;
             sourceRevision = canonical.sourceRevision;
-        }
+            return true;
+        };
+        if (!revalidateInput()) return { ok: false, message: t('bookmarkUnavailable') };
         if (!params.position) return { ok: false, message: t('positionNotAvailable') };
         if (!this.isSourceRevisionCurrent(sourceRevision)) {
             return { ok: false, message: t('bookmarkUnavailable') };
@@ -486,6 +499,7 @@ export class MessageToolbarOrchestrator {
 
         const status = await this.bookmarksController.readPositionBookmarkStatus(params.url, params.position);
         if (!status.ok) return { ok: false, message: status.message };
+        if (!revalidateInput()) return { ok: false, message: t('bookmarkUnavailable') };
         const resolvedBookmarkPositions = this.resolveCanonicalBookmarkPositions(params.url);
         const alreadySaved = this.isBookmarkActive(params.url, params.position, resolvedBookmarkPositions)
             || (
@@ -512,7 +526,7 @@ export class MessageToolbarOrchestrator {
                 mode: 'create',
             });
             if (!dialogRes.ok) return { ok: false, cancelled: true };
-            if (!this.isBookmarkInputCurrent(params, sourceRevision)) {
+            if (!revalidateInput()) {
                 return { ok: false, message: t('bookmarkUnavailable') };
             }
             if (this.getBookmarkPageUrl() !== params.url) {
@@ -540,7 +554,7 @@ export class MessageToolbarOrchestrator {
             };
         }
 
-        if (!this.isBookmarkInputCurrent(params, sourceRevision)) {
+        if (!revalidateInput()) {
             return { ok: false, message: t('bookmarkUnavailable') };
         }
         if (this.getBookmarkPageUrl() !== params.url) {
@@ -581,15 +595,17 @@ export class MessageToolbarOrchestrator {
             || sourceRevision.conversationId !== currentRevision.conversationId
             || sourceRevision.routeEpoch !== currentRevision.routeEpoch) return null;
 
-        const position = Number(params.position);
+        const requestedPosition = Number(params.position);
         const messageId = params.messageId?.trim() || '';
-        if (!Number.isInteger(position) || position <= 0 || !messageId) return null;
+        if (!Number.isInteger(requestedPosition) || requestedPosition <= 0 || !messageId) return null;
 
-        const turn = snapshot.turns.find((candidate) => (
-            candidate.ordinal === position
-            && candidate.identity.assistantMessageId === messageId
-        ));
-        if (!turn) return null;
+        // Obtained history can prepend while a save dialog is open. The exact
+        // assistant and unchanged text own the selection; its ordinal may move.
+        const matches = snapshot.turns.filter(candidate => candidate.identity.assistantMessageId === messageId);
+        if (matches.length !== 1) return null;
+        const turn = matches[0]!;
+        const position = turn.ordinal;
+        if (!Number.isInteger(position) || position <= 0) return null;
 
         const userPrompt = turn.userText.trim();
         const markdown = turn.assistantMarkdown.trim();
@@ -607,14 +623,6 @@ export class MessageToolbarOrchestrator {
             },
             sourceRevision: currentRevision,
         };
-    }
-
-    private isBookmarkInputCurrent(params: BookmarkToggleParams, revision: ReaderContentSourceRevision | undefined): boolean {
-        // Unrelated turns may advance the pool while the save dialog is open.
-        // Recheck the exact message and body instead of rejecting the whole revision.
-        return this.adapter.getPlatformId() === 'chatgpt'
-            ? this.resolveCanonicalBookmarkInput(params, revision) !== null
-            : this.isSourceRevisionCurrent(revision);
     }
 
     private isBookmarkableReaderItem(item: ReaderItem): boolean {
@@ -961,15 +969,17 @@ export class MessageToolbarOrchestrator {
     }
 
     setBehaviorFlags(flags: Partial<MessageToolbarBehaviorFlags>): void {
-        const wasToolbarVisible = this.behavior.showMessageToolbar;
+        const previous = JSON.stringify(this.behavior);
         this.behavior = { ...this.behavior, ...flags };
+        if (previous === JSON.stringify(this.behavior)) return;
+        this.clearAllToolbars();
         if (!this.behavior.showMessageToolbar) {
             this.clearAllToolbars();
             return;
         }
-        if (!wasToolbarVisible && this.scanScheduler) {
+        if (this.scanScheduler) {
             this.scanScheduler.schedule('manual');
-        } else if (!wasToolbarVisible && this.conversationSurface) {
+        } else if (this.conversationSurface) {
             this.handleChatGptSurface(this.conversationSurface.readFrame());
         }
     }
@@ -977,6 +987,10 @@ export class MessageToolbarOrchestrator {
     setExportSettings(settings: ExportSettings): void {
         this.resolvedPngWidth = resolvePngExportWidth(settings);
         this.resolvedPngPixelRatio = resolvePngExportPixelRatio(settings);
+    }
+
+    setContentCleanupSettings(settings: ContentCleanupSettings): void {
+        this.contentCleanup = { ...settings };
     }
 
     getDirectoryPreviewActions(round: ChatGPTConversationRound): MessageToolbarAction[] {
@@ -1247,11 +1261,11 @@ export class MessageToolbarOrchestrator {
                 if (guard) return guard;
                 const item = await this.prepareCurrentReaderItemForElement(messageElement);
                 if (!item) return { ok: false, message: t('contentNotFound') };
-                const ok = await copyReaderItemMarkdownToClipboard(item);
+                const ok = await copyReaderItemMarkdownToClipboard(item, this.contentCleanup);
                 return ok ? { ok: true, message: t('btnCopied') } : { ok: false, message: t('clipboardWriteFailed') };
             },
         };
-        if (targetSurfacePolicy.binaryClipboardCopyActions && this.copyMessagePng) {
+        if (this.behavior.showCopyPng && this.copyMessagePng) {
             copyMarkdownAction.hoverAction = {
                 id: 'copy_png',
                 label: t('btnCopyAsPng'),
@@ -1338,6 +1352,12 @@ export class MessageToolbarOrchestrator {
             };
         }
         actions.push(copyMarkdownAction);
+        if (this.adapter.getPlatformId() === 'chatgpt' && this.behavior.messageControls.copy_prompt_reply) {
+            copyMarkdownAction.hoverActions = [
+                ...(copyMarkdownAction.hoverAction ? [copyMarkdownAction.hoverAction] : []),
+                { id: 'copy_prompt_reply', label: t('btnCopyPromptReply'), icon: promptReplyIcon, placement: 'bottom', progress: false, onClick: () => this.copyPromptReplyForMessage(messageElement) },
+            ];
+        }
 
         const target: ConversationMessageActionTarget = {
             messageElement,
@@ -1347,7 +1367,38 @@ export class MessageToolbarOrchestrator {
         const exportAction = this.createExportAction(target);
         if (exportAction) actions.push(exportAction);
 
-        return actions;
+        return actions.filter(action => this.behavior.messageControls[action.id as MessageControlAction] !== false);
+    }
+
+    private async copyPromptReplyForMessage(message: HTMLElement) {
+        const unavailable = () => ({ ok: false as const, message: t('promptReplyUnavailable') });
+        const guard = this.guardMessageReady(message);
+        if (guard) return guard;
+        const pageUrl = this.getBookmarkPageUrl();
+        const messageId = this.adapter.getMessageId(message);
+        const bodyText = message.textContent;
+        const canonical = this.readChatGptTurnForElement(message);
+        const local = this.getTurnRefForElement(message);
+        const usesCanonical = Boolean(canonical?.identity.userMessageId && canonical.userText.trim());
+        const userPrompt = usesCanonical ? canonical!.userText : local?.userPromptQuality === 'real' && local.userRootEl ? local.userPrompt : '';
+        if (!userPrompt.trim()) return unavailable();
+        const isCurrent = () => {
+            if (!message.isConnected || this.guardMessageReady(message) || this.getBookmarkPageUrl() !== pageUrl
+                || this.adapter.getMessageId(message) !== messageId || message.textContent !== bodyText) return false;
+            if (usesCanonical) {
+                const next = this.readChatGptTurnForElement(message);
+                return Boolean(next && next.identity.assistantMessageId === canonical!.identity.assistantMessageId
+                    && next.identity.userMessageId === canonical!.identity.userMessageId && next.userText === userPrompt
+                    && next.assistantMarkdown === canonical!.assistantMarkdown);
+            }
+            const next = this.getTurnRefForElement(message);
+            return Boolean(next && next.userPromptQuality === 'real' && next.userRootEl === local?.userRootEl && next.userPrompt === userPrompt);
+        };
+        const item = await this.prepareCurrentReaderItemForElement(message);
+        if (!item || !isCurrent()) return unavailable();
+        const copied = await copyReaderPromptReplyToClipboard({ ...item, userPrompt }, this.contentCleanup, isCurrent);
+        if (!isCurrent()) return unavailable();
+        return copied ? { ok: true as const, message: t('btnCopied') } : { ok: false as const, message: t('clipboardWriteFailed') };
     }
 
     private getAnchorForMessage(messageElement: HTMLElement): HTMLElement | null {
@@ -1381,6 +1432,8 @@ export class MessageToolbarOrchestrator {
         const getToolbar = () => recordRef?.toolbar ?? null;
         const toolbar = new MessageToolbar(this.appearance.theme, this.getActionsForMessage(params.message, getToolbar), {
             showStats: this.behavior.showWordCount,
+            showTimestamp: this.behavior.showMessageTimestamp,
+            pinnedActions: this.behavior.pinnedMessageControls,
             collapsible: this.adapter.getPlatformId() === 'chatgpt',
             themeOverrides: this.appearance.overrides,
         });

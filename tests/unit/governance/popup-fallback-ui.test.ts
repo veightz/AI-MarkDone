@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { createPopupPreviewHtml } from '../../../mocks/components/unsupported-popup/popupPreview';
 
 function readPopupHtml(): string {
     return readFileSync(resolve(process.cwd(), 'src/popup/popup.html'), 'utf-8');
@@ -15,29 +16,63 @@ function readLocaleMessages(locale: 'en' | 'zh_CN'): Record<string, { message?: 
 afterEach(() => {
     vi.unstubAllGlobals();
     document.body.innerHTML = '';
+    document.documentElement.removeAttribute('data-aimd-theme');
+    document.documentElement.removeAttribute('style');
 });
 
 describe('fallback popup UI', () => {
+    it('keeps the real popup preview API executable and preserves catalog text', () => {
+        const catalog = { popupSupportedSites: { message: '支持的网站' }, literal: { message: 'literal </script> text' } };
+        const servedHtml = '<html><head><script type="module" src="/@vite/client"></script><link rel="stylesheet" href="/src/popup/popup-tokens.css" /></head><body><script type="module" src="/src/popup/popup.js?t=123"></script></body></html>';
+        const markup = createPopupPreviewHtml(servedHtml, catalog, 'zh-CN', ':root { color-scheme: dark; }');
+        const parsed = new DOMParser().parseFromString(markup, 'text/html');
+        expect(parsed.scripts).toHaveLength(3);
+        const runtime: { browser?: { i18n: { getMessage: (key: string) => string }; runtime: { getURL: (path: string) => string } } } = {};
+        new Function('globalThis', parsed.querySelector('script:not([src])')?.textContent ?? '')(runtime);
+        expect(runtime.browser?.i18n.getMessage('popupSupportedSites')).toBe('支持的网站');
+        expect(runtime.browser?.i18n.getMessage('literal')).toBe('literal </script> text');
+        expect(runtime.browser?.runtime.getURL('/icons/icon48.png')).toBe('/icons/icon48.png');
+    });
+
+    it('honors explicit appearance and valid custom accent without a second swatch list', () => {
+        const script = readFileSync(resolve(process.cwd(), 'src/popup/popup.js'), 'utf-8');
+        vi.stubGlobal('matchMedia', () => ({ matches: false, addEventListener: vi.fn() }));
+        vi.stubGlobal('browser', {
+            storage: { sync: { get: (_key: string, callback: (value: unknown) => void) => callback({
+                app_settings: { appearance: { themeMode: 'dark', accentColor: '#0f766e', fontSizePx: 18 } },
+            }) } },
+        });
+        new Function(script)();
+        expect(document.documentElement.dataset.aimdTheme).toBe('dark');
+        expect(document.documentElement.style.getPropertyValue('--aimd-interactive-primary')).toBe('#0f766e');
+    });
+
+    it('uses a build-generated stylesheet from the canonical token and material sources', () => {
+        const html = readPopupHtml();
+        const prepare = readFileSync(resolve(process.cwd(), 'scripts/prepare-extension-target.ts'), 'utf-8');
+        expect(html).toContain('/src/popup/popup-tokens.css');
+        expect(html).not.toMatch(/--aimd-[\w-]+:\s*(?:#[\da-f]+|rgba?\()/i);
+        expect(prepare).toContain('getPageTokenCss()');
+        expect(prepare).toContain('getSurfaceMaterialCss()');
+    });
     it('keeps the unsupported-site popup on the tokenized card layout instead of a bare link list', () => {
         const html = readPopupHtml();
 
-        expect(html).toContain('class="popup-shell"');
+        expect(html).toContain('class="popup-shell aimd-material-surface"');
         expect(html).toContain('class="popup-header"');
         expect(html).toContain('class="popup-links"');
-        expect(html).toContain('class="popup-link"');
+        expect(html).toContain('class="popup-link aimd-material-button"');
         expect(html).toContain('class="popup-footer"');
         expect(html).toContain('--aimd-');
     });
 
-    it('keeps popup theme color fallback constrained to approved swatches', () => {
+    it.each(['red;display:none', 'url(https://example.com)', '#12345', 'transparent'])('rejects unsafe or invalid accent %s', accentColor => {
         const script = readFileSync(resolve(process.cwd(), 'src/popup/popup.js'), 'utf-8');
-
-        expect(script).toContain('const approvedAccentColors = new Set');
-        expect(script).toContain("'#2563eb'");
-        expect(script).toContain("'#059669'");
-        expect(script).toContain("'#7c3aed'");
-        expect(script).toContain("'#e11d48'");
-        expect(script).toContain("'#d97706'");
+        vi.stubGlobal('browser', { storage: { sync: { get: (_key: string, callback: (value: unknown) => void) => callback({
+            app_settings: { appearance: { accentColor } },
+        }) } } });
+        new Function(script)();
+        expect(document.documentElement.style.getPropertyValue('--aimd-interactive-primary')).toBe('');
     });
 
     it('keeps popup JavaScript external so extension CSP does not need unsafe-inline', () => {
@@ -55,7 +90,7 @@ describe('fallback popup UI', () => {
         expect(html).toContain('href="https://claude.ai/"');
         expect(html).toContain('href="https://chat.deepseek.com/"');
         expect(html).toContain('Formula copy');
-        expect(html).toContain('Open a supported site to use AI-MarkDone.');
+        expect(html).toContain('Open ChatGPT and use the toolbar below a reply.');
     });
 
     it('localizes every user-facing popup label through extension i18n', () => {

@@ -160,6 +160,26 @@ Repository 在当前标签页内维护 `Map<conversationKey, ConversationPool>`�
 - `readerSession:send`
 - `readerSession:locate`
 - `readerSession:close`
+- `readerSession:assets`
+- `readerSession:releaseAssets`
+
+Rich-asset requests carry `version: 1`, the sender-bound `sessionId`, `itemId`,
+optional `leaseId`, and exact block ID/visual-digest pairs. Background selects
+the unique stored snapshot item and supplies `sourceItem/sourceUrl`; a Reader
+cannot substitute arbitrary source content. Only the registered Reader tab may
+request assets. The source accepts forwarded requests only from its own extension
+background, retains session leases, and rejects stale document/item ownership.
+Source close, Reader close/tab removal and runtime teardown release resources.
+Late success after cancellation or session removal is released again safely.
+
+Snapshots limit rich descriptions to 512 blocks and 2 MiB in aggregate; bitmap
+data is never stored in `storage.session`. Loaded-image page URLs are redacted
+to non-authoritative live-image descriptions. Asset replies contain only bounded,
+white-list-copied extension-origin Blob refs. SVG/PNG bytes cross the lightweight
+extension iframe through the separate rich-asset relay V1 MessageChannel using
+begin/chunk/commit/release, sequential transfer buffers and byte/pixel/lease limits.
+Missing or undecodable assets leave readable placeholders. Cross-document Blob
+partition behavior must pass actual Chrome/Firefox installation acceptance.
 
 用途：
 
@@ -191,6 +211,9 @@ Repository 在当前标签页内维护 `Map<conversationKey, ConversationPool>`�
 - `annotations:update`
 - `annotations:remove`
 - `annotations:navigate`
+- `annotations:draftRead`
+- `annotations:draftWrite`
+- `annotations:draftRemove`
 - background → content `annotations:focus`
 
 用途：
@@ -199,9 +222,10 @@ Repository 在当前标签页内维护 `Map<conversationKey, ConversationPool>`�
 - `reader.persistAnnotations` 只 gate `annotations:create`：关闭时新建注释留在当前页面 runtime；`annotations:list` 仍读取并展示已有 durable 记录，已有记录的 `annotations:update` / `annotations:remove` 也不受该偏好影响
 - `annotations:list` 不建立持久化全局索引；省略 document 时由 background 扫描 annotation key 前缀，UI 在内存中完成搜索、会话分组与时间线排序
 - create/update/remove 每次只读写一个会话 bundle；update 携带 `expectedRevision`，版本不一致返回 `CONFLICT`，不做自动合并
-- `annotations:navigate` 只接受 ChatGPT exact-host document，background 创建一个新 ChatGPT tab 并把一次性 `{ tabId, conversationId, annotationId }` intent 放入 `storage.session`；新页面通过 `content:ready` 校验当前 conversationId 后收到 `annotations:focus`
-- `annotations:focus` 只在当前页面 conversationId 与 intent 一致时打开 Reader 并聚焦精确 annotation；验证失败不做近似跳转
+- `annotations:navigate` 只接受 ChatGPT exact-host document。`annotationId` 保留原注释 ID；资料库高亮复用已有 `highlight:<id>` anchor namespace，不改变存储 ID 或新增高亮私有导航通道。background 只读对应存储记录，解析真实 assistant ID，创建带 `?message=<id>` 的源对话 tab，并把一次性 `{ document, annotationId, assistantMessageId? }` intent 放入 `storage.session`。网页自身加载目标回复，扩展不构造 conversation GET。无法取得目标 ID 的旧调用保留原会话打开兼容行为。
+- 新页面通过 `content:ready` 校验当前 conversationId 后收到 `annotations:focus`。可选 `assistantMessageId` 必须为非空字符串；提供时先复用同一 ConversationNavigationCoordinator 的有界 source/materialization 等待，再打开 Reader 并聚焦精确注释或高亮。Reader 在高亮加载、切页和定位前后保留 document/assistant 校验；验证失败显示无法定位反馈，不把近似位置当作成功。
 - annotation payload 只传可序列化的 document、target、quote、selectors、comment、timestamps 和 revision，不传 DOM、Range 或页面运行时对象
+- Draft requests use canonical document/message/selection identity and a separate local recovery bundle. Write/remove require an expected revision; the background storage queue is authoritative. Draft recovery does not gate on `reader.persistAnnotations` and does not create a saved annotation. Synthetic page targets use runtime memory instead of these durable requests. Unsupported/corrupt stored versions reject writes, and quota/conflict failures preserve the editor input. This family is separate from `readerSession:draft`, which bridges the ChatGPT composer.
 
 ### Prompt library
 
@@ -240,13 +264,26 @@ Repository 在当前标签页内维护 `Map<conversationKey, ConversationPool>`�
 - `settings:getCategory`
 - `settings:setCategory`
 - `settings:reset`
+- `settings:export` → `{ file: SettingsFile }`
+- `settings:previewImport({ fileText })` → `{ preview: SettingsImportPreview }`
+- `settings:applyImport({ fileText, expectedFingerprint, categories })` → `{ applied: boolean }`
+- `settings:getRecovery` → `{ file: SettingsFile | null }`
 
 用途：
 
 - settings 读取、分类更新、重置
 - settings UI 只把成功读取的规范化结果视为 canonical state；断连时保留 last-good、锁定编辑并显示恢复动作，不能用默认值伪装成功，也不能在写入失败时保留 optimistic state
-- `chatgptBehavior` 是 ChatGPT page-behavior / input-behavior 类开关的 settings SSOT；background 只通过 `settings:setCategory` 持久化该 category，content runtime 与 Reader runtime 读取规范化后的 settings，并把 `chatgptBehavior.promptAutocomplete` 与 `chatgptBehavior.showPageSelectionToolbar` 分别同步给对应的页面消费者
+- `chatgptBehavior` 是 ChatGPT page-behavior / input-behavior 类开关的 settings SSOT；普通设置更新通过 `settings:setCategory`，经确认的白名单配置导入通过 `settings:applyImport` 持久化该 category，content runtime 与 Reader runtime 读取规范化后的 settings，并把 `chatgptBehavior.promptAutocomplete` 与 `chatgptBehavior.showPageSelectionToolbar` 分别同步给对应的页面消费者
 - `chatgptBehavior.promptAutocomplete` 默认开启，只控制 ChatGPT composer 与 Reader SendPopover 输入 `\` 时是否自动显示候选；关闭后不读取或写入 Prompt Library，不改变 Prompt 启用状态、triggerText、排序或手动 Prompt manager 入口
+
+配置文件协议（formatVersion 1）：
+
+- UTF-8 `.json`；`format: "ai-markdone-settings"`、独立的 `formatVersion: 1`、有效数值段 `appVersion` / ISO `exportedAt` 元数据和白名单 `settings`。当前文件上限 128 KiB。只支持向前升级：导出端比当前应用更新、未来格式版本、未知根字段/偏好、非法值、非法 Pin ID、危险原型键或其他文件格式均整份拒绝，不部分导入。
+- 不接收自由文本模板、Prompt migration 输入、凭据、内容记录或确认标记。缺省字段保持当前值，用户只选择需要应用的 category；不把局部文件当成全配置重置。
+- Preview 返回已校验 file、白名单 changes、恒为 0 的兼容字段 ignoredCount 和当前配置的 SHA-256 fingerprint；读取不写盘。apply 进入既有串行队列后重新校验 fingerprint 与 category；不一致返回 `CONFLICT`，要求重新预览。
+- 真正有变更时，先检查配置配额并保存净化的恢复点，随后单次写 `app_settings` 并读回校验；恢复点位于独立 local key `aimd:settings:recovery:v1`。恢复操作也必须经过 preview/apply。失败或读回不一致不自动重放、不调用全存储清空，也不进行破坏性回滚。
+- UI RPC client 验证导出/恢复文件与 preview 的字段、值、fingerprint 和回执；拒绝缺失或不匹配的成功 payload。导出前展示包含/排除范围，导入前展示差异与类别选择。
+- `settings:getAll` 附带 appVersion、settingsVersion、settingsFileFormatVersion、buttonsPreferences capabilities。新设置页面遇到缺失或不同版本 capabilities 时锁定新按钮配置/配置文件操作并提示重新加载。后台遇到未来存储 schema 时拒绝读取、分类写入、重置及配置传输，不用默认值覆盖原数据。
 
 ### Bookmarks
 
@@ -392,3 +429,5 @@ Repository 在当前标签页内维护 `Map<conversationKey, ConversationPool>`�
 - The background writer uses the shared queue and reads the latest revision before validation. Reject stale revisions, duplicate siblings, missing parents, cycles, depth beyond four and deletion of occupied folders. Folder updates cannot recreate a concurrently deleted ID. A malformed catalog is preserved and reported as corrupted.
 - Moving a conversation changes both annotation and highlight organization; it never rewrites either source bundle or bookmark data. Source record deletion/recolor retains its existing per-record CRUD protocol. There is no cross-store transaction claim.
 - The UI reconciles unknown delivery through a fresh read before retrying. A matching acknowledged target is treated as complete; otherwise inputs and targets remain for correction. The UI never writes extension storage directly.
+
+Portable appearance colors are bounded six-digit hex values. Retired `showComposerInputEnhancementControl` / `showComposerAnnotationControl` fields are recognized for file compatibility, omitted from new exports and ignored on import; other unknown fields still reject the whole file.

@@ -162,7 +162,12 @@ export function buildMessageDocument(
     const render = options?.renderMarkdown ?? renderMarkdownForPdfExport;
     let renderedAssistant = '';
     try {
-        renderedAssistant = decorateCodeBlocksForExport(render(msg.assistant));
+        renderedAssistant = decorateCodeBlocksForExport(msg.richBlocks?.length
+            ? renderMarkdownToSanitizedHtml(msg.assistant, {
+                softBreaks: true, highlightCode: true,
+                richContent: { blocks: msg.richBlocks, assets: msg.richImages },
+            })
+            : render(msg.assistant));
     } catch {
         renderedAssistant = `<pre class="markdown-fallback">${escapeExportHtml(msg.assistant)}</pre>`;
     }
@@ -183,8 +188,4 @@ export function buildMessageDocument(
 </div>
 `,
     };
-}
-
-export function selectTurns(turns: ChatTurn[], selectedIndices: number[]): ChatTurn[] {
-    return selectedIndices.map((i) => turns[i]).filter((x): x is ChatTurn => Boolean(x));
 }

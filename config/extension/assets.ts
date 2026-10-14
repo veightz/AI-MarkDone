@@ -1,12 +1,10 @@
-import { extensionIconFiles } from './surface';
-import type { ExtensionTarget } from './targets';
-
 const sharedNonIconWebAccessibleResources = [
     '_locales/*/messages.json',
     'vendor/katex/*.css',
     'vendor/katex/fonts/*',
     'vendor/latex-workshop/formula-snippets.json',
     'export-renderer.html',
+    'rich-asset-relay.html',
     'content-features.js',
     'content-feature-chunks/*.js',
 ] as const;
@@ -18,17 +16,12 @@ const defaultWebAccessibleResources = [
     'page-bridges/chatgpt-conversation-bridge.js',
 ] as const;
 
-const safariWebAccessibleResources = [
-    ...extensionIconFiles.map((file) => `icons/${file}`),
-    'icons/aimd-content-architecture-5.2.0.svg',
-    ...sharedNonIconWebAccessibleResources,
-] as const;
-
 export const extensionAssets = {
     chatgptConversationBootstrap: 'page-bridges/chatgpt-conversation-bootstrap.js',
     contentEntry: 'content.js',
     contentFeaturesEntry: 'content-features.js',
     exportRendererPath: 'export-renderer.html',
+    richAssetRelayPath: 'rich-asset-relay.html',
     formulaSnippetCatalog: 'vendor/latex-workshop/formula-snippets.json',
     backgroundEntry: 'background.js',
     popupPath: 'src/popup/popup.html',
@@ -43,11 +36,4 @@ export const extensionAssets = {
         '128': 'icons/icon128_gray.png',
     },
     webAccessibleResources: defaultWebAccessibleResources,
-    safariWebAccessibleResources,
 } as const;
-
-export function getWebAccessibleResourcesForTarget(target: ExtensionTarget): readonly string[] {
-    return target === 'safari'
-        ? extensionAssets.safariWebAccessibleResources
-        : extensionAssets.webAccessibleResources;
-}

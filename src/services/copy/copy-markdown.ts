@@ -1,9 +1,10 @@
 import type { SiteAdapter } from '../../drivers/content/adapters/base';
 import type { ParserOptions } from '../markdown-parser/core/types';
 import { RenderedContentCompiler } from '../content/RenderedContentCompiler';
+import type { RichBlockV1 } from '../../contracts/richContent';
 
 export type CopyMarkdownResult =
-    | { ok: true; markdown: string }
+    | { ok: true; markdown: string; sourceMarkdown?: string; richBlocks?: readonly RichBlockV1[] }
     | { ok: false; error: { code: 'NO_MESSAGE' | 'UNSUPPORTED_SITE' | 'INTERNAL_ERROR'; message: string } };
 
 function resolveContentRoot(adapter: SiteAdapter, messageElement: HTMLElement): HTMLElement | null {
@@ -35,8 +36,13 @@ function copyMarkdownFromElementInternal(
         getArtifactPlaceholder: (node) => adapter.getArtifactPlaceholder(node),
         enhanceUnrenderedMath: adapter.shouldEnhanceUnrenderedMath(),
         cleanMarkdown: (markdown) => adapter.cleanMarkdown(markdown),
+        collectRichBlocks: (clone) => adapter.collectRichBlocks(clone),
     }).compile(root, options);
-    if (result.kind === 'ready') return { ok: true, markdown: result.markdown };
+    if (result.kind === 'ready') return {
+        ok: true, markdown: result.markdown,
+        ...(result.sourceMarkdown ? { sourceMarkdown: result.sourceMarkdown } : {}),
+        ...(result.richBlocks?.length ? { richBlocks: result.richBlocks } : {}),
+    };
     return {
         ok: false,
         error: {
@@ -55,6 +61,9 @@ export function copyMarkdownFromElement(
 }
 
 export function copyMarkdownFromMessage(adapter: SiteAdapter, messageElement: HTMLElement): CopyMarkdownResult {
+    if (adapter.isMessageContentAvailable?.(messageElement) === false) {
+        return { ok: false, error: { code: 'NO_MESSAGE', message: 'Message content identity is inconsistent.' } };
+    }
     const root = resolveContentRoot(adapter, messageElement);
     if (!root) {
         return { ok: false, error: { code: 'NO_MESSAGE', message: 'No message content found.' } };

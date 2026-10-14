@@ -394,15 +394,21 @@ function resolveTextQuoteRange(root: HTMLElement, selector: ReaderCommentTextQuo
     const exact = selector.exact.trim();
     if (!exact) return null;
     const fullText = collectVisibleText(root);
+    const normalizeContext = (value: string): string => value.replace(/\s+/gu, '');
+    const prefix = normalizeContext(selector.prefix);
+    const suffix = normalizeContext(selector.suffix);
     const candidates: number[] = [];
     let searchFrom = 0;
     while (searchFrom <= fullText.length) {
         const index = fullText.indexOf(exact, searchFrom);
         if (index < 0) break;
-        const prefixMatches = !selector.prefix || fullText.slice(Math.max(0, index - selector.prefix.length), index) === selector.prefix;
+        // Markdown adds inter-paragraph whitespace which native message DOM
+        // may omit. Keep the quote literal and require one context-proven match.
+        const prefixMatches = !prefix || normalizeContext(fullText.slice(0, index)).endsWith(prefix);
         const suffixStart = index + exact.length;
-        const suffixMatches = !selector.suffix || fullText.slice(suffixStart, suffixStart + selector.suffix.length) === selector.suffix;
+        const suffixMatches = !suffix || normalizeContext(fullText.slice(suffixStart)).startsWith(suffix);
         if (prefixMatches && suffixMatches) candidates.push(index);
+        if (candidates.length > 1) return null;
         searchFrom = index + Math.max(1, exact.length);
     }
     if (candidates.length !== 1) return null;
@@ -540,19 +546,36 @@ export function createPageCommentRecord(params: {
 }
 
 export function resolveReaderCommentAnchor(root: HTMLElement, record: ReaderCommentRecord): ReaderCommentResolvedAnchor {
+    const selector = record.selectors.textQuote;
+    let currentText: string | undefined;
+    const matchesQuote = (range: Range | null): boolean => {
+        if (!rangeMatchesQuote(range, record.quoteText) || !range) return false;
+        if (!selector.prefix && !selector.suffix) return true;
+        const offset = getTextOffset(root, range.startContainer, range.startOffset);
+        if (offset === null) return false;
+        const selected = range.toString();
+        const start = offset + selected.length - selected.trimStart().length;
+        const exact = record.quoteText.trim();
+        currentText ??= collectVisibleText(root);
+        // A reused path/offset may still spell the same quote in another
+        // paragraph. Captured surrounding text is part of that proof.
+        return currentText.slice(start, start + exact.length) === exact
+            && (!selector.prefix || currentText.slice(Math.max(0, start - selector.prefix.length), start) === selector.prefix)
+            && (!selector.suffix || currentText.slice(start + exact.length, start + exact.length + selector.suffix.length) === selector.suffix);
+    };
     const domRange = restoreDomRange(root, record.selectors.domRange);
     const atomicRefs = record.selectors.atomicRefs ?? [];
     const atomicUnits = atomicRefs
         .map((ref) => resolveAtomicRef(root, ref));
-    const atomicQuoteValidated = !record.quoteText.trim() || rangeMatchesQuote(domRange, record.quoteText);
+    const atomicQuoteValidated = !record.quoteText.trim() || matchesQuote(domRange);
     if (atomicRefs.length > 0 && atomicUnits.every(Boolean) && atomicQuoteValidated) {
         return resolveSelectionLayout({
             root,
-            range: rangeMatchesQuote(domRange, record.quoteText) ? domRange : null,
+            range: matchesQuote(domRange) ? domRange : null,
             selectedUnits: atomicUnits.filter((value): value is SelectedAtomicUnit => Boolean(value)),
         });
     }
-    if (rangeMatchesQuote(domRange, record.quoteText)) {
+    if (matchesQuote(domRange)) {
         return resolveSelectionLayout({
             root,
             range: domRange,
@@ -565,11 +588,12 @@ export function resolveReaderCommentAnchor(root: HTMLElement, record: ReaderComm
         record.selectors.textPosition.start,
         record.selectors.textPosition.end,
     );
-    if (rangeMatchesQuote(positionRange, record.quoteText)) {
+    if (matchesQuote(positionRange)) {
         return resolveSelectionLayout({ root, range: positionRange, selectedUnits: [] });
     }
 
     const quoteRange = resolveTextQuoteRange(root, record.selectors.textQuote);
+    // The fallback already proved unique context across rendering whitespace.
     if (rangeMatchesQuote(quoteRange, record.quoteText)) {
         return resolveSelectionLayout({ root, range: quoteRange, selectedUnits: [] });
     }

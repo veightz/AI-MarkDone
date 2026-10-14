@@ -167,6 +167,8 @@ export function renderMessageCardProfile(
             index: section.sourceIndex,
             user: section.userText,
             assistant: section.assistantMarkdown,
+            richBlocks: section.richBlocks,
+            richImages: section.richImages,
         },
         index + 1,
         (key) => {

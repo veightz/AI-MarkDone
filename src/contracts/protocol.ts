@@ -1,5 +1,8 @@
 import { isMarkLibraryOperation, type MarkLibraryOperation } from './markLibrary';
 import { isHighlightRecord, type HighlightRecord } from './highlights';
+import { isAnnotationDraftIdentity, type AnnotationDraftPayload } from './annotationDrafts';
+import { isRichBlocksV1, type RichBlockV1 } from './richContent';
+import type { RichAssetRelayRef } from './richContentAssets';
 import {
     isReaderAnnotationDocument,
     isReaderAnnotationRecord,
@@ -38,6 +41,7 @@ export type SettingsCategory =
     | 'platforms'
     | 'behavior'
     | 'reader'
+    | 'content'
     | 'formula'
     | 'export'
     | 'chatgptDirectory'
@@ -204,6 +208,8 @@ export type ReaderSessionSerializableItem = {
     id: string;
     userPrompt: string;
     content: string;
+    sourceContent?: string;
+    richBlocks?: readonly RichBlockV1[];
     meta?: {
         platformId?: string;
         messageId?: string | null;
@@ -233,6 +239,33 @@ export type ReaderSessionCreatePayload = {
 };
 
 export type ReaderSessionByIdPayload = { sessionId: string };
+export type ReaderSessionAssetsPayload = {
+    version: 1;
+    sessionId: string;
+    itemId: string;
+    leaseId?: string;
+    blockVersions: readonly { blockId: string; visualDigest: string }[];
+    /** Background supplies this from the sender-bound session, never from the Reader request. */
+    sourceItem?: ReaderSessionSerializableItem;
+    sourceUrl?: string;
+};
+export type ReaderSessionReleaseAssetsPayload = { version: 1; sessionId: string; leaseId?: string };
+export type ReaderSessionAssetsResultV1 = { version: 1; leaseId: string | null; refs: readonly RichAssetRelayRef[] };
+
+export function isReaderSessionRichContentWithinBudget(snapshot: { items: readonly unknown[] }): boolean {
+    let blockCount = 0;
+    let bytes = 0;
+    for (const item of snapshot.items) {
+        if (!item || typeof item !== 'object') return false;
+        const blocks = (item as { richBlocks?: unknown }).richBlocks;
+        if (blocks === undefined) continue;
+        if (!isRichBlocksV1(blocks)) return false;
+        blockCount += blocks.length;
+        bytes += new TextEncoder().encode(JSON.stringify(blocks)).byteLength;
+        if (blockCount > 512 || bytes > 2 * 1024 * 1024) return false;
+    }
+    return true;
+}
 export type ReaderSessionDraftPayload = { sessionId: string; text?: string };
 export type ReaderSessionBeforeSendPayload = { sessionId: string };
 export type ReaderSessionSendPayload = { sessionId: string; text: string };
@@ -265,7 +298,10 @@ export type ReaderAnnotationRemovePayload = {
 
 export type ReaderAnnotationNavigatePayload = {
     document: ReaderAnnotationDocument;
+    /** Shared anchor IDs use `highlight:<id>` for stored highlights. */
     annotationId: string;
+    /** Background resolves this from the stored mark; older callers may omit it. */
+    assistantMessageId?: string;
 };
 
 export type ReaderAnnotationFocusPayload = ReaderAnnotationNavigatePayload;
@@ -282,6 +318,8 @@ export type ExtRequest =
     | { v: ProtocolVersion; id: RequestId; type: 'readerSession:send'; payload: ReaderSessionSendPayload }
     | { v: ProtocolVersion; id: RequestId; type: 'readerSession:locate'; payload: ReaderSessionLocatePayload }
     | { v: ProtocolVersion; id: RequestId; type: 'readerSession:close'; payload: ReaderSessionByIdPayload }
+    | { v: ProtocolVersion; id: RequestId; type: 'readerSession:assets'; payload: ReaderSessionAssetsPayload }
+    | { v: ProtocolVersion; id: RequestId; type: 'readerSession:releaseAssets'; payload: ReaderSessionReleaseAssetsPayload }
     | { v: ProtocolVersion; id: RequestId; type: 'markLibrary:get' }
     | { v: ProtocolVersion; id: RequestId; type: 'markLibrary:mutate'; payload: { operation: MarkLibraryOperation; expectedRevision: number } }
     | { v: ProtocolVersion; id: RequestId; type: 'highlights:list'; payload?: { document?: ReaderAnnotationDocument } }
@@ -289,6 +327,9 @@ export type ExtRequest =
     | { v: ProtocolVersion; id: RequestId; type: 'highlights:update'; payload: { document: ReaderAnnotationDocument; highlight: HighlightRecord; expectedRevision: number } }
     | { v: ProtocolVersion; id: RequestId; type: 'highlights:remove'; payload: { document: ReaderAnnotationDocument; highlightId: string; expectedRevision: number } }
     | { v: ProtocolVersion; id: RequestId; type: 'annotations:list'; payload?: ReaderAnnotationListPayload }
+    | { v: ProtocolVersion; id: RequestId; type: 'annotations:draftRead'; payload: AnnotationDraftPayload }
+    | { v: ProtocolVersion; id: RequestId; type: 'annotations:draftWrite'; payload: AnnotationDraftPayload }
+    | { v: ProtocolVersion; id: RequestId; type: 'annotations:draftRemove'; payload: AnnotationDraftPayload }
     | { v: ProtocolVersion; id: RequestId; type: 'annotations:create'; payload: ReaderAnnotationCreatePayload }
     | { v: ProtocolVersion; id: RequestId; type: 'annotations:update'; payload: ReaderAnnotationUpdatePayload }
     | { v: ProtocolVersion; id: RequestId; type: 'annotations:remove'; payload: ReaderAnnotationRemovePayload }
@@ -304,6 +345,10 @@ export type ExtRequest =
     | { v: ProtocolVersion; id: RequestId; type: 'settings:getCategory'; payload: SettingsGetCategoryPayload }
     | { v: ProtocolVersion; id: RequestId; type: 'settings:setCategory'; payload: SettingsSetCategoryPayload }
     | { v: ProtocolVersion; id: RequestId; type: 'settings:reset' }
+    | { v: ProtocolVersion; id: RequestId; type: 'settings:export' }
+    | { v: ProtocolVersion; id: RequestId; type: 'settings:previewImport'; payload: { fileText: string } }
+    | { v: ProtocolVersion; id: RequestId; type: 'settings:applyImport'; payload: { fileText: string; expectedFingerprint: string; categories: string[] } }
+    | { v: ProtocolVersion; id: RequestId; type: 'settings:getRecovery' }
     | { v: ProtocolVersion; id: RequestId; type: 'bookmarks:list'; payload?: BookmarksListPayload }
     | { v: ProtocolVersion; id: RequestId; type: 'bookmarks:positions'; payload: BookmarksPositionsPayload }
     | { v: ProtocolVersion; id: RequestId; type: 'bookmarks:save'; payload: BookmarksSavePayload }
@@ -419,9 +464,14 @@ export function isExtRequest(value: unknown): value is ExtRequest {
         'readerSession:send',
         'readerSession:locate',
         'readerSession:close',
+        'readerSession:assets',
+        'readerSession:releaseAssets',
         'markLibrary:get', 'markLibrary:mutate',
         'highlights:list', 'highlights:create', 'highlights:update', 'highlights:remove',
         'annotations:list',
+        'annotations:draftRead',
+        'annotations:draftWrite',
+        'annotations:draftRemove',
         'annotations:create',
         'annotations:update',
         'annotations:remove',
@@ -437,6 +487,7 @@ export function isExtRequest(value: unknown): value is ExtRequest {
         'settings:getCategory',
         'settings:setCategory',
         'settings:reset',
+        'settings:export', 'settings:previewImport', 'settings:applyImport', 'settings:getRecovery',
         'bookmarks:list',
         'bookmarks:positions',
         'bookmarks:save',
@@ -501,6 +552,9 @@ export function isExtRequest(value: unknown): value is ExtRequest {
             const snapshot = sessionPayload.snapshot as Record<string, unknown> | null;
             return !!snapshot
                 && Array.isArray(snapshot.items)
+                && snapshot.items.every(item => item && typeof item === 'object'
+                    && (item.richBlocks === undefined || isRichBlocksV1(item.richBlocks)))
+                && isReaderSessionRichContentWithinBudget(snapshot as ReaderSessionSnapshot)
                 && typeof snapshot.startIndex === 'number'
                 && typeof snapshot.sourceUrl === 'string'
                 && (snapshot.theme === 'light' || snapshot.theme === 'dark')
@@ -509,6 +563,21 @@ export function isExtRequest(value: unknown): value is ExtRequest {
                 && (snapshot.annotationDocument === undefined || isReaderAnnotationDocument(snapshot.annotationDocument));
         }
         if (typeof sessionPayload.sessionId !== 'string' || sessionPayload.sessionId.trim().length === 0) return false;
+        if (type === 'readerSession:assets') {
+            return sessionPayload.version === 1 && typeof sessionPayload.itemId === 'string'
+                && sessionPayload.itemId.trim().length > 0 && sessionPayload.itemId.length <= 512
+                && Array.isArray(sessionPayload.blockVersions) && sessionPayload.blockVersions.length <= 128
+                && sessionPayload.blockVersions.every(version => version && typeof version === 'object'
+                    && typeof version.blockId === 'string' && /^[A-Za-z0-9][A-Za-z0-9._-]{0,255}$/.test(version.blockId)
+                    && typeof version.visualDigest === 'string' && /^[A-Za-z0-9._-]{1,256}$/.test(version.visualDigest))
+                && new Set(sessionPayload.blockVersions.map(version => version.blockId)).size === sessionPayload.blockVersions.length
+                && (sessionPayload.leaseId === undefined || (typeof sessionPayload.leaseId === 'string'
+                    && /^[A-Za-z0-9][A-Za-z0-9._:-]{0,511}$/.test(sessionPayload.leaseId)));
+        }
+        if (type === 'readerSession:releaseAssets') {
+            return sessionPayload.version === 1 && (sessionPayload.leaseId === undefined
+                || (typeof sessionPayload.leaseId === 'string' && /^[A-Za-z0-9][A-Za-z0-9._:-]{0,511}$/.test(sessionPayload.leaseId)));
+        }
         if (type === 'readerSession:draft' && sessionPayload.text !== undefined) {
             return typeof sessionPayload.text === 'string';
         }
@@ -535,6 +604,13 @@ export function isExtRequest(value: unknown): value is ExtRequest {
     }
     if (type.startsWith('annotations:')) {
         const payload = rec.payload;
+        if (type === 'annotations:draftRead' || type === 'annotations:draftWrite' || type === 'annotations:draftRemove') {
+            if (typeof payload !== 'object' || payload === null) return false;
+            const draft = payload as Record<string, unknown>;
+            return isAnnotationDraftIdentity(draft.identity)
+                && (type === 'annotations:draftRead' || (Number.isInteger(draft.expectedRevision) && (draft.expectedRevision as number) >= 0))
+                && (type !== 'annotations:draftWrite' || typeof draft.text === 'string');
+        }
         if (type === 'annotations:list') {
             if (payload === undefined) return true;
             if (typeof payload !== 'object' || payload === null) return false;
@@ -551,7 +627,9 @@ export function isExtRequest(value: unknown): value is ExtRequest {
                     || (typeof annotationPayload.expectedRevision === 'number' && Number.isInteger(annotationPayload.expectedRevision) && annotationPayload.expectedRevision > 0));
         }
         if (type === 'annotations:navigate' || type === 'annotations:focus') {
-            return typeof annotationPayload.annotationId === 'string' && annotationPayload.annotationId.trim().length > 0;
+            return typeof annotationPayload.annotationId === 'string' && annotationPayload.annotationId.trim().length > 0
+                && (annotationPayload.assistantMessageId === undefined
+                    || (typeof annotationPayload.assistantMessageId === 'string' && annotationPayload.assistantMessageId.trim().length > 0));
         }
         if (!isReaderAnnotationRecord(annotationPayload.annotation)) return false;
         if (type === 'annotations:update') {

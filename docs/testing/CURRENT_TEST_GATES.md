@@ -2,6 +2,22 @@
 
 This document defines the **current executable test and verification gates** for day-to-day development. Use this file for what we must run now, not for future-state testing architecture.
 
+### Shared surface material upgrade (2026-10-08)
+
+The same material owner must be exercised through Prompt manager/editor,
+SaveMessages/Send, Reader Settings/template/picker/copy preview, backup settings/
+snapshot/merge review, settings transfer and the static popup fixture. Keep the
+existing token graph, style inventory, Reader architecture and real overlay trigger
+tests. Popup packaging must emit its stylesheet from canonical page tokens and
+materials. `uiModalGeometryOwnership` is part of smoke and acceptance and prevents
+families from repeating shared viewport-gutter calculations. Unsafe popup accent
+strings remain rejected. Reader and global Settings must
+open the same component-owned template layout. Backup fixtures are preview-only.
+Verify actual CSS viewport dimensions when browser zoom changes the capture size;
+320/390 widths, short height, dark/Chinese, keyboard cancellation and reduced motion
+cannot be inferred from screenshots at one desktop size. See the dated upgrade
+plan for executed checks and installed-browser limits.
+
 For long-term testing direction, see `docs/testing/TESTING_BLUEPRINT.md`.
 For full manual regression, see `docs/testing/E2E_REGRESSION_GUIDE.md`.
 For ChatGPT runtime performance work and historical bundle measurements, see `docs/testing/PERFORMANCE_GATES.md`.
@@ -51,6 +67,47 @@ fall back to a stored position, even with a complete snapshot.
 
 ## 2. Minimum Automated Gates
 
+### ChatGPT retained-page switching
+
+Keep the real Runtime/Adapter/Directory/MessageToolbar composition regression in
+`chatgpt-directory-feedback.test.ts` alongside the lifecycle and PageIndex suites.
+Fixtures must retain old `main` elements as connected siblings and switch only
+the host activity attribute, including an empty new page, delayed body/action
+rows, A→B→A restoration and single toolbar ownership. Route input must also be
+tested with the original History method saved before Runtime initialization,
+so the content script's own wrapper cannot mask host-world navigation gaps.
+Zero/multiple active owners and nested marked owners must expose no cached-page refs; legacy single-main
+fixtures, streaming isolation and scroll-root ownership remain covered.
+Installed-browser acceptance must repeat sidebar switches after loading the
+current build; JSDOM does not prove host app-shell behavior.
+Navigation fixtures using fake adapters must dispose their shared PageIndex as
+well as their Surface. Surface disposal does not own the Runtime/adapter index;
+leaving it alive makes later large-page cases observe every prior fixture.
+
+### ChatGPT rich content and asset lifetime
+
+Run the shared compiler/sidecar/projection, current-message Copy/Copy PNG,
+native lifecycle and Repository replacement suites together. Rich fixtures must
+cover mixed/visual-only/assistant-only bodies, chart data, card outline isolation,
+escaped labels, code literals, stale spans and delayed sibling action rows.
+Required asset tests include hostile SVG/URL rejection, local SVG definitions,
+zero resource fetch, aggregate capture budgets, fresh pixel captures, cache/lease
+eviction, cancellation and exact live message ownership. The relay/client/Reader
+session suites must reject wrong senders, forged source snapshots, wrong block
+versions, oversized/truncated/out-of-order chunks and late cancelled successes.
+Reader rendering must preserve surrounding text/annotation nodes on hydration.
+PDF keeps asset leases until actual print-context cleanup; placeholder mode must
+start zero visual preparation. ZIP must contain real bytes, local relative paths
+and a manifest matching its files. All outputs must share selection and order.
+
+Run `npm run test:core`, smoke, acceptance, discovery, type checks and both builds.
+Record isolated reruns and concurrency limits if the existing 200-round navigation
+test times out; never turn that first failure into an unqualified green claim.
+Inspect the real Save Messages component at `mocks/components/message-export`
+in both languages and constrained widths. Installed Chrome/Firefox relay decoding,
+refresh/close/partitioning and native PDF preview remain separate acceptance gates;
+an HTTP fixture or Node MessageChannel test cannot prove extension isolation.
+
 ### Code Changes
 
 Default minimum gate:
@@ -60,6 +117,24 @@ Default minimum gate:
 This is the repository-wide required proof for repo-tracked code changes unless the user explicitly waives it.
 
 `docs/FEATURES.md` 定义的是能力真相与 release-level acceptance；本文件定义的是当前实际要运行的命令门禁。若两者表述有差异，以本文件作为日常 gate 选择权威。
+
+### Version preparation
+
+Align the package version, lockfile, static/built manifests, release notes,
+README references and both in-app changelogs. Latest-release notice fixtures must
+follow the package version and still assert current release content, one-time
+acknowledgment and shared Reader/Library dismissal. Keep older-version migration
+and unsupported-import fixtures independent; they are historical inputs.
+
+Before marking bookmark/passage feedback fixed, exercise the real toolbar save
+button while older history prepends: the same assistant/text must save at the
+new ordinal, while changed selected text must remain rejected. Anchoring tests
+must shift DOM paths and text offsets onto another identical quote and recover
+only through the captured context. Library highlight source clicks, background
+target URL/intent, delayed content focus and Reader highlight reveal are tested
+through their actual triggers. Page-manager reveal must move the selected range
+and retain valid negative reverse-layout scroll positions. These explicit
+navigation waits reuse the existing coordinator and must add no passive polling.
 
 ### Contract, Runtime, Or Boundary Changes
 
@@ -124,7 +199,9 @@ bookmark navigation entrypoints in
 `tests/unit/ui/bookmarks/bookmarksPanelController.test.ts`, and
 `tests/unit/runtimes/content/entry.test.ts`.
 
-For ChatGPT content-discovery or conversation-root replacement changes, the real trigger path must prove: the 5.3 document-start bridge observes only website-owned same-origin JSON GETs; no extension conversation GET/POST, credential access, POST/SSE observation or second source is introduced; source turns enter `get`; no pool compile occurs before an official action row or while stop/generation state is active; one compile occurs after readiness; first and assistant-only messages enter the pool; same ID same Markdown causes no publication; same ID DOM Markdown replaces a GET body once; new messages retain old loaded turns; the outer host-slot sequence accepts only contiguous prefix/tail/both extension; an initial ten-slot suffix remains ordered after a direct jump to 62 slots; a historical empty slot hydrates in place; empty-slot-only growth causes no compile or token churn; mounted subwindows cannot shrink retained topology; reordered/unrelated sequences and conflicting assistant-slot bindings preserve the last authority; mutable `conversation-turn-N` rebasing is ignored; virtualized unmount never deletes content; page→canonical promotion preserves token; SPA A→B→A restores separate pools; wake signals coalesce to one rescan; and dispose/full reload clears runtime memory. One Conversation Surface continues to drive Directory and Stepper, and provides Toolbar host facts. An official row plus non-streaming mounted DOM must mount Toolbar before Repository publication; current-message Copy/Reader/Export/word count and connected same-message selection/annotation must remain usable from that DOM when pool evidence is absent or stale. Cross-message Reader/export and bookmarks continue to use the same GET/DOM-corrected pool, with bookmarks requiring canonical identity and pool-proven position. Formula actions consume mounted formula DOM directly. Static/runtime coverage must prove zero extension conversation GET/POST, no active conversation request, no credential access, no polling/retry ladder/per-message timers, no second observer/repository/join, and no Settings Retry.
+For ChatGPT content-discovery or conversation-root replacement changes, the real trigger path must prove: the 5.3 document-start bridge observes only website-owned same-origin JSON GETs; no extension conversation GET/POST, credential access, POST/SSE observation or second source is introduced; source turns enter `get`; no pool compile occurs before an official action row or while stop/generation state is active; one compile occurs after readiness; first and assistant-only messages enter the pool; same ID same Markdown causes no publication; same ID DOM Markdown replaces a GET body once; new messages retain old loaded turns; shared anchors admit prefix/tail, partial-overlap and interior insertion; competing interior ranges preserve obtained order and insert before their next shared neighbour; direct reducer contradictions without a host placement hint are refused; real mounted order may correct tentative placement while exact identity conflicts remain refused; an initial ten-slot suffix remains ordered after a direct jump to 62 slots; a historical empty slot hydrates in place; empty-slot-only growth causes no compile or token churn; mounted subwindows cannot shrink retained topology; reordered/unrelated sequences and conflicting assistant-slot bindings preserve the last authority; mutable `conversation-turn-N` and window-local `fallback-turn-*` rebasing never changes semantic identity; private count, published snapshot and Surface/Directory must stay aligned after each rolling window; invalid duplicate turn/user identities are refused before private state changes; virtualized unmount never deletes content; refused admission stays dirty without polling, idempotent admission is acknowledged without publication, transient topology is recorded before body debounce, and a recycled owner cannot admit a stale clone; page→canonical promotion preserves token; SPA A→B→A restores separate pools; wake signals coalesce to one rescan; and dispose/full reload clears runtime memory. One Conversation Surface continues to drive Directory and Stepper, and provides Toolbar host facts. An official row plus non-streaming mounted DOM must mount Toolbar before Repository publication; current-message Copy/Reader/Export/word count and connected same-message selection/annotation must remain usable from that DOM when pool evidence is absent or stale. Cross-message Reader/export and bookmarks continue to use the same GET/DOM-corrected pool, with bookmarks requiring canonical identity and pool-proven position. Formula actions consume mounted formula DOM directly. Static/runtime coverage must prove zero extension conversation GET/POST, no active conversation request, no credential access, no polling/retry ladder/per-message timers, no second observer/repository/join, and no Settings Retry.
+
+Incremental Runtime regressions additionally cover native assistant-only search units, immediate admission of disjoint historical windows with normal/reverse scroll-root placement, new tail insertion, and later shared-order correction without automatic scrolling. Identity-continuity regressions additionally cover exact contained message IDs before a stable outer marker, owner-marker promotion and remount, assistant-only Prompt enrichment, stable semantic identity and token idempotence, contradictory exact-ID attributes, competing owner aliases, and alias-induced order cycles without private-state mutation.
 
 The message-navigation extension of this gate additionally covers the empty
 `message` query, official navigation count, no automatic slot sweep, shared
@@ -136,7 +213,7 @@ For Semantic Content, surface selection, or source-quality changes, run `tests/u
 For ChatGPT message-toolbar injection or official action-row hydration changes, focused verification must enter through `ConversationSurface` in `tests/unit/ui/content/messageToolbarOrchestrator.official-anchor.test.ts` and the real first-turn lifecycle test. It must cover delayed/replaced action rows, removal of an extension-owned host, pending content that leaves official controls untouched, one obtained toolbar identity, and numeric word count. Do not test the retired ChatGPT private scanner or recovery timer. Changes to the shared non-ChatGPT DOM scheduler additionally require `tests/unit/ui/content/messageToolbarOrchestrator.scheduler.test.ts`, then `npm run build`.
 Optional website timestamp reads and subscriptions must fail open: absent or failing metadata hides only the time row and must not interrupt toolbar injection or replacement.
 
-For Copy hover-surface changes, `tests/unit/ui/content/messageToolbar.tooltip.test.ts` must enter through the real Copy hover trigger and preserve the original Main sequence: the PNG action opens above after 100ms, the main Copy tooltip appears below after 150ms without rebuilding or moving that action, the overlap-tolerant bridge survives the trigger-to-action pointer transition, and the PNG tooltip appears above its own button. The trigger path must also complete a browser-like `pointerdown` then `click` on Copy PNG exactly once.
+For Copy hover-surface changes, `tests/unit/ui/content/messageToolbar.tooltip.test.ts` preserves the PNG-only sequence: the PNG action opens above after 100ms, the main Copy tooltip appears below after 150ms without rebuilding or moving that action, the overlap-tolerant bridge survives the trigger-to-action pointer transition, and the PNG tooltip appears above its own button. With Prompt+Reply enabled, Copy uses one portal with PNG above and the paired-conversation action below; move the main tooltip to the side. `messageToolbarOrchestrator.official-anchor.test.ts` must enter through the actual Copy trigger, complete browser-like `pointerdown` then `click` on the lower action exactly once, preserve pairing/clipboard guards, and prove no standalone secondary toolbar button. Cover independent switches, parent Copy visibility, focus retention, dismissal and the shared Settings preview.
 
 For ChatGPT Input Enhancement or formula-assistant changes, focused verification must include the unified setting normalizer/effective-state resolver, pure `markdownAuthoring`, `markdownMath`, LaTeX snippets, native composer range edits, `ChatGPTComposerEditingController`, Prompt autocomplete formula ownership, the real content-runtime settings sync path, and manifest consistency. Migration coverage must prove new installs enable every item, all four legacy Markdown/Enter combinations map correctly, old fields are not written back, and the Settings master preserves child preferences. UI tests must enter through Settings → Input & Prompts, prove the effective `available && enabled` state and child controls, verify ordinary Enter is handled before host form capture when newline is enabled, and preserve IME, Prompt autocomplete, modifier shortcuts, theme, and locale behavior.
 
@@ -341,6 +418,28 @@ content remains consumable after DOM virtualization and SPA navigation.
 
 # Current ChatGPT discovery gate (DOM-authoritative tab-local pools)
 
+## First-install Directory default (2026-10-08)
+
+First-install Directory defaults are covered through the actual background
+`onInstalled` event in `settings-first-install.test.ts`: fresh install,
+update/ordinary reads without a settings key, v1–v5 partial records, explicit
+on/off, existing null/undefined records, duplicate install events, delayed
+storage, in-flight reads, user writes ahead of installation and storage failure.
+Only fresh-install initialization enables the Directory; legacy reads and
+migrations remain unchanged. Settings transfer tests preserve their existing
+missing-field/import semantics.
+
+## Annotation drafts and content fidelity (2026-10-07)
+
+- Annotation editing must enter through native selection → Page/Reader Annotate, not only direct editor construction. Cover outside reading, close/reopen recovery, minimize/expand, drag containment, IME, formal save failure, pending destructive actions, source changes and Reader redraws. The production `reader-comments` fixture remains the visual source.
+- Draft contract/session/background tests cover canonical versus page-only identity, target isolation, late reads, old-session ownership, revision conflicts, deletion/recreation, corrupt/future storage, retention, count/text/byte limits and unavailable storage without truncating input. Drafts must remain separate from formal annotation preferences, counts and backups.
+- Content fixtures cover code language, indentation, repeated blank lines, embedded backticks, tilde/long fences, inline code and code-viewer line breaks. Verify the real toolbar Copy trigger, Reader rendering, weighted counts and Markdown/PDF/PNG source projection; retain partial-selection literal behavior.
+- PDF checks include delayed/failed images and localized alt descriptions through the real export trigger, plus actual browser layout/output for long code, wide tables, long formulas and cross-page text. CSS-string assertions alone do not prove that overflow or pagination is correct.
+- Locale and hardcoded fallback checks cover key/substitution parity, image-action accessibility names, independent Reader startup errors and popup guidance. Review long Chinese/English content at narrow widths and 200% reflow.
+- The runtime performance harness samples selected atomic units before annotation-editor focus, checks clearing after the focus transition, and closes the real editor before steady-state metrics. Missing editor/close controls fail the harness; selector timeouts are not swallowed. Selection, long-task, MIME and deferred-projection budgets remain unchanged.
+
+The normal core, smoke, acceptance, type-check and Chrome/Firefox build gates remain required. Component/browser fixtures and generated PDF evidence do not replace installed-extension ChatGPT or native Firefox print acceptance.
+
 The active production contract is ADR-0024:
 
 - `ChatGPTPageIndex` is the only Page Monitor; no second observer is allowed.
@@ -367,7 +466,7 @@ The active production contract is ADR-0024:
   facts but current-message actions read the corresponding mounted DOM.
 - The production path has no active conversation request, Settings retry,
   React-private-state access or synthetic scroll. Chrome/Firefox use only the
-  bounded 5.3 document-start GET seed bridge; Safari remains DOM-only.
+  bounded 5.3 document-start GET seed bridge for both supported browsers.
 - Chrome MV3 and Firefox MV2 manifests contain the bridge resource without any
   added permission. Extension conversation GET/POST remains zero.
 
@@ -394,7 +493,7 @@ internals, permanent polling and synthetic discovery scroll.
 
 - `libraryWorkflow.test.ts` covers same-title conversations with distinct identities, cross-page selection, scope changes, cancellation, partial batch writes, and failed writes followed by failed reads. The September 14 organization change replaces the conversation navigation window with folder navigation (see below). Successful records leave the selection; failed records remain retryable. Read retries must not repeat writes or claim an unsuccessful batch was saved.
 - `npx tsx scripts/harness-highlights.ts` creates two same-title conversations through Reader selection and verifies independent recolor, batch recolor, delete cancellation and synchronized deletion in Chromium/Firefox, light/dark. The current harness additionally covers the folder and custom-title workflow below.
-- `npx tsx scripts/harness-workspace-components.ts` opens all eight Settings categories, the annotation template editor, bookmark action menu and folder picker through their visible triggers in Chromium/Firefox, light/dark. It checks readable navigation, primary-button contrast, menu containment and the absence of a second search-field border. Menu measurements wait for the disclosure's positioning event. These checks supplement the 41-variant matrices for each primary view and browser.
+- `npx tsx scripts/harness-workspace-components.ts` opens all eight Settings categories, the annotation template editor through the Reader gear menu, bookmark action menu and folder picker through their visible triggers in Chromium/Firefox, light/dark. Reader-specific template controls remain in Reader. It checks readable navigation, primary-button contrast, menu containment and the absence of a second search-field border. Menu measurements wait for the disclosure's positioning event. These checks supplement the 41-variant matrices for each primary view and browser.
 - Actual rendered components are the visual acceptance source; a matching prototype alone is insufficient. Check hidden controls, selected/hover/focus/disabled states, nested dialogs, and the completed sidebar transition. Installed-extension ChatGPT acceptance remains separate from disposable browser fixtures.
 
 ### Shared mark folders and direct Settings entry (2026-09-14)
@@ -403,7 +502,8 @@ internals, permanent polling and synthetic discovery scroll.
 - `libraryWorkflow.test.ts` enters through BookmarksPanel and covers 500 folders with at most 40 mounted rows, 500 conversation groups with 20 per page, 3000 records with at most 20 mounted bodies, shared annotation/highlight names and folders, retryable edits, lost acknowledgments, and conversation/item batch scopes. Root-folder renames must preserve their null parent; folder moves must expand the new ancestor path and retain the visible selection. Group moves must not rewrite source records. A retained empty conversation remains manageable after its last record is removed.
 - `readMarkDocumentTitle.test.ts` covers passive current-conversation title capture and rejection of mismatched or generic source titles. `lazyContentFeatures.test.ts` verifies that the real lazy panel proxy forwards an explicit Settings destination; entry, shell and stepper tests cover the visible trigger, duplicate-icon removal, and selection restoration.
 - `harness-highlights.ts` exercises native selection → reload → rename conversation → create/move to folder → reopen → batch recolor/delete across both browsers and themes. Its narrow-window assertions include each folder action's bounds, not only overall panel overflow.
-- `harness-workspace-components.ts` also checks always-visible information links, clearing/restoring the selected Settings category, and hovering/clicking the right-bottom brand/Settings trigger. It must not stop at calling the panel method directly.
+- `harness-workspace-components.ts` also checks one Settings navigation scroll owner for the eight categories and five information links, their divider, and fixed bottom links containing only Mappamory and Buy Me Coffee. Feature overview coverage includes 50 visible items in eight groups, `{{cursor}}` search reducing the list to one item, clearing the search, full-screen entry/exit, returning through a related Settings category while preserving feature search and full-screen mode, narrow 760/390px layouts, and the embedded upper-right Close and full-screen icons without a separate title bar or footer. It also clears/restores the selected Settings category and hovers/clicks the right-bottom brand/Settings trigger; direct panel-method calls alone are insufficient.
+- Native send-position browser coverage uses the disposable local fixture `http://127.0.0.1:5173/mocks/components/send-position-restore/index.html` (with `?layout=reverse&remount=1` for negative-scrollTop and replaced-history-anchor cases). It exercises the production editing and position controllers with native send-button, Cmd/Ctrl+Enter and Reader before-send triggers, a simulated host jump, 30 placeholder streaming updates, and restore-on/off cases. This fixture does not send requests to ChatGPT and does not prove installed-extension behavior on the official website; record that acceptance separately.
 - Full Library and Settings visual matrices remain required for both browsers. Bundle size is no longer a build gate; the old budget script is available only for historical comparison. Keep lazy feature loading and extension-origin chunk checks in the build and performance gates. Run performance gates without other concurrent build/browser matrix workloads to avoid contention in timing measurements.
 - The ChatGPT performance fixture must reproduce the official action row's Flex layout. Its `flex` class alone has no effect without the website stylesheet; omitting the rule incorrectly left-aligns a right-aligned capsule and makes its actions unreachable. Keep real toggle/Copy clicks in the gate, with no forced clicks or skipped hit testing.
 
@@ -414,3 +514,59 @@ internals, permanent polling and synthetic discovery scroll.
 - Group a normal ChatGPT URL and a project URL with parameters under the same conversation identity. Keep the existing large-list, two-level pagination, folder-depth and batch scope regressions.
 - The component browser harness clicks message capsule controls at desktop and 375px widths, checks every action fits the expanded drawer when space is available, verifies Escape collapse, and checks a closed Directory preview cannot intercept clicks. Its standalone progress demonstration must have its own layout space.
 - During installed unpacked-extension acceptance, reload the extension **and** refresh its ChatGPT page after a build. A newer lazy UI module with an older resident background may support highlight/annotation requests but ignore the new organization request. Verify the read-only source and folder responses separately; fixture mocks and a successful build cannot prove installation parity.
+
+### Installed send-position acceptance (2026-10-02)
+
+- After reloading the development extension, an independent Chrome ChatGPT conversation verified official Send and Cmd+Enter while reading the first reply. The website used its actual column-reverse scroll container. Two further 40-paragraph replies preserved the original content through generation and completion: button-send drift was 2px and Cmd+Enter drift was 0px. Native wheel input during a subsequent reply immediately released the restore session while generation was still active and moved the viewport with the user.
+- This live check covers Chrome official button and keyboard sending. Reader before-send, normal layouts, and replaced or hidden anchors retain their local-fixture and unit coverage; installed Firefox acceptance remains separate.
+
+
+### 6.2.0 consolidated checkpoint (2026-10-12)
+
+- Core: 327 files / 2713 tests passed with one worker. Release verification:
+  smoke 54, acceptance 471, Chrome MV3 / Firefox MV2 production builds and entry /
+  single-pool boundary checks passed. Release-notice/copy/relay closeout: 77 passed.
+- Safari is permanently retired. The target registry accepts Chrome/Firefox only;
+  the retirement guard rejects obsolete build/packaging files and UI compile flags.
+  Removed Safari-only suites explain the reduced suite count; supported-browser
+  contracts remain covered, including unknown-runtime and relay-origin rejection.
+- Installed Chrome: Library highlight original-page navigation selected reply 2/4
+  and revealed its exact paragraph-37 highlight after reload. Actual Save Messages
+  PDF produced four nonempty pages with all 60 selected paragraphs and no other
+  reply; extracted text and all four rendered pages were inspected. Toolbar save
+  succeeded; history-prepend/changed-body save-dialog races have failing-first
+  real-trigger regressions.
+- Native Firefox print/UI and a fresh complete visual matrix remain distinct,
+  unrun acceptance boundaries. Do not convert local build/fixture evidence into
+  those claims. See the [release review](../reviews/2026-10-12-6.2.0-release-readiness.md).
+
+
+### Chrome visual follow-up and Firefox waiver (2026-10-12)
+
+- The user narrowed release acceptance to Chrome and explicitly waived Firefox
+  UI/native PDF tests. Stop those runs; keep Firefox build parity and label its
+  incomplete acceptance accurately. This is a per-release waiver, not a change
+  to the supported browser targets.
+- Chrome full visual: 492 cases across 12 fixtures plus explicit Library 41 and
+  Settings 41, all passed. Screenshot review found a dark fixture background
+  problem; its 41 cases were rerun after correction. Inspect screenshots alongside
+  geometry/console checks; passing layout bounds cannot prove text contrast.
+- The meaningful-page probe must traverse open ShadowRoots and count rendered
+  text. Exclude stylesheet/script/hidden/aria-hidden content and text without
+  boxes; preserve the minimum-content and Vite-overlay failures. Test nested
+  roots, truly blank/hidden content and ordinary visible controls.
+- Fixture locale changes must update all displayed surfaces, including labels
+  resolved at construction. Theme variants must also update their containing
+  page through canonical tokens. Dispose replaced fixture components; derive
+  generated settings-file versions from package.json.
+- Actual Chrome 200% zoom passed on the installed management panel at 886x586 CSS
+  pixels with no horizontal overflow and a reachable Close button. This is
+  separate from the 320x568 zoom-equivalent automated reflow cases. Restore native
+  zoom and confirm the target tab title/URL before sending native input.
+- Core 329 files / 2717 tests; post-theme-repair focused 23; smoke 54; acceptance
+  471; both builds/entry/content boundaries passed. The earlier genuine Chrome
+  PDF was revalidated; no fresh Firefox print or universal rich-content claim.
+- Release ZIP checks must compare every entry with current dist bytes, validate
+  static/built manifests and declared resources, and record SHA-256 sums. Current
+  6.2.0 Chrome/Firefox archives each contain 111 files. Preparation remains separate
+  from merging, tagging, pushing and publication.

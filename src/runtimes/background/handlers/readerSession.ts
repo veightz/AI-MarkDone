@@ -5,8 +5,11 @@ import {
     type ExtResponse,
     type ProtocolErrorCode,
     type ReaderSessionSnapshot,
+    isReaderSessionRichContentWithinBudget,
 } from '../../../contracts/protocol';
 import { browser, browserCompat } from '../../../drivers/shared/browser';
+import { isRichBlocksV1 } from '../../../contracts/richContent';
+import { readReaderSessionAssetResult, matchesReaderRichBlockVersions } from '../../../services/reader/readerRichAssetProtocol';
 
 const STORAGE_KEY = 'aimd:readerSessions:v1';
 
@@ -217,6 +220,9 @@ export async function handleReaderSessionRequest(request: ExtRequest, sender: an
     if (!request.type.startsWith('readerSession:')) return null;
 
     if (request.type === 'readerSession:create') {
+        if (!isReaderSessionRichContentWithinBudget(request.payload.snapshot)) {
+            return { response: errorResponse(request, 'SOURCE_UNAVAILABLE', 'Detached Reader rich content metadata exceeds the session budget') };
+        }
         if (!hasSessionStorageArea()) {
             return { response: errorResponse(request, 'SOURCE_UNAVAILABLE', 'Detached Reader requires extension session storage') };
         }
@@ -263,6 +269,7 @@ export async function handleReaderSessionRequest(request: ExtRequest, sender: an
         if (senderTabId !== record.readerTabId && senderTabId !== record.sourceTabId) {
             return { response: errorResponse(request, 'PERMISSION_DENIED', 'Reader session sender does not match this session') };
         }
+        await sendSourceTabMessage(record.sourceTabId, { v: PROTOCOL_VERSION, id: createRequestId(), type: 'readerSession:releaseAssets', payload: { version: 1, sessionId } });
         await removeSession(sessionId);
         return { response: ok(request, { closed: true }) };
     }
@@ -274,8 +281,39 @@ export async function handleReaderSessionRequest(request: ExtRequest, sender: an
         await activateTab(record.sourceTabId);
     }
 
-    const forwarded: ExtRequest = { ...request, id: createRequestId() } as ExtRequest;
+    let forwarded: ExtRequest = { ...request, id: createRequestId() } as ExtRequest;
+    if (request.type === 'readerSession:assets') {
+        const matches = record.snapshot.items.filter(item => item.id === request.payload.itemId);
+        if (matches.length !== 1 || !isRichBlocksV1(matches[0]!.richBlocks ?? [])
+            || !matchesReaderRichBlockVersions(matches[0]!.richBlocks ?? [], request.payload.blockVersions)) {
+            return { response: errorResponse(request, 'INVALID_REQUEST', 'Reader item is missing or ambiguous') };
+        }
+        forwarded = { ...request, id: createRequestId(), payload: {
+            version: 1, sessionId, itemId: matches[0]!.id, leaseId: request.payload.leaseId,
+            blockVersions: request.payload.blockVersions,
+            sourceItem: matches[0]!, sourceUrl: record.snapshot.sourceUrl,
+        } };
+    }
     const sourceResponse = await sendSourceTabMessage(record.sourceTabId, forwarded);
+    if (request.type === 'readerSession:assets' && sourceResponse.ok) {
+        const current = (await readStore())[sessionId];
+        const currentItems = current?.snapshot.items.filter(item => item.id === request.payload.itemId) ?? [];
+        if (!current || current.sourceTabId !== record.sourceTabId || current.readerTabId !== record.readerTabId
+            || currentItems.length !== 1 || !matchesReaderRichBlockVersions(currentItems[0]!.richBlocks ?? [], request.payload.blockVersions)) {
+            const responseLeaseId = sourceResponse.data && typeof sourceResponse.data === 'object'
+                ? (sourceResponse.data as { leaseId?: unknown }).leaseId : undefined;
+            const leaseId = request.payload.leaseId ?? (typeof responseLeaseId === 'string' && /^[A-Za-z0-9][A-Za-z0-9._:-]{0,511}$/.test(responseLeaseId) ? responseLeaseId : undefined);
+            await sendSourceTabMessage(record.sourceTabId, { v: PROTOCOL_VERSION, id: createRequestId(), type: 'readerSession:releaseAssets', payload: { version: 1, sessionId, ...(leaseId ? { leaseId } : {}) } });
+            return { response: errorResponse(request, 'SOURCE_UNAVAILABLE', 'Reader session changed during asset preparation') };
+        }
+        const item = record.snapshot.items.find(item => item.id === request.payload.itemId)!;
+        const result = readReaderSessionAssetResult(sourceResponse.data, item.richBlocks ?? [], getRuntimeUrl(''), request.payload.leaseId);
+        if (!result) {
+            if (request.payload.leaseId) await sendSourceTabMessage(record.sourceTabId, { v: PROTOCOL_VERSION, id: createRequestId(), type: 'readerSession:releaseAssets', payload: { version: 1, sessionId, leaseId: request.payload.leaseId } });
+            return { response: errorResponse(request, 'INVALID_REQUEST', 'Invalid Reader asset response') };
+        }
+        return { response: ok(request, result) };
+    }
     if (request.type === 'readerSession:refresh' && sourceResponse.ok && sourceResponse.data && typeof sourceResponse.data === 'object') {
         const snapshot = (sourceResponse.data as { snapshot?: ReaderSessionSnapshot }).snapshot;
         if (snapshot) {
@@ -298,6 +336,7 @@ export async function handleReaderSessionTabRemoved(tabId: number): Promise<void
     const sessions = await findSessionsByTab(tabId);
     for (const record of sessions) {
         await removeSession(record.sessionId);
+        if (record.sourceTabId !== tabId) await sendSourceTabMessage(record.sourceTabId, { v: PROTOCOL_VERSION, id: createRequestId(), type: 'readerSession:releaseAssets', payload: { version: 1, sessionId: record.sessionId } });
         if (record.sourceTabId === tabId && typeof record.readerTabId === 'number') {
             await removeTab(record.readerTabId);
         }

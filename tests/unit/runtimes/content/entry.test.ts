@@ -1,3 +1,4 @@
+vi.mock('@/ui/content/components/InputEnhancementPopover', () => ({ InputEnhancementPopover: class { updateSettings = vi.fn(); setAppearance = vi.fn(); close = vi.fn(); toggle = vi.fn(); } }));
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { ConversationNavigationCoordinatorOptionsV1 } from '@/services/content/ConversationNavigationCoordinator';
 
@@ -35,6 +36,9 @@ const readerPanelSetAppearance = vi.fn();
 const readerPanelShow = vi.fn(async () => undefined);
 const readerPanelFocusAnnotation = vi.fn(async () => true);
 const readerPanelHide = vi.fn();
+const readerRichAssetsPrepare = vi.fn(async () => ({ version: 1, leaseId: null, refs: [] }));
+const readerRichAssetsRelease = vi.fn(async () => undefined);
+const readerRichAssetsDispose = vi.fn(async () => undefined);
 const readerPanelCtor = vi.fn(function () {
     return {
         setAppearance: readerPanelSetAppearance,
@@ -42,6 +46,7 @@ const readerPanelCtor = vi.fn(function () {
         setShowOutlineInReader: vi.fn(),
         setContentMaxWidthPx: vi.fn(),
         setReaderSettings: vi.fn(),
+        setContentCleanupSettings: vi.fn(),
         setReaderSettingsController: vi.fn(),
         setPromptManagerController: vi.fn(),
         setCommentExportSettings: vi.fn(),
@@ -123,6 +128,7 @@ const messageToolbarCtor = vi.fn(function () {
         setAppearance: messageToolbarsSetAppearance,
         setBehaviorFlags: messageToolbarsSetBehaviorFlags,
         setExportSettings: messageToolbarsSetExportSettings,
+        setContentCleanupSettings: vi.fn(),
         dispose: messageToolbarsDispose,
     };
 });
@@ -134,6 +140,7 @@ const directorySetRightInsetPx = vi.fn();
 const directorySetPreviewMaxChars = vi.fn();
 const directorySetPreviewActionsFactory = vi.fn();
 const directorySetAppearance = vi.fn();
+const directorySetNavigationControls = vi.fn();
 const directoryDispose = vi.fn();
 const directoryCtor = vi.fn(function () {
     return {
@@ -145,6 +152,7 @@ const directoryCtor = vi.fn(function () {
         setPreviewMaxChars: directorySetPreviewMaxChars,
         setPreviewActionsFactory: directorySetPreviewActionsFactory,
         setAppearance: directorySetAppearance,
+        setNavigationControls: directorySetNavigationControls,
         dispose: directoryDispose,
     };
 });
@@ -187,6 +195,7 @@ const composerEnterCtor = vi.fn(function (_adapter: unknown, options: typeof com
         init: composerEnterInit,
         dispose: composerEnterDispose,
         setInputEnhancementSettings: composerInputEnhancementSetSettings,
+        setFormulaAssetFontSize: vi.fn(),
         setAppearance: composerSetAppearance,
     };
 });
@@ -211,6 +220,7 @@ const viewportReaderChipCtor = vi.fn(function () {
         getPrimaryReadTarget: viewportReaderChipGetPrimaryReadTarget,
     };
 });
+const messageStepperSetInputEnhancementEnabled = vi.fn();
 const messageStepperCtor = vi.fn(function () {
     return {
         init: messageStepperInit,
@@ -220,6 +230,9 @@ const messageStepperCtor = vi.fn(function () {
         setPageBookmarkControlVisible: messageStepperSetPageBookmarkControlVisible,
         setDetachedReaderControlVisible: messageStepperSetDetachedReaderControlVisible,
         setPromptControlVisible: messageStepperSetPromptControlVisible,
+        setPinnedActions: vi.fn(),
+        setInputEnhancementControlVisible: vi.fn(),
+        setInputEnhancementEnabled: messageStepperSetInputEnhancementEnabled,
         setPageBookmarked: messageStepperSetPageBookmarked,
         setAppearance: messageStepperSetAppearance,
     };
@@ -416,6 +429,7 @@ vi.mock('@/services/content/ConversationNavigationCoordinator', () => ({
 vi.mock('@/drivers/shared/browser', () => ({
     browser: {
         runtime: {
+            id: 'extension-id',
             onMessage: {
                 addListener: (listener: (msg: unknown) => void) => {
                     runtimeMessageListener = listener;
@@ -444,12 +458,14 @@ vi.mock('@/ui/content/bookmarks/BookmarksPanel', () => ({
 }));
 
 vi.mock('@/runtimes/content/lazyContentFeatures', () => ({
+    createLazyReaderRichAssetSessions: vi.fn(() => ({ prepare: readerRichAssetsPrepare, release: readerRichAssetsRelease, dispose: readerRichAssetsDispose })),
     createLazyReaderPanel: readerPanelCtor,
     createLazyBookmarksPanel: bookmarksPanelCtor,
     createLazySaveMessagesDialog: vi.fn(() => ({
         open: vi.fn(async () => undefined),
         setAppearance: saveMessagesDialogSetAppearance,
         setExportSettings: vi.fn(),
+        setContentCleanupSettings: vi.fn(),
         setMarkdownFormulaFormat: vi.fn(),
     })),
     createLazyBookmarkSaveDialog: vi.fn(() => ({
@@ -932,6 +948,9 @@ describe('content runtime entry', () => {
         };
         settingsSubscriber!({ settings: { ...structuredClone(DEFAULT_SETTINGS), chatgptBehavior: { ...DEFAULT_SETTINGS.chatgptBehavior, inputEnhancement } } });
         expect(composerInputEnhancementSetSettings).toHaveBeenLastCalledWith(inputEnhancement);
+        expect(messageStepperSetInputEnhancementEnabled).toHaveBeenLastCalledWith(inputEnhancement.available && inputEnhancement.enabled);
+        settingsSubscriber!({ settings: { ...structuredClone(DEFAULT_SETTINGS), chatgptBehavior: { ...DEFAULT_SETTINGS.chatgptBehavior, inputEnhancement: { ...inputEnhancement, enabled: false } } } });
+        expect(messageStepperSetInputEnhancementEnabled).toHaveBeenLastCalledWith(false);
     });
 
     it('maps cached appearance accent color into runtime theme overrides', async () => {
@@ -1220,6 +1239,11 @@ describe('content runtime entry', () => {
 
         expect(bookmarksShow).toHaveBeenCalledWith({tab:'settings'});
 
+        const previous = document.createElement('button');
+        const next = document.createElement('button');
+        messageStepperCtor.mock.calls[0]?.[1]?.onNavigationControlsReady?.(previous, next);
+        expect(directorySetNavigationControls).toHaveBeenCalledWith(previous, next);
+
         const settingsAnchor = document.createElement('button');
         const onOpenPromptManager = bookmarksPanelCtor.mock.calls[0]?.[2]?.onOpenPromptManager;
         await onOpenPromptManager?.(settingsAnchor);
@@ -1394,6 +1418,7 @@ describe('content runtime entry', () => {
         expect(contentRuntimeDispose).toHaveBeenCalledTimes(1);
         expect(mathClickDisable).toHaveBeenCalledTimes(1);
         expect(mathClickSetFormulaSettings).toHaveBeenLastCalledWith({
+            composerAssetActions: { copyPng: true, copySvg: true, copyMathml: true, savePng: true, saveSvg: true },
             clickCopyMarkdown: false,
             clickCopyFormulaFormat: 'markdown-dollar',
             markdownCopyFormulaFormat: 'markdown-dollar',
@@ -1466,6 +1491,10 @@ describe('content runtime entry', () => {
             renderCodeInReader: true,
         }));
         expect(messageToolbarsSetBehaviorFlags).toHaveBeenLastCalledWith({
+            messageControls: { bookmark_toggle: true, copy_markdown: true, copy_prompt_reply: true, reader: true, export: true },
+            pinnedMessageControls: [],
+            showCopyPng: true,
+            showMessageTimestamp: true,
             showMessageToolbar: true,
             showSaveMessages: true,
             showWordCount: true,
@@ -1598,6 +1627,7 @@ describe('content runtime entry', () => {
             commentExport: cachedCommentExport,
         }));
         expect(mathClickSetFormulaSettings).toHaveBeenCalledWith({
+            composerAssetActions: { copyPng: true, copySvg: true, copyMathml: true, savePng: true, saveSvg: true },
             clickCopyMarkdown: false,
             clickCopyFormulaFormat: 'markdown-dollar',
             markdownCopyFormulaFormat: 'markdown-dollar',
@@ -1950,6 +1980,56 @@ describe('content runtime entry', () => {
         }));
     });
 
+    it('requires the background extension sender for detached rich assets', async () => {
+        adapterPlatformId = 'chatgpt';
+        vi.resetModules();
+        await import('@/runtimes/content/entry');
+        await Promise.resolve();
+        const request = { v: 1, id: 'assets-untrusted', type: 'readerSession:assets', payload: { version: 1, sessionId: 'session-1', itemId: 'item-1', blockVersions: [] } };
+        for (const sender of [undefined, { id: 'foreign-extension' }, { id: 'extension-id', tab: { id: 12 } }]) {
+            const sendResponse = vi.fn();
+            (runtimeMessageListener as any)!(request, sender, sendResponse);
+            expect(sendResponse).toHaveBeenCalledWith(expect.objectContaining({ ok: false, error: expect.objectContaining({ code: 'PERMISSION_DENIED' }) }));
+        }
+    });
+
+    it('uses the lazy source asset facade only for the first bound assets RPC and cleans it on teardown', async () => {
+        adapterPlatformId = 'chatgpt';
+        vi.resetModules();
+        await import('@/runtimes/content/entry');
+        await Promise.resolve();
+        expect(readerRichAssetsPrepare).not.toHaveBeenCalled();
+        const item = { id: 'item-1', userPrompt: '', content: 'Body', richBlocks: [] };
+        const sendResponse = vi.fn();
+        (runtimeMessageListener as any)!({ v: 1, id: 'assets-lazy', type: 'readerSession:assets', payload: {
+            version: 1, sessionId: 'session-1', itemId: 'item-1', leaseId: 'lease-1', blockVersions: [], sourceItem: item, sourceUrl: 'https://chatgpt.com/c/1',
+        } }, { id: 'extension-id' }, sendResponse);
+        await vi.waitFor(() => expect(readerRichAssetsPrepare).toHaveBeenCalledWith('session-1', item, 'https://chatgpt.com/c/1', 'lease-1'));
+        window.dispatchEvent(new Event('pagehide'));
+        expect(readerRichAssetsDispose).toHaveBeenCalled();
+    });
+
+    it('cleans source asset ownership on every pagehide after a BFCache restore', async () => {
+        adapterPlatformId = 'chatgpt';
+        vi.resetModules();
+        const { createLazyReaderRichAssetSessions } = await import('@/runtimes/content/lazyContentFeatures');
+        const scoped = { prepare: vi.fn(async () => ({ version: 1 as const, leaseId: null, refs: [] })), release: vi.fn(async () => undefined), dispose: vi.fn(async () => undefined) };
+        vi.mocked(createLazyReaderRichAssetSessions).mockReturnValueOnce(scoped);
+        await import('@/runtimes/content/entry');
+        await Promise.resolve();
+        window.dispatchEvent(new PageTransitionEvent('pagehide', { persisted: true }));
+        expect(scoped.dispose).toHaveBeenCalledTimes(1);
+        window.dispatchEvent(new PageTransitionEvent('pageshow', { persisted: true }));
+        const item = { id: 'item-1', userPrompt: '', content: 'Body', richBlocks: [] };
+        const sendResponse = vi.fn();
+        (runtimeMessageListener as any)!({ v: 1, id: 'assets-after-restore', type: 'readerSession:assets', payload: {
+            version: 1, sessionId: 'session-1', itemId: 'item-1', leaseId: 'lease-restored', blockVersions: [], sourceItem: item, sourceUrl: 'https://chatgpt.com/c/1',
+        } }, { id: 'extension-id' }, sendResponse);
+        await vi.waitFor(() => expect(scoped.prepare).toHaveBeenCalledTimes(1));
+        window.dispatchEvent(new PageTransitionEvent('pagehide', { persisted: true }));
+        expect(scoped.dispose).toHaveBeenCalledTimes(2);
+    });
+
     it('rejects a detached Reader refresh when the conversation changes during snapshot construction', async () => {
         adapterPlatformId = 'chatgpt';
         collectFreshReaderContent.mockResolvedValueOnce({
@@ -1989,6 +2069,29 @@ describe('content runtime entry', () => {
             type: 'readerSession:refresh',
             error: expect.objectContaining({ code: 'SOURCE_UNAVAILABLE' }),
         }));
+    });
+
+    it('waits through the shared navigation before collecting a late annotation reply', async () => {
+        adapterPlatformId = 'chatgpt';
+        let finishNavigation!: (value: { ok: true }) => void;
+        conversationNavigationNavigate.mockImplementationOnce(() => new Promise(resolve => { finishNavigation = resolve; }));
+        collectFreshReaderContent.mockResolvedValueOnce({
+            items: [{ id: 'reader-item-1', userPrompt: 'Prompt', content: 'Answer' }], startIndex: 0,
+            annotationDocument: { platform: 'chatgpt', conversationId: 'mock' },
+            sourceRevision: { routeEpoch: 1, revision: 2, conversationId: 'mock' },
+        });
+        vi.resetModules();
+        await import('@/runtimes/content/entry');
+        const sendResponse = vi.fn();
+        (runtimeMessageListener as any)!({ v: 1, id: 'late-mark', type: 'annotations:focus', payload: {
+            document: { platform: 'chatgpt', conversationId: 'mock' }, annotationId: 'annotation-1', assistantMessageId: 'assistant-1',
+        } }, undefined, sendResponse);
+        await vi.waitFor(() => expect(conversationNavigationNavigate).toHaveBeenCalled());
+        expect(collectFreshReaderContent).not.toHaveBeenCalled();
+        expect(readerPanelShow).not.toHaveBeenCalled();
+        finishNavigation({ ok: true });
+        await vi.waitFor(() => expect(sendResponse).toHaveBeenCalled());
+        expect(readerPanelFocusAnnotation).toHaveBeenCalledWith('annotation-1', 'assistant-1');
     });
 
     it('closes the in-page Reader instead of focusing a stale annotation after the source changes', async () => {

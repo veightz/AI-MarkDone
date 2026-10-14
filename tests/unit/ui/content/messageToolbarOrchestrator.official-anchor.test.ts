@@ -1,3 +1,8 @@
+vi.mock('@/utils/toast',()=>({showToast:vi.fn()}));
+import { showToast } from '@/utils/toast';
+import { ChatGPTAdapter } from '@/drivers/content/adapters/sites/chatgpt';
+vi.mock('@/drivers/content/clipboard/clipboard', () => ({ copyTextToClipboard: vi.fn(async () => true) }));
+import { copyTextToClipboard } from '@/drivers/content/clipboard/clipboard';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { ConversationContentStateV1 } from '@/contracts/conversationContent';
 import type { MessageMetadataSource } from '@/contracts/messageMetadata';
@@ -5,6 +10,9 @@ import { SiteAdapter, type ThemeDetector } from '@/drivers/content/adapters/base
 import { ChatGPTConversationSurface } from '@/drivers/content/chatgpt/ChatGPTConversationSurface';
 import { MessageToolbarOrchestrator } from '@/ui/content/controllers/MessageToolbarOrchestrator';
 import { ChatGPTDirectoryRail } from '@/ui/content/chatgptDirectory/ChatGPTDirectoryRail';
+import * as messageCopy from '@/services/copy/copy-markdown';
+import * as turnCopy from '@/services/copy/copy-turn-markdown';
+import { richSvgBlock } from '../../../helpers/richContentFixtures';
 import {
     createConversationContentSource,
     readyConversationState,
@@ -148,7 +156,96 @@ function toolbarHosts(): NodeListOf<HTMLElement> {
     return document.querySelectorAll<HTMLElement>('[data-aimd-role="message-toolbar"]');
 }
 
+function clickPromptReplyHoverAction(): void {
+    const shadow = toolbarHosts()[0].shadowRoot!;
+    shadow.querySelector<HTMLButtonElement>('[data-action="toggle-capsule"]')!.click();
+    expect(shadow.querySelector('[data-action="copy_prompt_reply"]')).toBeNull();
+    shadow.querySelector<HTMLButtonElement>('[data-action="copy_markdown"]')!.focus();
+    const lower = document.querySelector('.aimd-toolbar-hover-action-host')!.shadowRoot!.querySelector<HTMLButtonElement>('[data-action="copy_prompt_reply"]')!;
+    expect(lower.closest<HTMLElement>('[data-role="toolbar-hover-actions"]')!.dataset.placement).toBe('bottom');
+    lower.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true, composed: true }));
+    lower.click();
+}
+
 describe('MessageToolbarOrchestrator Surface-driven official toolbar lifecycle', () => {
+    it('keeps the current DOM capture sidecar when Export is clicked before pool admission', async () => {
+        renderTurn();
+        const blocks = [richSvgBlock()];
+        const result = { ok: true as const, markdown: '![Diagram](aimd-rich:block-1)', richBlocks: blocks };
+        const copyMessage = vi.spyOn(messageCopy, 'copyMarkdownFromMessage').mockReturnValue(result);
+        const copyTurn = vi.spyOn(turnCopy, 'copyMarkdownFromTurn').mockReturnValue(result);
+        const adapter = new FakeOfficialToolbarAdapter();
+        const source = createConversationContentSource({ kind: 'syncing', document: readyConversationState(SNAPSHOT).document, snapshot: null });
+        const surface = new ChatGPTConversationSurface({ adapter, content: source });
+        const saveMessagesDialog = { open: vi.fn(async () => true), isOpen: () => false, close() {}, setAppearance() {}, setExportSettings() {}, setMarkdownFormulaFormat() {} };
+        const orchestrator = new MessageToolbarOrchestrator(adapter, {
+            readerPanel: { setTheme() {}, show: async () => undefined } as any,
+            saveMessagesDialog: saveMessagesDialog as any,
+            conversationContentSource: source, conversationMaterialization: surface.materialization, conversationSurface: surface,
+        });
+        harnesses.add({ adapter, source, surface, orchestrator });
+        try {
+            orchestrator.setBehaviorFlags({ showSaveMessages: true, pinnedMessageControls: ['export'] });
+            orchestrator.init();
+            await vi.waitFor(() => expect(toolbarHosts()).toHaveLength(1));
+            const button = toolbarHosts()[0]!.shadowRoot!.querySelector<HTMLButtonElement>('[data-action="export"]')!;
+            expect(button).toBeTruthy();
+            button.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true, composed: true }));
+            button.click();
+            await vi.waitFor(() => expect(saveMessagesDialog.open).toHaveBeenCalledWith(
+                adapter, expect.any(String), expect.objectContaining({ currentReaderItem: expect.objectContaining({ richBlocks: blocks, content: result.markdown }) }),
+            ));
+            const updatedBlocks = [richSvgBlock({ visualDigest: 'visual-2', source: { kind: 'svg', svg: '<svg><rect fill="blue"/></svg>' } })];
+            const updated = { ok: true as const, markdown: 'Updated ![Diagram](aimd-rich:block-1)', richBlocks: updatedBlocks };
+            copyMessage.mockReturnValue(updated);
+            copyTurn.mockReturnValue(updated);
+            document.querySelector('.content')!.textContent = 'Updated current body';
+            button.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true, composed: true }));
+            button.click();
+            await vi.waitFor(() => expect(saveMessagesDialog.open).toHaveBeenCalledTimes(2));
+            expect(saveMessagesDialog.open.mock.calls[1]?.[2]?.currentReaderItem).toMatchObject({ richBlocks: updatedBlocks, content: updated.markdown });
+        } finally { copyMessage.mockRestore(); copyTurn.mockRestore(); }
+    });
+
+    it('opens the message drawer only from More when a pinned action is hovered in the official row', async () => {
+        renderTurn();
+        const { orchestrator } = createHarness();
+        orchestrator.setBehaviorFlags({ pinnedMessageControls: ['reader'] });
+        orchestrator.init();
+        await vi.waitFor(() => expect(toolbarHosts()).toHaveLength(1));
+        const shadow = toolbarHosts()[0].shadowRoot!;
+        const pinned = shadow.querySelector<HTMLButtonElement>('.capsule-pinned [data-action="reader"]')!;
+        const toggle = shadow.querySelector<HTMLButtonElement>('[data-action="toggle-capsule"]')!;
+        expect(pinned).toBeTruthy();
+        shadow.querySelector('.bar')!.dispatchEvent(new MouseEvent('mouseenter'));
+        pinned.dispatchEvent(new MouseEvent('mouseenter'));
+        pinned.focus();
+        expect(toggle.getAttribute('aria-expanded')).toBe('false');
+        expect(pinned.closest('.capsule-pinned')).toBeTruthy();
+        toggle.dispatchEvent(new MouseEvent('mouseenter'));
+        expect(toggle.getAttribute('aria-expanded')).toBe('true');
+        expect(shadow.querySelectorAll('[data-action="reader"]')).toHaveLength(1);
+    });
+
+    it('copies the typed matching Prompt and reply through the actual toolbar trigger when the Prompt is offscreen', async () => {
+        vi.mocked(copyTextToClipboard).mockClear();renderTurn();document.querySelector('[data-message-author-role="user"]')!.closest('article')!.remove();
+        const {orchestrator,adapter}=createHarness();vi.spyOn(adapter,'getMarkdownParserAdapter').mockReturnValue(new ChatGPTAdapter().getMarkdownParserAdapter());orchestrator.init();await vi.waitFor(()=>expect(toolbarHosts()).toHaveLength(1));
+        clickPromptReplyHoverAction();
+        await vi.waitFor(()=>expect(copyTextToClipboard).toHaveBeenCalledOnce());expect(copyTextToClipboard).toHaveBeenCalledWith('## Question\n\nPrompt\n\n## AI Reply\n\nFirst complete answer');
+    });
+    it('refuses to copy if the paired Prompt changes during preparation',async()=>{
+        vi.mocked(copyTextToClipboard).mockClear();vi.mocked(showToast).mockClear();renderTurn();const {orchestrator,source}=createHarness();orchestrator.init();await vi.waitFor(()=>expect(toolbarHosts()).toHaveLength(1));
+        let finish!:(item:unknown)=>void;vi.spyOn(orchestrator as any,'prepareCurrentReaderItemForElement').mockImplementation(()=>new Promise(resolve=>{finish=resolve;}));
+        clickPromptReplyHoverAction();
+        source.publish({...SNAPSHOT,revision:2,rounds:[{...SNAPSHOT.rounds[0],userPrompt:'Edited prompt'}]});finish({id:'item',userPrompt:'Prompt',content:'First complete answer',meta:{assistantMessageId:'m1'}});
+        await vi.waitFor(()=>expect(showToast).toHaveBeenCalledWith(expect.objectContaining({tone:'error'})));expect(copyTextToClipboard).not.toHaveBeenCalled();
+    });
+    it('refreshes mounted toolbars after visibility/pin settings change without hiding the official controls', async () => {
+        renderTurn();const {orchestrator}=createHarness();orchestrator.init();await vi.waitFor(()=>expect(toolbarHosts()).toHaveLength(1));
+        orchestrator.setBehaviorFlags({messageControls:{bookmark_toggle:true,copy_markdown:false,copy_prompt_reply:true,reader:true,export:true},pinnedMessageControls:['copy_prompt_reply'],showMessageTimestamp:false,showCopyPng:false});
+        await vi.waitFor(()=>expect(toolbarHosts()).toHaveLength(1));const shadow=toolbarHosts()[0].shadowRoot!;expect(shadow.querySelector('[data-action="copy_markdown"]')).toBeNull();expect(shadow.querySelector('time')).toBeNull();expect(shadow.querySelector('[data-action="copy_prompt_reply"]')).toBeNull();expect(document.querySelector('[data-testid="copy-turn-action-button"]')).toBeTruthy();
+    });
+
     afterEach(() => {
         for (const harness of harnesses) {
             harness.orchestrator.dispose();
@@ -400,4 +497,9 @@ describe('MessageToolbarOrchestrator Surface-driven official toolbar lifecycle',
         expect(document.querySelector('[data-testid="stop-button"]')).toBeTruthy();
         expect(document.querySelector('[data-testid="copy-turn-action-button"]')).toBeTruthy();
     });
+});
+
+it('copies raw reply links through the actual Prompt+Reply trigger when link preservation is enabled',async()=>{
+    vi.mocked(copyTextToClipboard).mockClear();renderTurn();document.querySelector('.content')!.innerHTML='<p>Visit <a href="https://example.com">Example</a>.</p>';
+    const {orchestrator,adapter}=createHarness();vi.spyOn(adapter,'getMarkdownParserAdapter').mockReturnValue(new ChatGPTAdapter().getMarkdownParserAdapter());orchestrator.setContentCleanupSettings({preserveLinks:true,includeCodeBlocks:true});orchestrator.init();await vi.waitFor(()=>expect(toolbarHosts()).toHaveLength(1));clickPromptReplyHoverAction();await vi.waitFor(()=>expect(copyTextToClipboard).toHaveBeenCalledOnce());expect(vi.mocked(copyTextToClipboard).mock.calls[0][0]).toContain('[Example](https://example.com)');
 });

@@ -13,6 +13,8 @@ import { backgroundStorageQueue } from '../../../drivers/background/storage/asyn
 import { localStoragePort } from '../../../drivers/background/storage/localStoragePort';
 import { browser, browserCompat } from '../../../drivers/shared/browser';
 import { isChatGPTPageUrl } from '../../../contracts/chatgptHosts';
+import { handleAnnotationDraftRequest } from './annotationDrafts';
+import { decodeHighlightBundle, highlightStorageKey } from '../../../contracts/highlights';
 
 type HandlerResult = { response: ExtResponse };
 const pendingNavigationByTab = new Map<number, ReaderAnnotationNavigatePayload>();
@@ -118,6 +120,8 @@ export async function consumeReaderAnnotationNavigationIntent(tabId: number, url
 
 export async function handleReaderAnnotationRequest(request: ExtRequest): Promise<HandlerResult | null> {
     if (!isAnnotationRequest(request)) return null;
+    const draft = await handleAnnotationDraftRequest(request);
+    if (draft) return draft;
 
     switch (request.type) {
         case 'annotations:list': {
@@ -204,10 +208,25 @@ export async function handleReaderAnnotationRequest(request: ExtRequest): Promis
                 ? document.lastKnownUrl
                 : `https://chatgpt.com/c/${encodeURIComponent(document.conversationId)}`;
             try {
-                const tabId = await createTab(lastKnownUrl);
+                let assistantMessageId: string | undefined;
+                if (annotationId.startsWith('highlight:')) {
+                    const key = highlightStorageKey(document);
+                    const raw = await localStoragePort.get(key);
+                    assistantMessageId = decodeHighlightBundle(raw[key], document)?.highlights
+                        .find(record => record.id === annotationId.slice('highlight:'.length))?.target.assistantMessageId;
+                } else {
+                    assistantMessageId = (await readBundle(document)).annotations
+                        .find(record => record.id === annotationId)?.target.assistantMessageId;
+                }
+                const targetUrl = new URL(lastKnownUrl);
+                targetUrl.hash = '';
+                // Ask the host to materialize this reply itself; no extension
+                // conversation fetch or whole-history scan is needed.
+                if (assistantMessageId) targetUrl.searchParams.set('message', assistantMessageId);
+                const tabId = await createTab(targetUrl.toString());
                 if (tabId === null) return { response: err(request.id, request.type, 'SOURCE_UNAVAILABLE', 'Could not open the conversation tab') };
                 // Opening the source succeeded; focus persistence is best-effort.
-                try { await savePendingIntent(tabId, { document, annotationId }); } catch { /* Keep the opened tab. */ }
+                try { await savePendingIntent(tabId, { document, annotationId, ...(assistantMessageId ? { assistantMessageId } : {}) }); } catch { /* Keep the opened tab. */ }
                 return { response: ok(request.id, request.type, { tabId }) };
             } catch (error) {
                 return { response: err(request.id, request.type, 'SOURCE_UNAVAILABLE', error instanceof Error ? error.message : 'Could not open the conversation tab') };

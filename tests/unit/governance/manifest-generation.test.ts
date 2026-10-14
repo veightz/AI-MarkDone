@@ -2,12 +2,10 @@ import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { extensionMeta } from '../../../config/extension/meta';
-import { extensionAssets } from '../../../config/extension/assets';
-import { SUPPORTED_HOST_PATTERNS } from '../../../config/extension/hosts';
 import { extensionTargets } from '../../../config/extension/targets';
 import { GOOGLE_DRIVE_CHROME_EXTENSION_CLIENT_ID, GOOGLE_DRIVE_WEB_AUTH_CLIENT_ID, cloudBackupTargets } from '../../../config/extension/cloudBackup';
 import { CHROME_WEB_STORE_EXTENSION_ID, CHROME_WEB_STORE_PUBLIC_KEY } from '../../../config/extension/chromeWebStore';
-import { buildManifest, deriveChromeExtensionIdFromManifestKey } from '../../../scripts/generate-manifest';
+import { buildManifest, deriveChromeExtensionIdFromManifestKey, isExtensionTarget } from '../../../scripts/generate-manifest';
 
 function readJson<T>(file: string): T {
     return JSON.parse(readFileSync(resolve(process.cwd(), file), 'utf-8')) as T;
@@ -45,7 +43,8 @@ describe('extension manifest generation', () => {
 
         expect(extensionMeta.version).toBe(pkg.version);
         expect(extensionMeta.homepageUrl).toBe(pkg.homepage);
-        expect(Object.keys(extensionTargets).sort()).toEqual(['chrome', 'firefox', 'safari']);
+        expect(Object.keys(extensionTargets).sort()).toEqual(['chrome', 'firefox']);
+        expect(isExtensionTarget('safari')).toBe(false);
 
         for (const target of Object.keys(extensionTargets) as Array<keyof typeof extensionTargets>) {
             const manifest = buildManifest(target) as any;
@@ -61,7 +60,6 @@ describe('extension manifest generation', () => {
         withGoogleClientId(undefined, () => {
             expect(buildManifest('chrome')).toEqual(readJson('manifest.chrome.json'));
             expect(buildManifest('firefox')).toEqual(readJson('manifest.firefox.json'));
-            expect(buildManifest('safari')).toEqual(readJson('manifest.safari.json'));
         });
     });
 
@@ -69,7 +67,6 @@ describe('extension manifest generation', () => {
         withGoogleClientId(undefined, () => {
             const chrome = buildManifest('chrome') as any;
             const firefox = buildManifest('firefox') as any;
-            const safari = buildManifest('safari') as any;
 
             expect(chrome.key).toBe(CHROME_WEB_STORE_PUBLIC_KEY);
             expect(deriveChromeExtensionIdFromManifestKey(chrome.key)).toBe(CHROME_WEB_STORE_EXTENSION_ID);
@@ -87,10 +84,6 @@ describe('extension manifest generation', () => {
             expect(firefox.permissions).toContain('identity');
             expect(firefox.permissions).toContain('https://www.googleapis.com/*');
             expect(firefox.permissions).toContain('https://oauth2.googleapis.com/*');
-            expect(safari.oauth2).toBeUndefined();
-            expect(safari.permissions).not.toContain('identity');
-            expect(safari.permissions).not.toContain('https://www.googleapis.com/*');
-            expect(safari.permissions).not.toContain('https://oauth2.googleapis.com/*');
         });
     });
 
@@ -165,36 +158,7 @@ describe('extension manifest generation', () => {
         });
     });
 
-    it('defines safari as a generated MV2 WebExtension target', () => {
-        const safari = buildManifest('safari') as any;
 
-        expect(safari.manifest_version).toBe(2);
-        expect(safari.permissions).toEqual([
-            'clipboardWrite',
-            'storage',
-            ...SUPPORTED_HOST_PATTERNS,
-        ]);
-        expect(safari.background).toEqual({ scripts: [extensionAssets.backgroundEntry] });
-        expect(safari.browser_action?.default_icon).toEqual(extensionAssets.icons);
-        expect(safari.web_accessible_resources).toContain('icons/icon128.png');
-        expect(safari.web_accessible_resources).toContain('icons/icon128_gray.png');
-        expect(safari.web_accessible_resources).toContain('icons/about_avatar.png');
-        expect(safari.web_accessible_resources).toContain('icons/mappamory-about-en-4.6.0.png');
-        expect(safari.web_accessible_resources).toContain('icons/mappamory-promo-poster.png');
-        expect(safari.web_accessible_resources).toContain('icons/mappamory-record-map-context.png');
-        expect(safari.web_accessible_resources).toContain('content-features.js');
-        expect(safari.web_accessible_resources).toContain('content-feature-chunks/*.js');
-        expect(safari.web_accessible_resources).toContain('export-renderer.html');
-        expect(safari.web_accessible_resources).not.toContain('export-renderer.js');
-        expect(safari.web_accessible_resources).not.toContain('export-renderer-chunks/*.js');
-        expect(safari.web_accessible_resources).not.toContain('png-encoder-worker.js');
-        expect(safari.web_accessible_resources).not.toContain('icons/*.png');
-        expect(safari.web_accessible_resources).not.toContain('icons/bmc_qr.png');
-        expect(safari.web_accessible_resources).not.toContain('icons/qq-group-invite.png');
-        expect(safari.web_accessible_resources).not.toContain('icons/wechat_qr.png');
-        expect(safari.web_accessible_resources).not.toContain('icons/xiaohongshu-group-invite.png');
-        expect(safari.web_accessible_resources).not.toContain('icons/xiaohongshu_card.png');
-    });
 
     it('keeps a stable Firefox Gecko id for identity redirect URLs', () => {
         const chrome = buildManifest('chrome') as any;

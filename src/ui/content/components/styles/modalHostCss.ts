@@ -1,6 +1,7 @@
 import { getInputFieldCss } from './inputFieldCss';
 import { getSharedBackdropMotionCss } from './sharedBackdropMotionCss';
 import { getModalMotionCss } from './modalMotionCss';
+import { getSurfaceMaterialCss } from './surfaceMaterialCss';
 
 export function getModalHostShellCss(): string {
     return `
@@ -18,9 +19,7 @@ ${getInputFieldCss()}
   display: grid;
   place-items: center;
   padding: var(--aimd-space-5);
-  background: color-mix(in srgb, var(--aimd-overlay-bg) 48%, transparent);
-  backdrop-filter: var(--aimd-overlay-backdrop);
-  -webkit-backdrop-filter: var(--aimd-overlay-backdrop);
+  background: var(--aimd-workspace-scrim);
   pointer-events: auto;
 }
 
@@ -28,18 +27,14 @@ ${getInputFieldCss()}
   --_modal-accent: var(--aimd-interactive-primary);
   --_modal-accent-soft: color-mix(in srgb, var(--aimd-interactive-primary) 12%, transparent);
   --_modal-accent-border: color-mix(in srgb, var(--aimd-interactive-primary) 24%, var(--aimd-border-default));
-  --_modal-width: min(520px, calc(100% - var(--aimd-space-5) * 2));
-  --_modal-max-height: min(680px, calc(100% - var(--aimd-space-5) * 2));
+  --_modal-width: min(var(--_modal-content-max-width, 520px), 100%);
+  --_modal-max-height: min(var(--_modal-content-max-height, 680px), calc(100dvh - var(--aimd-space-5) * 2));
   --_modal-icon-size: var(--aimd-size-control-action-panel);
   --_modal-content-gap: calc(var(--aimd-space-3) + var(--aimd-space-1) / 2);
   --_modal-content-padding: var(--aimd-space-5);
   width: var(--_modal-width);
   max-width: var(--_modal-width);
   max-height: var(--_modal-max-height);
-  border-radius: var(--aimd-radius-2xl);
-  border: 1px solid color-mix(in srgb, var(--aimd-border-default) 80%, transparent);
-  background: color-mix(in srgb, var(--aimd-bg-primary) 98%, transparent);
-  box-shadow: var(--aimd-shadow-xl);
   overflow: hidden;
   display: flex;
   flex-direction: column;
@@ -70,7 +65,6 @@ ${getInputFieldCss()}
   gap: var(--aimd-panel-header-gap);
   padding: var(--aimd-panel-header-padding-block) var(--aimd-panel-header-padding-inline);
   border-bottom: 1px solid color-mix(in srgb, var(--aimd-border-default) 74%, transparent);
-  background: color-mix(in srgb, var(--aimd-bg-secondary) 90%, transparent);
 }
 
 .mock-modal__title-wrap,
@@ -97,7 +91,7 @@ ${getInputFieldCss()}
   font-size: var(--aimd-modal-title-size);
   font-weight: var(--aimd-modal-title-weight);
   line-height: var(--aimd-panel-title-line-height);
-  color: var(--_modal-accent);
+  color: var(--aimd-text-primary);
 }
 
 .mock-modal__kind-icon {
@@ -149,10 +143,6 @@ ${getInputFieldCss()}
   color: var(--aimd-button-icon-text-hover);
 }
 
-.mock-modal__button--secondary:hover {
-  background: var(--aimd-button-secondary-hover);
-}
-
 .mock-modal__button--secondary:active {
   background: color-mix(in srgb, var(--aimd-button-secondary-hover) 78%, var(--aimd-button-icon-active));
 }
@@ -177,17 +167,12 @@ ${getInputFieldCss()}
   display: grid;
   gap: var(--_modal-content-gap);
   padding: var(--_modal-content-gap);
-  border-radius: var(--aimd-radius-2xl);
-  border: 1px solid color-mix(in srgb, var(--aimd-border-default) 68%, transparent);
-  background: color-mix(in srgb, var(--aimd-bg-secondary) 56%, transparent);
 }
 
 .merge-section__heading {
   font-size: var(--aimd-text-xs);
   line-height: 1.5;
   font-weight: 600;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
   color: var(--aimd-text-secondary);
 }
 
@@ -206,9 +191,6 @@ ${getInputFieldCss()}
 .merge-summary-item {
   min-width: 0;
   padding: var(--aimd-space-3) var(--_modal-content-gap);
-  border-radius: var(--aimd-radius-xl);
-  border: 1px solid color-mix(in srgb, var(--aimd-border-default) 74%, transparent);
-  background: color-mix(in srgb, var(--aimd-bg-secondary) 88%, transparent);
   display: grid;
   gap: var(--aimd-space-1);
 }
@@ -235,9 +217,6 @@ ${getInputFieldCss()}
 
 .merge-entry {
   padding: var(--_modal-content-gap) var(--aimd-space-4);
-  border-radius: var(--aimd-radius-xl);
-  border: 1px solid color-mix(in srgb, var(--aimd-border-default) 74%, transparent);
-  background: color-mix(in srgb, var(--aimd-bg-primary) 92%, transparent);
   display: grid;
   gap: var(--aimd-space-2);
 }
@@ -285,11 +264,6 @@ ${getInputFieldCss()}
   width: 100%;
   min-height: var(--aimd-size-control-action-panel);
   padding: calc(var(--aimd-space-2) + var(--aimd-space-1) / 2) var(--aimd-space-3);
-  border-radius: var(--aimd-radius-lg);
-  border: 1px solid var(--aimd-border-default);
-  background: color-mix(in srgb, var(--aimd-bg-primary) 92%, transparent);
-  color: var(--aimd-text-primary);
-  outline: none;
 }
 
 .mock-modal__error {
@@ -300,19 +274,19 @@ ${getInputFieldCss()}
 
 .mock-modal__footer {
   justify-content: flex-end;
+  flex-wrap: wrap;
   gap: var(--aimd-panel-footer-gap);
   padding: var(--aimd-panel-footer-padding-block) var(--aimd-panel-footer-padding-inline);
   border-top: 1px solid color-mix(in srgb, var(--aimd-border-default) 74%, transparent);
-  background: color-mix(in srgb, var(--aimd-bg-secondary) 86%, transparent);
 }
 
 .mock-modal__button {
+  flex: 0 0 auto;
+  max-width: 100%;
+  white-space: normal;
+  overflow-wrap: anywhere;
   min-height: var(--aimd-size-control-action-panel);
   padding: 0 var(--aimd-space-4);
-  border-radius: var(--aimd-radius-full);
-  border: 1px solid var(--aimd-border-default);
-  background: var(--aimd-button-secondary-bg);
-  color: var(--aimd-button-secondary-text);
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -321,39 +295,13 @@ ${getInputFieldCss()}
   font-weight: var(--aimd-font-medium);
 }
 
-.mock-modal__button--primary {
-  background: var(--aimd-interactive-primary);
-  border-color: transparent;
-  color: var(--aimd-text-on-primary);
-}
-
-.mock-modal__button--primary:hover {
-  background: var(--aimd-interactive-primary-hover);
-}
-
-.mock-modal__button--primary:active {
-  background: var(--aimd-interactive-primary-hover);
-}
-
-.mock-modal__button--danger {
-  border-color: color-mix(in srgb, var(--aimd-color-danger) 34%, transparent);
-  color: var(--aimd-color-danger);
-}
-
-.mock-modal__button--danger:hover {
-  background: var(--aimd-feedback-danger-bg);
-}
-
-.mock-modal__button--danger:active {
-  background: color-mix(in srgb, var(--aimd-color-danger) 16%, transparent);
-}
-
 .mock-modal__close:focus-visible,
 .mock-modal__button:focus-visible,
 .mock-modal__input:focus-visible {
   outline: 2px solid var(--aimd-focus-ring);
   outline-offset: 2px;
 }
+${getSurfaceMaterialCss()}
 `;
 }
 

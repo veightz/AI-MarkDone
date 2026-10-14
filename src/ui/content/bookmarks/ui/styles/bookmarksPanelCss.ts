@@ -4,6 +4,7 @@ import { getLibraryWorkspaceCss } from './libraryWorkspaceCss';
 import { getInputFieldCss } from '../../../components/styles/inputFieldCss';
 import { getPanelChromeCss } from '../../../components/styles/panelChromeCss';
 import { getBookmarksWorkspaceResponsiveCss } from './bookmarksWorkspaceResponsiveCss';
+import { getSurfaceMaterialCss } from '../../../components/styles/surfaceMaterialCss';
 
 export function getBookmarksPanelCss(): string {
     return `
@@ -35,5 +36,6 @@ ${layoutCss}
 ${getBookmarksWorkspaceResponsiveCss()}
 ${getLibraryWorkspaceCss()}
 ${workspaceMaterials}
+${getSurfaceMaterialCss()}
 `;
 }

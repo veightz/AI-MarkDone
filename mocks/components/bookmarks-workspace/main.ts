@@ -1,7 +1,11 @@
+import { createSettingsFile, mergePortableSettings } from '../../../src/core/settings/portableSettings';
+import { version as buildVersion } from '../../../package.json';
+import { previewSettingsImport, fingerprintSettings } from '../../../src/services/settings/settingsTransfer';
 import '../browserExtensionMock';
 import { installHighlightFixture } from '../highlightFixture';
 
-import { DEFAULT_SETTINGS } from '../../../src/core/settings/types';
+import { DEFAULT_SETTINGS, type SettingsCategory } from '../../../src/core/settings/types';
+import { planSetCategory } from '../../../src/services/settings/settingsService';
 import type { Bookmark, Folder } from '../../../src/core/bookmarks/types';
 import type { SiteAdapter } from '../../../src/drivers/content/adapters/base';
 import { createAppearanceSnapshot } from '../../../src/style/appearance';
@@ -50,16 +54,38 @@ const bookmarks: Bookmark[] = [
     })),
 ];
 
+let fixtureSettings = structuredClone(DEFAULT_SETTINGS);
+let fixtureSettingsRecovery: ReturnType<typeof createSettingsFile> | null = null;
+const fixtureSnapshots = Array.from({ length: 6 }, (_, index) => ({
+    snapshotId: `visual-snapshot-${index + 1}`,
+    name: `AI-MarkDone-Library-2026-10-${String(8 - index).padStart(2, '0')}-research-and-annotations.json`,
+    createdAt: `2026-10-${String(8 - index).padStart(2, '0')}T09:30:00.000Z`,
+    size: 42_000 + index * 512,
+}));
 const browserApi = (globalThis as typeof globalThis & { browser: any }).browser;
-browserApi.runtime.sendMessage = async (request: { v: number; id: string; type: string }) => {
+browserApi.runtime.sendMessage = async (request: { v: number; id: string; type: string; payload?: { category: SettingsCategory; value: unknown; fileText?: string; expectedFingerprint?: string; categories?: string[] } }) => {
     let data: unknown = {};
     switch (request.type) {
+        case 'settings:export': data = {file:createSettingsFile(fixtureSettings,'6.0.0')};break;
+        case 'settings:previewImport': data = {preview:await previewSettingsImport(fixtureSettings,request.payload?.fileText??'')};break;
+        case 'settings:getRecovery': data = {file:fixtureSettingsRecovery};break;
+        case 'settings:applyImport': {
+            if (new URLSearchParams(window.location.search).get('view')?.startsWith('settings-transfer-')) {
+                return { v: request.v, id: request.id, type: request.type, ok: false, error: { code: 'VISUAL_PREVIEW_ONLY', message: 'This visual fixture previews settings without applying them.' } };
+            }
+            if(request.payload?.expectedFingerprint!==await fingerprintSettings(fixtureSettings))return {v:request.v,id:request.id,type:request.type,ok:false,error:{code:'CONFLICT',message:'CONFLICT'}};
+            const preview=await previewSettingsImport(fixtureSettings,request.payload?.fileText??'');fixtureSettingsRecovery=createSettingsFile(fixtureSettings,'6.0.0');fixtureSettings=mergePortableSettings(fixtureSettings,preview.file.settings,request.payload?.categories??[]);data={applied:true};break;
+        }
         case 'settings:getAll':
-            data = { settings: structuredClone(DEFAULT_SETTINGS) };
+            data = { settings: structuredClone(fixtureSettings),capabilities:{appVersion:buildVersion,settingsVersion:DEFAULT_SETTINGS.version,settingsFileFormatVersion:1,buttonsPreferences:true} };
             break;
-        case 'settings:setCategory':
-            data = { category: 'appearance' };
+        case 'settings:setCategory': {
+            const { category, value } = request.payload!;
+            fixtureSettings = planSetCategory(fixtureSettings, category, value).next;
+            stepper?.setPinnedActions(fixtureSettings.chatgptBehavior.pinnedPageControls);
+            data = { category };
             break;
+        }
         case 'bookmarks:list':
             data = { bookmarks };
             break;
@@ -90,6 +116,26 @@ browserApi.runtime.sendMessage = async (request: { v: number; id: string; type: 
                 lastBackupAt: new Date(now).toISOString(),
             };
             break;
+        case 'cloudBackup:listSnapshots':
+            data = { snapshots: fixtureSnapshots };
+            break;
+        case 'cloudBackup:previewRestore':
+            data = {
+                snapshot: { snapshotId: fixtureSnapshots[0]!.snapshotId, payloadHash: `sha256:${'a'.repeat(64)}` },
+                plan: { bookmarksToUpsert: [{}, {}, {}], duplicateCount: 12, localOnlyCount: 7, conflictCount: 2 },
+                library: {
+                    bookmarkFolders: { added: 2, duplicate: 1, conflict: 0 },
+                    highlights: { added: 18, duplicate: 5, conflict: 2 },
+                    annotations: { added: 4, duplicate: 0, conflict: 1 },
+                    folders: { added: 1, duplicate: 1, conflict: 0 },
+                    conversations: { added: 3, duplicate: 0, conflict: 0 },
+                },
+            };
+            break;
+        case 'cloudBackup:applyRestore':
+        case 'cloudBackup:deleteSnapshot':
+        case 'cloudBackup:backupNow':
+            return { v: request.v, id: request.id, type: request.type, ok: false, error: { code: 'VISUAL_PREVIEW_ONLY', message: 'This visual fixture only previews backups; it does not write or delete data.' } };
         default:
             data = {};
     }
@@ -134,7 +180,7 @@ const adapter = {
 } as unknown as SiteAdapter;
 
 const controller = new BookmarksPanelController(adapter);
-const panel = new BookmarksPanel(controller, { show: async () => undefined, hide: () => undefined });
+const panel = new BookmarksPanel(controller, { show: async () => undefined, hide: () => undefined },{renderFormulaPreview:async options=>(await import('../../../src/runtimes/export-renderer/formulaMathJax')).renderFormulaSvgAsset({...options,fontSizePx:options.fontSizePx??36})});
 let stepper: ChatGPTMessageStepperController | null = null;
 const fixtureParams = new URLSearchParams(window.location.search);
 let variant: VisualHarnessVariant = { theme: fixtureParams.get('theme') === 'dark' ? 'dark' : 'light', locale: fixtureParams.get('locale') === 'zh_CN' ? 'zh_CN' : 'en' };
@@ -177,7 +223,71 @@ async function showSettingsAndCloudBackup(host: HTMLElement): Promise<void> {
     cloudBackup?.scrollIntoView({ block: 'center' });
 }
 
-async function showInfoTab(host: HTMLElement, tabId: 'about' | 'feedback' | 'mappamory'): Promise<void> {
+function findWorkflowElement<T extends Element>(root: ShadowRoot, selector: string): T | null {
+    const direct = root.querySelector<T>(selector);
+    if (direct) return direct;
+    for (const element of root.querySelectorAll<HTMLElement>('*')) {
+        if (!element.shadowRoot) continue;
+        const nested = findWorkflowElement<T>(element.shadowRoot, selector);
+        if (nested) return nested;
+    }
+    return null;
+}
+
+async function waitForElement<T extends Element>(root: ShadowRoot, selector: string): Promise<T> {
+    for (let attempt = 0; attempt < 100; attempt += 1) {
+        const element = findWorkflowElement<T>(root, selector);
+        if (element) return element;
+        await nextTask();
+    }
+    throw new Error(`Missing workflow fixture control: ${selector}`);
+}
+
+async function showDataWorkflow(host: HTMLElement, view: string): Promise<void> {
+    const shadow = host.shadowRoot!;
+    shadow.querySelector<HTMLButtonElement>('[data-action="set-bookmarks-tab"][data-tab="settings"]')!.click();
+    await nextTask();
+    shadow.querySelector<HTMLButtonElement>('.settings-category-navigation [data-category="data"]')!.click();
+    await nextTask();
+    if (view.startsWith('settings-transfer-')) {
+        const transfer = await waitForElement<HTMLElement>(shadow, '[data-role="settings-transfer"]');
+        transfer.scrollIntoView({ block: 'center' });
+        const transferShadow = transfer.shadowRoot!;
+        if (view === 'settings-transfer-preview') {
+            const recovery = structuredClone(DEFAULT_SETTINGS);
+            recovery.language = 'en';
+            recovery.appearance.themeMode = 'dark';
+            recovery.reader.bodyFontSizePx = 20;
+            recovery.behavior.showWordCount = false;
+            fixtureSettingsRecovery = createSettingsFile(recovery, '6.0.0');
+            (await waitForElement<HTMLButtonElement>(transferShadow, '[data-action="settingsRestore"]:not(:disabled)')).click();
+            await waitForElement(transferShadow, '[data-action="settingsImportConfirm"]');
+        } else {
+            (await waitForElement<HTMLButtonElement>(transferShadow, '[data-action="settingsExport"]:not(:disabled)')).click();
+            await waitForElement(transferShadow, '[data-action="settingsExportConfirm"]');
+        }
+        return;
+    }
+    const trigger = view === 'cloud-settings' || view === 'cloud-manager'
+        ? '[data-role="cloud-backup-google-drive-settings"]'
+        : '[data-role="cloud-backup-google-drive-restore"]';
+    (await waitForElement<HTMLButtonElement>(shadow, trigger)).click();
+    if (view === 'cloud-manager') {
+        const settings = await waitForElement<HTMLElement>(shadow, '.cloud-backup-settings-modal__actions');
+        settings.querySelectorAll<HTMLButtonElement>('button')[1]!.click();
+        await waitForElement(shadow, '.cloud-backup-manager-item');
+    } else if (view === 'cloud-merge') {
+        const option = await waitForElement<HTMLElement>(shadow, '.cloud-backup-snapshot-option');
+        option.closest('.mock-modal')!.querySelector<HTMLButtonElement>('[data-action="modal-confirm"]')!.click();
+        await waitForElement(shadow, '.import-merge-review');
+    } else if (view === 'cloud-snapshots') {
+        await waitForElement(shadow, '.cloud-backup-snapshot-option');
+    } else {
+        await waitForElement(shadow, '.cloud-backup-settings-modal__status-card');
+    }
+}
+
+async function showInfoTab(host: HTMLElement, tabId: 'features' | 'about' | 'feedback' | 'mappamory'): Promise<void> {
     const shadow = host.shadowRoot!;
     shadow.querySelector<HTMLButtonElement>(`.tab-btn[data-tab-id="${tabId}"]`)?.click();
     await nextTask();
@@ -200,11 +310,11 @@ async function applyVariant(next: VisualHarnessVariant): Promise<void> {
 
     const zh = next.locale === 'zh_CN';
     document.querySelector<HTMLElement>('[data-role="fixture-title"]')!.textContent = zh
-        ? '书签工作区入口'
-        : 'Bookmarks workspace entry';
+        ? '管理面板入口'
+        : 'Management panel entry';
     document.querySelector<HTMLElement>('[data-role="fixture-description"]')!.textContent = zh
-        ? '真实页面控制按钮会打开生产环境中的书签面板。'
-        : 'The real page control opens the production Bookmarks panel.';
+        ? '真实页面控件会打开资料库与设置。'
+        : 'The real page control opens Library and Settings.';
 
     controller.setAppearance(createAppearanceSnapshot(next.theme));
     stepper = new ChatGPTMessageStepperController(adapter, {
@@ -224,7 +334,11 @@ async function applyVariant(next: VisualHarnessVariant): Promise<void> {
 
     const host = await openFromPageControl();
     const requestedView = fixtureParams.get('view');
-    if (requestedView === 'library' || requestedView === 'settings') {
+    if (requestedView?.startsWith('cloud-') || requestedView?.startsWith('settings-transfer-')) {
+        await showDataWorkflow(host, requestedView);
+    } else if (requestedView === 'features') {
+        await showInfoTab(host, 'features');
+    } else if (requestedView === 'library' || requestedView === 'settings') {
         const tabId = requestedView === 'library' ? 'bookmarks' : 'settings';
         const button = host.shadowRoot?.querySelector<HTMLButtonElement>(`[data-action="set-bookmarks-tab"][data-tab="${tabId}"]`);
         if (!button) throw new Error(`Missing workspace view trigger: ${requestedView}`);
@@ -237,6 +351,10 @@ async function applyVariant(next: VisualHarnessVariant): Promise<void> {
         await showInfoTab(host, next.theme === 'light' ? 'feedback' : 'mappamory');
     } else if (next.theme === 'dark') {
         await showSettingsAndCloudBackup(host);
+    }
+    if (fixtureParams.get('fullscreen') === '1') {
+        host.shadowRoot?.querySelector<HTMLButtonElement>('[data-action="workspace-fullscreen"]')?.click();
+        await nextTask();
     }
 }
 

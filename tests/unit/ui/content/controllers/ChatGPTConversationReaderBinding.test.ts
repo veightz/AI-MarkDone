@@ -77,6 +77,41 @@ function createSource(initialState: any) {
 }
 
 describe('ChatGPTConversationReaderBinding', () => {
+    it.each(['replace', 'remove'])('refreshes the open Reader when only preserved source links %s', async (change) => {
+        const baseline = readyConversationState(buildState(1).snapshot);
+        const state = { ...baseline, snapshot: {
+            ...baseline.snapshot!,
+            turns: [{ ...baseline.snapshot!.turns[0]!, assistantSourceMarkdown: 'Read [paper](https://example.com/old)' }],
+        } };
+        const source = createConversationContentSource(state);
+        const currentItem = { ...buildReaderItem(1), sourceContent: state.snapshot!.turns[0]!.assistantSourceMarkdown };
+        const readerPanel = {
+            isShowingConversationReader: vi.fn(() => true),
+            getItemsSnapshot: vi.fn(() => [currentItem]),
+            appendItem: vi.fn(),
+            replaceItems: vi.fn(async () => undefined),
+            hide: vi.fn(),
+        } as any;
+        const binding = new ChatGPTConversationReaderBinding({
+            adapter: { getPlatformId: () => 'chatgpt' } as any,
+            source, readerPanel, pageUrl: () => 'https://chatgpt.com/c/conv-1',
+        });
+        binding.init();
+
+        const sourceContent = change === 'replace' ? 'Read [paper](https://example.com/new)' : undefined;
+        source.publish({ ...state, snapshot: {
+            ...state.snapshot!, contentToken: 'source-only-update',
+            turns: [{ ...state.snapshot!.turns[0]!, assistantSourceMarkdown: sourceContent }],
+        } });
+
+        await vi.waitFor(() => expect(readerPanel.replaceItems).toHaveBeenCalledOnce());
+        expect(readerPanel.replaceItems).toHaveBeenCalledWith(
+            [expect.objectContaining({ content: 'Answer 1', sourceContent })],
+            { preserveCurrentIdentity: true },
+        );
+        binding.dispose();
+    });
+
     it('appends a completed canonical successor from subscription state without semantic acquisition', async () => {
         const source = createSource(buildState(1));
         const currentItems = [buildReaderItem(1)];

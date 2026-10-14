@@ -1,258 +1,157 @@
 <div align="center">
-  <img src="./public/icons/icon128.png" alt="AI-MarkDone Logo" width="100" height="100">
-  <h1>AI-MarkDone — ChatGPT Productivity Suite</h1>
+  <img src="./public/icons/icon128.png" alt="AI-MarkDone" width="88" height="88">
+  <h1>AI-MarkDone</h1>
+  <p>让 ChatGPT 的内容更好读，也更方便整理。</p>
   <p>
-    <a href="https://chromewebstore.google.com/detail/ai-markdone/bmdhdihdbhjbkfaaainidcjbgidkbeoh">
-      <img src="https://img.shields.io/chrome-web-store/v/bmdhdihdbhjbkfaaainidcjbgidkbeoh?label=Chrome%20Web%20Store&logo=googlechrome&logoColor=white" alt="Chrome Web Store">
-    </a>
-    <a href="./LICENSE">
-      <img src="https://img.shields.io/github/license/zhaoliangbin42/AI-MarkDone?label=License" alt="License">
-    </a>
-    <img src="https://img.shields.io/badge/Version-6.0.0-10A37F" alt="Version 6.0.0">
-    </br>
-    <img src="https://img.shields.io/badge/Browsers-Chrome%20%7C%20Firefox-10A37F" alt="Browsers">
-    <img src="https://img.shields.io/badge/Primary%20Platform-ChatGPT-10A37F" alt="Primary Platform">
-    <a href="https://github.com/zhaoliangbin42/AI-MarkDone">
-      <img src="https://img.shields.io/github/stars/zhaoliangbin42/AI-MarkDone?style=social" alt="GitHub stars">
-    </a>
+    <a href="https://chromewebstore.google.com/detail/ai-markdone/bmdhdihdbhjbkfaaainidcjbgidkbeoh"><img src="https://img.shields.io/badge/Chrome-Web%20Store-4285F4?style=for-the-badge&amp;logo=googlechrome&amp;logoColor=white" alt="从 Chrome 商店安装"></a>
+    <a href="https://addons.mozilla.org/firefox/addon/ai-markdone/"><img src="https://img.shields.io/badge/Firefox-Add--ons-FF7139?style=for-the-badge&amp;logo=firefoxbrowser&amp;logoColor=white" alt="从 Firefox 商店安装"></a>
   </p>
-  <p><strong>Read, save, export. Stay in flow.</strong></p>
-  <p><em>ChatGPT 消息导航、阅读器、书签、持久化高亮与注释、完整资料库备份，以及 Markdown、PDF 和 PNG 导出。</em></p>
-  <p><strong>全量加载历史消息，告别烦人的滚动增量加载</strong></p>
-  <p>打开长对话后，点击页面右下角的“刷新消息导航”，就能把整段对话的消息加载出来。这样目录条会显示完整内容，阅读器和导出功能也可以直接使用全部消息。</p>
-
-  [官网](https://zhaoliangbin42.github.io/ai-markdone/en/) | 中文文档 | [English](./README.md)
+  <p><a href="https://zhaoliangbin42.github.io/ai-markdone/">官网</a> · <a href="https://zhaoliangbin42.github.io/ai-markdone/manual/">使用文档</a> · <a href="./RELEASE_NOTES.md">更新说明</a> · <a href="https://github.com/zhaoliangbin42/AI-MarkDone/issues">问题反馈</a> · <a href="./README.md">English</a></p>
+  <p>
+    <a href="./LICENSE"><img src="https://img.shields.io/github/license/zhaoliangbin42/AI-MarkDone" alt="MIT License"></a>
+    <a href="https://github.com/zhaoliangbin42/AI-MarkDone/stargazers"><img src="https://img.shields.io/github/stars/zhaoliangbin42/AI-MarkDone?style=flat" alt="GitHub stars"></a>
+  </p>
 </div>
 
-AI-MarkDone 是一个开源 ChatGPT 浏览器扩展，面向长对话全量加载、对话目录导航、阅读、源码级复制、书签整理、Markdown 导出、PDF 导出与 PNG 图片分享。它帮助用户把 ChatGPT 输出整理成可阅读、可复用、可归档的知识内容，同时尽量不打断原本的对话流程。
+AI-MarkDone 是一个免费、开源的 ChatGPT 浏览器扩展，用来阅读长回复、复制公式与代码、标记重点，以及保存和导出有用的内容。常用按钮可以按自己的习惯隐藏或固定。
 
-ChatGPT 的长对话可能采用增量加载，旧消息不会一次性出现在页面中，查看历史内容时常常需要反复滚动和等待。打开对话后，点击页面右下角的“刷新消息导航”，即可加载全部历史消息。之后，目录条会显示完整内容，阅读器和导出功能也可以直接使用整段对话。
+[安装](#安装) · [功能亮点](#功能亮点) · [快速开始](#快速开始) · [常见问题](#常见问题) · [更新日志](#更新日志) · [开发与贡献](#开发与贡献) · [支持项目](#支持项目)
 
-**适合用于：** ChatGPT 阅读模式、消息导航、Markdown 复制、LaTeX 公式复制、公式 PNG/SVG 导出、消息书签、可选 Google Drive 备份、Deep Research 清洗、PDF 导出与可分享的 PNG 截图。
+## 安装
 
----
+| 浏览器 | 下载 |
+| --- | --- |
+| Chrome | [Chrome Web Store][chrome-store] |
+| Firefox | [Firefox Add-ons][firefox-store] |
 
-<p align="center">
-  <img src="imgs/Top.png" style="max-width:600px;width:100%;" />
-</p>
+安装后刷新 ChatGPT 页面即可使用。支持 Chrome 和 Firefox。
 
----
-
-## 🤔 适合谁使用？
-
-- **ChatGPT 长对话不好定位？** 增量加载让旧消息回看更容易出现延迟。
-- **总是找不到刚才那一段？** 滚动很久才能回到关键内容。
-- **需要对话目录？** 希望一边留在原生页面，一边用实时预览快速跳回目标轮次。
-- **需要稳定阅读视图？** 希望一边继续聊天，一边保留清晰上下文。
-- **需要可复用输出？** 想把结果整理成标准 Markdown、PDF，或者适合分享的 PNG 图片。
-- **知识总是散落？** 需要真正能帮你整理内容的书签系统。
-- **Deep Research 输出太乱？** 希望清洗成更适合阅读和复用的结构化内容。
-
-如果这些问题你都遇到过，**AI-MarkDone** 就是为此而做。
-
----
-
-## 🔎 搜索友好摘要
-
-| 需求 | AI-MarkDone 提供什么 |
-| :--- | :--- |
-| ChatGPT 长对话全量加载 | 按需加载完整历史消息，避免为了查看旧消息而反复滚动等待 |
-| ChatGPT 长对话导航 | 可选右侧目录条、右下角上一条/下一条按钮、可选左右方向键导航，以及直接跳转到对应消息 |
-| ChatGPT 阅读模式 | 独立阅读视图、Markdown 渲染与键盘切换 |
-| 复制 ChatGPT 回答为 Markdown | 对公式、代码块、表格、图片与局部选区进行源码级复制 |
-| 导出 ChatGPT 消息 | Markdown、PDF、PNG 与 ZIP 打包导出流程 |
-| 保存重要 AI 回答 | 支持文件夹、预览、回到原文位置的消息书签 |
-| 整理研究笔记 | Deep Research 清洗、公式图片资产、灵动注释与结构化追问输入 |
-
----
-
-## 界面展示
+## 功能亮点
 
 <p align="center">
-  <img src="imgs/Toolbar.png" style="max-width:800px;width:100%;" />
+  <a href="./imgs/readme/reader.zh.png"><img src="./imgs/readme/reader.zh.png" alt="AI-MarkDone 阅读器演示" width="900"></a>
+  <br><sub>阅读器演示，使用示例内容。点击图片可查看原图。</sub>
 </p>
-<p align="center">
-  <img src="imgs/Reading.png" style="max-width:800px;width:100%;" />
-</p>
-<p align="center">
-  <img src="imgs/Bookmark.png" style="max-width:800px;width:100%;" />
-</p>
----
 
-## ✨ 核心功能
+| 功能 | 能做什么 |
+| --- | --- |
+| [消息目录](https://zhaoliangbin42.github.io/ai-markdone/manual/message-navigation/) | 按提问查找回复，悬停预览，切换上一条、下一条消息。 |
+| [阅读器](https://zhaoliangbin42.github.io/ai-markdone/manual/reader/) | 阅读长文、表格、代码和公式，用标题大纲跳转，也可以在独立标签页阅读。 |
+| [Markdown 复制](https://zhaoliangbin42.github.io/ai-markdone/manual/partial-copy/) | 复制整条回复或选中的片段，保留对应的 Markdown 结构；部分代码选区只复制所选内容。 |
+| [公式工具](https://zhaoliangbin42.github.io/ai-markdone/manual/formulas/) | 点击复制 LaTeX，输入时预览公式；可保存 PNG、SVG 图片，也可复制 MathML。 |
+| [注释与高亮](https://zhaoliangbin42.github.io/ai-markdone/manual/annotations/) | 对着原文写意见、标记重点，再把原文和注释整理成下一轮提问。 |
+| [书签与资料库](https://zhaoliangbin42.github.io/ai-markdone/manual/bookmarks/) | 保存对话链接或提问和回复，用文件夹、搜索和批量操作整理内容。 |
+| [消息导出](https://zhaoliangbin42.github.io/ai-markdone/manual/export/) | 选择回复导出 Markdown、PDF、PNG，或带图片附件的离线 Markdown ZIP。 |
+| [提示词、按钮与设置](https://zhaoliangbin42.github.io/ai-markdone/manual/settings/) | 复用提示词，调整输入方式、按钮、字号、主题和主色；资料库可手动备份。 |
 
-### ⚡ ChatGPT 消息导航
-- **按需全量加载**：点击页面右下角的“刷新消息导航”，即可加载完整的历史消息。
-- **完整消息目录**：右侧目录条显示整段对话，并可以直接跳转到任意消息。
-- **减少反复滚动**：不需要为了让旧消息逐条出现，而在长对话中反复滚动和等待。
-- **可选目录条**：如果你的 ChatGPT 页面没有官方导航，或者你更喜欢插件导航，可以使用 AI-MarkDone 右侧目录条。
-- **自动隐藏官方导航**：开启插件目录条后，会默认隐藏 ChatGPT 官方对话导航，避免两个导航条同时出现。
-- **右下角控制栏**：无需打开右侧目录条，即可刷新消息导航或切换上一条/下一条消息。
-- **可选方向键**：非输入状态下可用 `Left` / `Right` 切换消息；也可以在 ChatGPT 设置中关闭。
-- **稳定跳转**：目录条定位、阅读器定位和 ChatGPT 消息书签跳转使用同一套定位方式。
-- **共享对话内容**：完成全量加载后，目录条、阅读器和导出功能使用同一份完整消息内容。
+<details>
+<summary>查看设置界面</summary>
 
-### 📚 阅读模式（Focus View）
-- **稳定上下文**：独立阅读面板完整渲染 Markdown。
-- **快速导航**：支持 `Left` / `Right` 键切换消息，也支持 `Up` / `Down` 键滚动当前阅读器消息。
-- **按源码复制闭合内容**：公式、代码块、表格、图片等内容可以直接在阅读器里按源码复制。
-- **局部源码选中**：只选中需要的部分即可复制；阅读器会把公式、代码块、表格、图片等闭合内容映射回原始 Markdown 边界，再按选区顺序重新拼接。
-- **灵动注释**：对具体段落做标注、写修改意见，再整理成结构化输入继续发给模型。
-- **删除注释**：不再需要的灵动注释可以直接删除。
-- **注释插入发送框**：选择提示词后，可以把整理好的注释内容直接插入阅读器发送框，减少手动复制粘贴。
-- **不中断聊天**：阅读模式下也能发送消息。
+<p align="center"><a href="./imgs/readme/settings.zh.png"><img src="./imgs/readme/settings.zh.png" alt="AI-MarkDone 设置界面演示" width="900"></a></p>
 
-### 📦 导出与复制（Markdown + PDF + PNG）
-- **标准 Markdown**：可直接用于 Obsidian、Typora、VS Code。
-- **精美 PDF**：导出适合分享或归档的 PDF。
-- **复制为 PNG**：在消息悬浮工具栏中直接将当前消息复制为适合分享的图片。
-- **公式资产**：支持将单个公式复制为 Office 兼容的 MathML，也可以在公式悬浮菜单中复制或保存为 PNG / SVG。
-- **批量导出 PNG**：将选中的多条消息分别渲染为 PNG，多选时会打包成 ZIP。
-- **完整对话导出**：完成全量加载后，可以直接导出整段对话，不需要等待消息逐条出现。
-- **图片参数设置**：可在设置中调整 PNG 宽度和清晰度，适配不同分享平台的视觉宽度。
-- **Deep Research 清洗**：把杂乱内容恢复成可读的 Markdown。
+</details>
 
-### 🔖 真正有用的书签
-- **一键保存**：重要消息即时收藏。
-- **分组整理**：支持文件夹管理不同主题。
-- **预览与跳转**：从书签预览并回到原始聊天位置；ChatGPT 下的保存定位和跳转定位都做了针对性优化。
-- **内置信息页**：可直接在书签面板里查看更新日志、常见问题和关于我。
+完整入口和快捷键可以在插件内的“功能全览”查看，具体步骤见[使用文档][manual]。
 
-### ☁️ Google Drive 备份（实验性功能）
-- **可选云端备份**：将书签、已持久化的高亮和注释，以及文件夹保存到你自己的 Google Drive。
-- **安全恢复**：先预览安全合并，本地冲突项保持不变；旧书签备份仍可读取。
-- **本地副本**：同一套资料也可导出为本地文件并重新导入，旧书签文件继续兼容。
-- **用户数据归用户**：AI-MarkDone 不会在自己的服务器收集你的 Google 账号、token 或密码。
+## 快速开始
 
-### 🧮 一键复制 LaTeX
-- **点击即复制**：支持行内公式与块级公式。
-- **无需手动选区**：精确提取单个公式。
-- **公式图片复制**：鼠标悬浮到公式上方即可复制或保存为 PNG / SVG，同时保留原来的点击复制源码行为。
-- **公式设置**：可单独控制公式点击是否复制 Markdown，以及悬浮菜单中显示哪些 PNG / SVG 复制或保存动作。
+1. **处理一条回复**：展开回复下方的工具栏，复制 Markdown、保存书签、打开阅读器或导出消息。
+2. **边读边做标记**：选中文字添加注释或高亮；点击公式复制 LaTeX。注释可以整理进输入框，检查后再自行发送。
+3. **管理与调整**：点击右下角 AI-MarkDone 图标，或浏览器扩展图标，打开资料库和设置。新安装默认显示消息目录，已有用户保留原来的设置。
 
-### 📊 字数统计
-- **实时统计**：显示当前消息的字数与字符数，并排除代码噪音。
+选区 Markdown 复制：ChatGPT 原页面默认使用 `Cmd/Ctrl + Shift + C`，阅读器内使用 `Cmd/Ctrl + C`。开启输入增强后，Enter 换行，`Cmd/Ctrl + Enter` 发送。
 
----
+## 常见问题
 
-## 🌐 浏览器支持
+<details>
+<summary>注释和高亮会保存吗？</summary>
 
-| 浏览器 | 状态 |
-| :--- | :--- |
-| **Chrome** | ✅ 完全支持，MV3 构建 |
-| **Firefox** | ✅ 已支持，MV2 构建 |
+- 书签和高亮保存到当前浏览器；消息书签可按设置只保存摘要。
+- “保存新建的注释”默认关闭，关闭时新注释只留在当前页面；开启后新注释可在刷新后继续查看。已有保存的注释不受开关影响。
+- 注释在点击“保存”后才会提交。点击框外不会关闭窗口；主动关闭或刷新页面会丢弃未保存的修改。
+- 摘录区是当前页面的临时内容，刷新后清空。
 
-## 🤖 AI 平台方向
+资料库备份包含已保存的书签、高亮、注释及其文件夹，不包含提示词、设置或草稿。设置偏好可以单独导出；[Google Drive 备份](https://zhaoliangbin42.github.io/ai-markdone/manual/google-drive-backup/)是手动操作，不是自动同步。
 
-| 平台 | 状态 |
-| :--- | :--- |
-| **ChatGPT** | ✅ 已支持 |
-| **Gemini** | 仅支持公式识别 |
-| **Claude** | 仅支持公式识别 |
-| **DeepSeek** | 仅支持公式识别 |
+</details>
 
-AI-MarkDone 的完整运行时会继续聚焦 ChatGPT。Gemini、Claude 和 DeepSeek 保留公式级能力，支持点击复制 LaTeX，以及已开启的公式 PNG / SVG / MathML 动作。你过去保存的这些平台书签和备份仍会保留，可以继续查看、搜索、按页面/消息筛选、导出和备份。
+<details>
+<summary>图表和卡片都能离线保存吗？</summary>
 
----
+目前只处理支持的图块，无法保存的部分会留下文字说明。离线 Markdown ZIP 会把可用图片和正文一起保存；PDF、PNG 可选择静态图片或文字占位，离线文件不保留网页交互。
 
-## 🚀 安装方式
+PDF 通过浏览器打印窗口保存。PNG 尽量将所选回复合成一张长图，超出限制时拆图并打包 ZIP。
 
-### 🏬 Chrome 商店（推荐）
+</details>
 
-👉 **[从 Chrome Web Store 安装](https://chromewebstore.google.com/detail/ai-markdone/bmdhdihdbhjbkfaaainidcjbgidkbeoh)**
+<details>
+<summary>更新后按钮没出现，或者独立阅读器没有新内容？</summary>
 
-安全、已审核、支持自动更新。
+更新插件后，重新加载扩展并刷新 ChatGPT 页面。独立阅读器需要保留原 ChatGPT 标签页，内容更新后可手动刷新。
 
-### 📦 手动安装（开发者模式）
+消息目录会继续收录网站加载到的回复，尚未提供的历史不一定已包含。更多问题见[常见问题][faq]，也可以[提交 Issue][issues]。
 
-1. 前往 GitHub [Releases](https://github.com/zhaoliangbin42/AI-MarkDone/releases) 下载最新 ZIP 包。
-2. 解压文件。
-3. 打开 Chrome，进入 `chrome://extensions/`。
-4. 开启右上角“开发者模式”。
-5. 点击“加载已解压的扩展程序”，选择解压后包含 `manifest.json` 的扩展目录。
-6. 刷新 ChatGPT 页面即可开始使用。
+</details>
 
-### 🧩 Firefox
+## 更新日志
 
-Firefox 与 Chrome 由同一套源码生成，通过浏览器专属 manifest 和适配层区分：
+### 6.2.0
+
+安装包和本次更新说明见 [GitHub Release](https://github.com/zhaoliangbin42/AI-MarkDone/releases/tag/v6.2.0)。商店更新进度以对应页面为准。
+
+- 注释窗口可拖动、最小化，点击框外不再关闭，点击“保存”才提交。
+- 支持的图表、卡片可保存为离线 Markdown ZIP，PDF／PNG 可选图片或文字占位。
+- 修复代码复制、书签保存、注释和高亮定位，以及已复现的 PDF 空白原因。
+- 改善切换会话后的目录、工具栏恢复，统一常用窗口的样式。
+
+[本次更新说明](./RELEASE_NOTES.md) · [完整更新日志](./CHANGELOG.md)
+
+## 开发与贡献
 
 ```bash
-npm run build:firefox
-```
-
----
-
-## 💻 开发与贡献
-
-欢迎提交 PR 或 Issue。
-
-如果你使用 Codex 或其他大模型参与开发，请以 [AGENTS.md](./AGENTS.md) 作为仓库入口规范，并以 [docs/README.md](./docs/README.md) 作为系统权威文档入口。
-
-```bash
-# 安装依赖
 npm install
-
-# 开发模式
 npm run dev
-
-# 快速回归冒烟测试（关键路径）
 npm run test:smoke
-
-# 核心可靠性门禁（导入/存储/渲染/消息边界）
 npm run test:core
-
-# 构建
 npm run build
 ```
 
-## 📅 最新更新
+构建输出：Chrome 为 `dist-chrome/`，Firefox 为 `dist-firefox/`。开发规范见 [AGENTS.md](./AGENTS.md)，架构、功能合同和测试记录见 [docs/README.md](./docs/README.md)。
 
-### 6.0.0
-- 升级资料库、设置、消息工具栏、页面控制抽屉和 AI-MarkDone 品牌 Logo。
-- 设置按类别重新整理并加入搜索，输入增强配置也移入设置。
-- 新增持久化彩色高亮和页面注释，并支持在 ChatGPT 页面与阅读器之间统一管理。
-- 本地资料库导入/导出和 Google Drive 备份现已涵盖书签、高亮、注释及文件夹。
-- 改进目录条跳转与预览，并在消息字符统计旁显示时间。
-- 本次更新范围较大，部分细节会继续打磨；欢迎反馈设置分类和日常使用中的建议。
+<details>
+<summary>手动加载开发版</summary>
 
-[完整更新日志](./CHANGELOG.md)
-[版本说明](./RELEASE_NOTES.md)
+Chrome：打开 `chrome://extensions/`，开启开发者模式，选择“加载已解压的扩展程序”，加载 `dist-chrome/`。也可从 [Releases][releases] 下载已发布的 Chrome 包并解压加载。
 
-## ☕️ 支持作者
+Firefox：打开 `about:debugging#/runtime/this-firefox`，临时载入 `dist-firefox/manifest.json`。[临时扩展在重启后失效](https://extensionworkshop.com/documentation/develop/temporary-installation-in-firefox/)，日常使用请从商店安装。
 
-如果这个扩展帮你节省了时间，欢迎请作者喝杯咖啡，支持后续更新。
+</details>
 
-<div align="center">
-  <div style="display: flex; justify-content: center; gap: 20px;">
-    <div style="display: flex; flex-direction: column; align-items: center;">
-      <p><strong>Buy Me a Coffee</strong></p>
-      <img src="imgs/bmc_qr.png" alt="Buy Me A Coffee" width="200" style="border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
-    </div>
-    <div style="display: flex; flex-direction: column; align-items: center;">
-      <p><strong>WeChat</strong></p>
-      <img src="imgs/wechat_qr.png" alt="WeChat Reward" width="200" style="border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
-    </div>
-  </div>
-</div>
+欢迎提交 [Issue][issues] 或 PR。反馈问题时，请附上浏览器、插件版本和操作步骤，方便复现。
 
-## 🙏 Acknowledgements
+## 支持项目
 
-本项目使用了 [Tailwind CSS](https://tailwindcss.com/)，感谢 Tailwind 团队。
+我自己经常用 ChatGPT 阅读和写作，最初只是想把公式复制顺、让长回复好读一点。后来慢慢加上了注释、书签和导出，也根据大家的反馈继续改进这些细节。
 
-## ⭐ Star History
+如果这个插件帮到了你，欢迎点个 Star、分享给需要的朋友，或者请我喝杯咖啡，支持后续更新。
 
-<p align="center">
-  <a href="https://www.star-history.com/#zhaoliangbin42/AI-MarkDone&Date">
-    <picture>
-      <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=zhaoliangbin42/ai-markdone&type=Date&theme=dark" />
-      <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=zhaoliangbin42/ai-markdone&type=Date" />
-      <img alt="AI-MarkDone GitHub star 增长趋势" src="https://api.star-history.com/svg?repos=zhaoliangbin42/ai-markdone&type=Date" />
-    </picture>
-  </a>
-</p>
+<details>
+<summary>请我喝杯咖啡</summary>
 
-## 📜 许可与联系
+<table>
+  <tr><th>Buy Me a Coffee</th><th>微信赞赏</th></tr>
+  <tr><td><img src="./imgs/bmc_qr.png" alt="Buy Me a Coffee 二维码" width="160"></td><td><img src="./imgs/wechat_qr.png" alt="微信赞赏二维码" width="160"></td></tr>
+</table>
 
-本项目基于 [MIT License](./LICENSE) 开源。
+</details>
 
-欢迎通过 [Issue](https://github.com/zhaoliangbin42/AI-MarkDone/issues) 提出问题、建议或讨论想法。
+感谢所有反馈问题、提供建议和贡献代码的朋友，以及本项目使用的开源工具。
+
+[MIT License](./LICENSE) · [隐私说明](https://zhaoliangbin42.github.io/ai-markdone/privacy/) · [邮件联系](mailto:zhaoliangbin42@gmail.com)
+
+[chrome-store]: https://chromewebstore.google.com/detail/ai-markdone/bmdhdihdbhjbkfaaainidcjbgidkbeoh
+[firefox-store]: https://addons.mozilla.org/firefox/addon/ai-markdone/
+[manual]: https://zhaoliangbin42.github.io/ai-markdone/manual/
+[faq]: https://zhaoliangbin42.github.io/ai-markdone/faq/
+[issues]: https://github.com/zhaoliangbin42/AI-MarkDone/issues
+[releases]: https://github.com/zhaoliangbin42/AI-MarkDone/releases

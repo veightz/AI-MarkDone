@@ -41,7 +41,8 @@ function hasSameCanonicalContent(left: ReaderItem, right: ReaderItem): boolean {
         && left.userPrompt === right.userPrompt
         && typeof left.content === 'string'
         && typeof right.content === 'string'
-        && left.content === right.content;
+        && left.content === right.content
+        && left.sourceContent === right.sourceContent;
 }
 
 function planChatGPTReaderUpdate(

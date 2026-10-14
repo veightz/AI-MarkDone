@@ -39,6 +39,7 @@ function serializeCodeViewerNode(node: Node): string {
 
     const childText = Array.from(element.childNodes).map((child) => serializeCodeViewerNode(child)).join('');
     if (element.classList.contains('cm-line') || element.tagName === 'DIV' || element.tagName === 'P') {
+        if (element.childNodes.length === 1 && element.firstElementChild?.tagName === 'BR') return '\n';
         return `${childText}\n`;
     }
 
@@ -52,17 +53,19 @@ function extractCodeViewerText(blockElem: HTMLElement): string | null {
     if (!content) return null;
 
     const raw = Array.from(content.childNodes).map((child) => serializeCodeViewerNode(child)).join('');
-    const normalized = raw.replace(/\u00a0/g, ' ').replace(/\r\n?/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
+    // Each editor line adds one structural newline; preserve the line contents and blank rows.
+    const normalized = raw.replace(/\u00a0/g, ' ').replace(/\r\n?/g, '\n').replace(/\n$/, '');
     return normalized || null;
 }
 
 function extractHeaderLanguage(blockElem: HTMLElement): string {
     const candidates = [
-        '.sticky .cursor-default',
-        '.sticky .text-sm.font-medium',
+        '.cm-content[data-language]',
         '[data-code-language]',
         '[data-language]',
         '[data-lang]',
+        '.sticky .cursor-default',
+        '.sticky .text-sm.font-medium',
     ];
 
     for (const selector of candidates) {
@@ -73,7 +76,7 @@ function extractHeaderLanguage(blockElem: HTMLElement): string {
             || el?.getAttribute('data-lang')
             || el?.textContent;
         const trimmed = value?.trim();
-        if (trimmed) return trimmed.toLowerCase();
+        if (trimmed && trimmed.toLowerCase() !== 'code') return trimmed.toLowerCase();
     }
 
     return '';
@@ -90,23 +93,26 @@ export const chatgptMarkdownParserAdapter: ChatGPTMarkdownParserAdapter = {
     isCodeBlockNode(node: Element): boolean {
         const element = node as HTMLElement;
         if (baseAdapter.isCodeBlockNode(node)) return true;
+        if (element.matches('[data-markdown-copy="code-block"]')) return true;
         return element.tagName === 'PRE' && extractCodeViewerText(element) !== null;
     },
     getCodeLanguage(codeBlock: HTMLElement): string {
+        const owner = codeBlock.matches('pre, [data-markdown-copy="code-block"]')
+            ? codeBlock : codeBlock.closest<HTMLElement>('pre, [data-markdown-copy="code-block"]');
+        const editorLanguage = owner?.querySelector('.cm-content[data-language]')?.getAttribute('data-language')?.trim();
+        if (editorLanguage) return editorLanguage.toLowerCase();
         const legacyLanguage = baseAdapter.getCodeLanguage(codeBlock);
         if (legacyLanguage) return legacyLanguage.toLowerCase();
 
-        const pre = codeBlock.matches('pre') ? codeBlock : codeBlock.closest('pre');
-        if (pre instanceof HTMLElement) {
-            const headerLanguage = extractHeaderLanguage(pre);
+        if (owner instanceof HTMLElement) {
+            const headerLanguage = extractHeaderLanguage(owner);
             if (headerLanguage) return headerLanguage;
         }
 
         return '';
     },
     extractCodeBlockText(blockElem: HTMLElement): string | null {
-        if (!blockElem.matches('pre')) return null;
-        if (blockElem.querySelector('code')) return null;
+        if (!blockElem.matches('pre, [data-markdown-copy="code-block"]')) return null;
         return extractCodeViewerText(blockElem);
     },
 };

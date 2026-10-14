@@ -67,8 +67,8 @@ function formatDate(value: number): string {
 function getCss(): string {
     return `
 .mock-modal--page-annotation-manager {
-  --_modal-width: min(720px, calc(100% - (var(--aimd-space-5) * 2)));
-  --_modal-max-height: min(640px, calc(100% - (var(--aimd-space-5) * 2)));
+  --_modal-content-max-width: 720px;
+  --_modal-content-max-height: 640px;
   border-color: var(--aimd-workspace-border);
   background: var(--aimd-workspace-card);
   box-shadow: var(--aimd-shadow-workspace), var(--aimd-workspace-edge-shadow);

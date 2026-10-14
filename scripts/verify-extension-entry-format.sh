@@ -3,7 +3,7 @@ set -euo pipefail
 
 target="${1:-}"
 if [[ -z "$target" ]]; then
-  echo "Usage: $0 <chrome|firefox|safari>"
+  echo "Usage: $0 <chrome|firefox>"
   exit 1
 fi
 
@@ -11,15 +11,13 @@ if [[ "$target" == "chrome" ]]; then
   dist_dir="dist-chrome"
 elif [[ "$target" == "firefox" ]]; then
   dist_dir="dist-firefox"
-elif [[ "$target" == "safari" ]]; then
-  dist_dir="dist-safari"
 else
   echo "Unknown target: $target"
   exit 1
 fi
 
 classic_files=("$dist_dir/background.js" "$dist_dir/content.js" "$dist_dir/png-encoder-worker.js")
-module_files=("$dist_dir/reader.js" "$dist_dir/content-features.js" "$dist_dir/export-renderer.js")
+module_files=("$dist_dir/reader.js" "$dist_dir/content-features.js" "$dist_dir/export-renderer.js" "$dist_dir/rich-asset-relay.js")
 shopt -s nullglob
 module_files+=("$dist_dir"/content-feature-chunks/*.js)
 module_files+=("$dist_dir"/export-renderer-chunks/*.js)

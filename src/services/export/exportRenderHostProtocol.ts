@@ -220,6 +220,9 @@ function isExportDocumentV1(value: unknown): value is ExportDocumentV1 {
             return false;
         }
         textUnits += section.heading.length + section.userText.length + section.assistantMarkdown.length;
+        // Rich images are compiled in content runtime. The legacy iframe job
+        // stays text-only; binary resources require the bounded asset relay.
+        if (section.richBlocks !== undefined || section.richImages !== undefined) return false;
         if (textUnits > MAX_EXPORT_DOCUMENT_TEXT_UNITS) return false;
     }
     return true;

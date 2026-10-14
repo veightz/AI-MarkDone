@@ -1,3 +1,5 @@
+import { version as buildVersion } from '../../../../package.json';
+import { showToast } from '../../../utils/toast';
 import { DEFAULT_SETTINGS, type AppSettings } from '../../../core/settings/types';
 import { loadAndNormalize } from '../../../services/settings/settingsService';
 import { settingsClientRpc } from '../../../drivers/shared/clients/settingsClientRpc';
@@ -15,6 +17,7 @@ import { AboutTabView } from './ui/tabs/AboutTabView';
 import { MappamoryTabView } from './ui/tabs/MappamoryTabView';
 import { FaqTabView } from './ui/tabs/FaqTabView';
 import { SponsorTabView } from './ui/tabs/SponsorTabView';
+import { FeatureOverviewTabView } from './ui/tabs/FeatureOverviewTabView';
 import { createBookmarksPanelShell, type BookmarksPanelShellRefs } from './ui/BookmarksPanelShell';
 import { OverlaySession } from '../overlay/OverlaySession';
 import type { ReaderPanelPort } from '../reader/ReaderPanelPort';
@@ -25,10 +28,6 @@ import { logger } from '../../../core/logger';
 import { eventWithinTransientRoot } from '../components/transientUi';
 import { SurfaceFocusLifecycle } from '../components/surfaceFocusLifecycle';
 import { showChangelogNoticeIfNeeded } from '../changelog/ChangelogNoticePresenter';
-import {
-    TARGET_SURFACE_SOCIAL_FOLLOW_CARD_ENABLED,
-    TARGET_SURFACE_SPONSOR_TAB_ENABLED,
-} from '../../../config/targetSurface';
 import { GOOGLE_DRIVE_WEB_AUTH_CLIENT_ID } from '../../../../config/extension/cloudBackup';
 import {
     BookmarksPanelTabWorkflow,
@@ -45,11 +44,13 @@ type UiState = {
 type BookmarksPanelTabView = {
     getElement(): HTMLElement;
     getNavigationElement?(): HTMLElement;
+    setAppearance?(snapshot: ReturnType<BookmarksPanelController['getAppearance']>): void;
     update?(snapshot: BookmarksPanelSnapshot | null): void;
     focusPrimaryInput?(): void;
     dismissTransientUi?(): void;
     consumeEscape?(): boolean;
     destroy?(): void;
+    dispose?(): void;
 };
 
 function shouldLogBookmarksPerf(): boolean {
@@ -112,16 +113,19 @@ export class BookmarksPanel {
     private readonly uiState: UiState = {
         settings: structuredClone(DEFAULT_SETTINGS),
     };
+    private settingsCapabilities = {buttons:false,transfer:false};
     private settingsDataState: SettingsDataState = { kind: 'ready' };
     private readonly tabWorkflow: BookmarksPanelTabWorkflow;
     private readonly cloudBackupWorkflow: BookmarksCloudBackupWorkflow;
 
     private visible = false;
+    private fullscreen = false;
     private overlaySession: OverlaySession | null = null;
     private tooltipDelegate: TooltipDelegate | null = null;
     private snapshot: BookmarksPanelSnapshot | null = null;
     private bookmarksView: BookmarksPanelTabView | null = null;
     private settingsView: BookmarksPanelTabView | null = null;
+    private featuresView: BookmarksPanelTabView | null = null;
     private changelogView: BookmarksPanelTabView | null = null;
     private aboutView: BookmarksPanelTabView | null = null;
     private mappamoryView: BookmarksPanelTabView | null = null;
@@ -168,9 +172,7 @@ export class BookmarksPanel {
     ) {
         this.controller = controller;
         this.readerPanel = readerPanel;
-        this.tabWorkflow = new BookmarksPanelTabWorkflow({
-            sponsorEnabled: TARGET_SURFACE_SPONSOR_TAB_ENABLED,
-        });
+        this.tabWorkflow = new BookmarksPanelTabWorkflow({ sponsorEnabled: true });
         this.cloudBackupWorkflow = new BookmarksCloudBackupWorkflow({
             getModalHost: () => this.modalHost,
             onRestoreApplied: () => this.controller.refreshAll(),
@@ -243,6 +245,8 @@ export class BookmarksPanel {
             this.bookmarksView = null;
             this.settingsView?.destroy?.();
             this.settingsView = null;
+            this.featuresView?.dispose?.();
+            this.featuresView = null;
             this.changelogView?.destroy?.();
             this.changelogView = null;
             this.aboutView?.destroy?.();
@@ -260,6 +264,7 @@ export class BookmarksPanel {
 
         this.unsubscribeSnapshot = this.controller.subscribe((snapshot) => {
             this.overlaySession?.setAppearance(this.controller.getAppearance());
+            this.settingsView?.setAppearance?.(this.controller.getAppearance());
             const previousSnapshot = this.snapshot;
             this.snapshot = snapshot;
             if (!this.applySnapshotUpdate(previousSnapshot, snapshot)) {
@@ -310,6 +315,7 @@ export class BookmarksPanel {
 
     private finishHide(): void {
         this.visible = false;
+        this.fullscreen = false;
         this.activeShell = null;
         this.unsubscribeSnapshot?.();
         this.unsubscribeSnapshot = null;
@@ -322,6 +328,8 @@ export class BookmarksPanel {
         this.bookmarksView = null;
         this.settingsView?.destroy?.();
         this.settingsView = null;
+        this.featuresView?.dispose?.();
+        this.featuresView = null;
         this.changelogView?.destroy?.();
         this.changelogView = null;
         this.aboutView?.destroy?.();
@@ -351,6 +359,9 @@ export class BookmarksPanel {
             this.syncSettingsViewState();
             return;
         }
+        const capabilities=result.data.capabilities;
+        const matched=capabilities?.appVersion===buildVersion&&capabilities.settingsVersion===5;
+        this.settingsCapabilities={buttons:Boolean(matched&&capabilities?.buttonsPreferences),transfer:Boolean(matched&&capabilities?.settingsFileFormatVersion===1)};
         this.uiState.settings = mergeSettings(result.data.settings);
         this.controller.setSortMode(this.uiState.settings.bookmarks.sortMode);
         this.settingsDataState = { kind: 'ready' };
@@ -370,6 +381,7 @@ export class BookmarksPanel {
             settings: this.uiState.settings,
             storageUsage: this.snapshot?.storageUsage ?? null,
             dataState: this.settingsDataState,
+            canConfigureButtons:this.settingsCapabilities.buttons,canTransferSettings:this.settingsCapabilities.transfer,
         });
     }
 
@@ -392,10 +404,18 @@ export class BookmarksPanel {
 
     private createSettingsActions(): SettingsTabViewActions {
         return {
+            settingsTransfer: {
+                exportSettings: async () => { const result = await settingsClientRpc.exportSettings(); if (!result.ok) throw new Error(result.errorCode); return result.data.file; },
+                previewImport: async text => { const result = await settingsClientRpc.previewImport(text); if (!result.ok) throw new Error(result.errorCode === 'INVALID_IMPORT' ? 'SETTINGS_FILE_INVALID' : result.errorCode); return result.data.preview; },
+                applyImport: async (text, fingerprint, categories) => { const result = await settingsClientRpc.applyImport(text, fingerprint, categories); if (!result.ok) throw new Error(result.errorCode); return result.data.applied; },
+                getRecovery: async () => { const result = await settingsClientRpc.getRecovery(); if (!result.ok) throw new Error(result.errorCode); return result.data.file; },
+                onApplied: async applied => { await this.loadSettings(); await (this.settingsView as SettingsTabView | null)?.refresh(); showToast({ text: t(applied ? 'settingsImportDone' : 'settingsImportNoChanges'), tone: 'success' }); },
+            },
             loadState: async () => ({
                 settings: this.uiState.settings,
                 storageUsage: this.snapshot?.storageUsage ?? null,
                 dataState: this.settingsDataState,
+                canConfigureButtons:this.settingsCapabilities.buttons,canTransferSettings:this.settingsCapabilities.transfer,
             }),
             retryLoad: async () => await this.loadSettings(),
             setBookmarksSettings: async (patch) => {
@@ -415,6 +435,7 @@ export class BookmarksPanel {
                 behavior: {
                     ...current.behavior,
                     ...patch,
+                    messageControls: { ...current.behavior.messageControls, ...patch.messageControls },
                 },
             })),
             setReaderSettings: async (patch) => await this.persistSettingsCategory('reader', patch, (current) => ({
@@ -424,11 +445,16 @@ export class BookmarksPanel {
                     ...patch,
                 },
             })),
+            setContentSettings: async (patch) => await this.persistSettingsCategory('content', patch, (current) => ({
+                ...current,
+                content: { ...current.content, ...patch },
+            })),
             setFormulaSettings: async (patch) => await this.persistSettingsCategory('formula', patch, (current) => ({
                 ...current,
                 formula: {
                     ...current.formula,
                     ...patch,
+                    composerAssetActions: { ...current.formula.composerAssetActions!, ...patch.composerAssetActions },
                     assetActions: {
                         ...current.formula.assetActions,
                         ...patch.assetActions,
@@ -485,6 +511,7 @@ export class BookmarksPanel {
         const bookmarksPanel = this.bookmarksView?.getElement() ?? document.createElement('section');
         bookmarksPanel.classList.add('tab-panel--bookmarks');
         const settingsPanel = this.settingsView?.getElement() ?? document.createElement('section');
+        const featuresPanel = this.featuresView?.getElement() ?? document.createElement('section');
         const changelogPanel = this.changelogView?.getElement() ?? document.createElement('section');
         changelogPanel.classList.add('changelog-panel');
         const aboutPanel = this.aboutView?.getElement() ?? document.createElement('section');
@@ -502,6 +529,7 @@ export class BookmarksPanel {
             contents: {
                 bookmarks: bookmarksPanel,
                 settings: settingsPanel,
+                features: featuresPanel,
                 changelog: changelogPanel,
                 faq: faqPanel,
                 about: aboutPanel,
@@ -517,6 +545,11 @@ export class BookmarksPanel {
             closeIcon: xIcon,
             closeLabel: tr('btnClose', 'Close panel'),
             defaultTabId: this.tabWorkflow.getActiveTab(),
+            fullscreen: this.fullscreen,
+            onFullscreenChange: (fullscreen) => {
+                this.fullscreen = fullscreen;
+                this.tooltipDelegate?.refresh(this.overlaySession!.shadow);
+            },
             tabs: shellModel.tabs.map((tab) => ({ ...tab, navigation: tab.id === 'bookmarks' ? this.bookmarksView?.getNavigationElement?.() : tab.id === 'settings' ? this.settingsView?.getNavigationElement?.() : undefined })),
         });
         this.activeShell = shell;
@@ -534,6 +567,10 @@ export class BookmarksPanel {
             this.motionNeedsOpen = false;
         }
         shell.closeBtn.addEventListener('click', () => this.hide());
+        shell.tabs.getElement().addEventListener('aimd:tabs-before-change', (event) => {
+            const previousId = (event as CustomEvent<{ previousId: string }>).detail.previousId;
+            if (this.tabWorkflow.getActiveTab() === previousId) this.captureScrollTops();
+        });
         shell.tabs.getElement().addEventListener('aimd:tabs-change', (event) => {
             const nextTab = (event as CustomEvent<{ id: string }>).detail.id;
             if (this.tabWorkflow.isEnabled(nextTab)) {
@@ -600,12 +637,13 @@ export class BookmarksPanel {
         if (
             this.bookmarksView
             && this.settingsView
+            && this.featuresView
             && this.changelogView
             && this.aboutView
             && this.mappamoryView
             && this.faqView
             && this.feedbackView
-            && (!TARGET_SURFACE_SPONSOR_TAB_ENABLED || this.sponsorView)
+            && this.sponsorView
         ) return;
 
         if (!this.bookmarksView) {
@@ -640,12 +678,30 @@ export class BookmarksPanel {
                     actions: this.createSettingsActions(),
                     onOpenPromptManager: this.options.onOpenPromptManager,
                     readDiscoveryDiagnostics: () => this.controller.getDiscoveryDiagnostics?.() ?? null,
+                    renderFormulaPreview:this.options.renderFormulaPreview,
                 });
+                this.settingsView.setAppearance?.(this.controller.getAppearance());
             } catch (error) {
                 logger.warn('[AI-MarkDone][BookmarksPanel] Failed to create settings tab view; keeping the shell open.', {
                     error: String(error),
                 });
                 this.settingsView = createFallbackTabView('aimd-settings');
+            }
+        }
+
+        if (!this.featuresView) {
+            try {
+                this.featuresView = new FeatureOverviewTabView({
+                    onOpenSettings: (category) => {
+                        this.switchToTab('settings');
+                        this.settingsView?.getNavigationElement?.().querySelector<HTMLButtonElement>(`[data-category="${category}"]`)?.click();
+                    },
+                });
+            } catch (error) {
+                logger.warn('[AI-MarkDone][BookmarksPanel] Failed to create feature overview; keeping the shell open.', {
+                    error: String(error),
+                });
+                this.featuresView = createFallbackTabView('aimd-feature-overview');
             }
         }
 
@@ -667,7 +723,6 @@ export class BookmarksPanel {
                 this.aboutView = new AboutTabView({
                     actions: {
                         getAssetUrl: (assetPath) => browser.runtime.getURL(assetPath),
-                        showSocialFollowCard: TARGET_SURFACE_SOCIAL_FOLLOW_CARD_ENABLED,
                     },
                 });
             } catch (error) {
@@ -706,7 +761,7 @@ export class BookmarksPanel {
             }
         }
 
-        if (TARGET_SURFACE_SPONSOR_TAB_ENABLED && !this.sponsorView) {
+        if (!this.sponsorView) {
             try {
                 this.sponsorView = new SponsorTabView({
                     actions: {
@@ -727,7 +782,6 @@ export class BookmarksPanel {
                 this.feedbackView = new FeedbackTabView({
                     actions: {
                         getAssetUrl: (assetPath) => browser.runtime.getURL(assetPath),
-                        showCommunityCards: TARGET_SURFACE_SOCIAL_FOLLOW_CARD_ENABLED,
                     },
                 });
             } catch (error) {
@@ -747,10 +801,12 @@ export class BookmarksPanel {
             settings: this.uiState.settings,
             storageUsage: this.snapshot?.storageUsage ?? null,
             dataState: this.settingsDataState,
+            canConfigureButtons:this.settingsCapabilities.buttons,canTransferSettings:this.settingsCapabilities.transfer,
         });
     }
 
     private switchToTab(nextTab: BookmarksPanelTabId): void {
+        if (this.activeShell?.tabs.getActive() !== nextTab) this.captureScrollTops();
         if (!this.tabWorkflow.select(nextTab)) return;
         this.bookmarksView?.dismissTransientUi?.();
         this.settingsView?.dismissTransientUi?.();
@@ -762,7 +818,7 @@ export class BookmarksPanel {
         this.feedbackView?.dismissTransientUi?.();
         if (this.activeShell) {
             this.activeShell.tabs.setActive(nextTab);
-            const labelKey = nextTab === 'bookmarks' ? 'libraryTitle' : 'tab' + nextTab[0]!.toUpperCase() + nextTab.slice(1);
+            const labelKey = nextTab === 'bookmarks' ? 'libraryTitle' : nextTab === 'features' ? 'featureOverviewTitle' : 'tab' + nextTab[0]!.toUpperCase() + nextTab.slice(1);
             this.activeShell.title.textContent = t(labelKey);
             this.syncTabViews();
             this.restoreScrollTop();
@@ -789,7 +845,7 @@ export class BookmarksPanel {
         const target = event.target as HTMLElement | null;
         if (target?.closest('.aimd-settings')) return;
         if (target?.closest('.bookmarks-tab-content')) return;
-        if (TARGET_SURFACE_SPONSOR_TAB_ENABLED && this.tabWorkflow.getActiveTab() === 'sponsor' && (target?.closest('.aimd-sponsor') || target?.closest('.sponsor-panel'))) {
+        if (this.tabWorkflow.getActiveTab() === 'sponsor' && (target?.closest('.aimd-sponsor') || target?.closest('.sponsor-panel'))) {
             this.emitSponsorBurst(event as MouseEvent);
             return;
         }

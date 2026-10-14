@@ -2,7 +2,7 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { extensionAssets, getWebAccessibleResourcesForTarget } from '../config/extension/assets';
+import { extensionAssets } from '../config/extension/assets';
 import {
     GOOGLE_DRIVE_API_HOST_PERMISSION,
     cloudBackupTargets,
@@ -21,7 +21,7 @@ type BuildManifestOptions = {
 };
 
 export function isExtensionTarget(value: string): value is ExtensionTarget {
-    return value === 'chrome' || value === 'firefox' || value === 'safari';
+    return value === 'chrome' || value === 'firefox';
 }
 
 export function deriveChromeExtensionIdFromManifestKey(publicKey: string): string {
@@ -127,7 +127,7 @@ export function buildManifest(target: ExtensionTarget, options: BuildManifestOpt
     };
     manifest.icons = extensionAssets.icons;
 
-    const webAccessibleResources = getWebAccessibleResourcesForTarget(target);
+    const webAccessibleResources = extensionAssets.webAccessibleResources;
     manifest.web_accessible_resources = targetConfig.webAccessibleResourcesStyle === 'mv3'
         ? [
             {
@@ -165,7 +165,7 @@ function defaultOutputPath(target: ExtensionTarget): string {
 function runCli(): void {
     const target = process.argv[2] ?? '';
     if (!isExtensionTarget(target)) {
-        console.error('Usage: tsx scripts/generate-manifest.ts <chrome|firefox|safari> [output]');
+        console.error('Usage: tsx scripts/generate-manifest.ts <chrome|firefox> [output]');
         process.exit(1);
     }
     writeManifest(target, resolve(process.cwd(), process.argv[3] ?? defaultOutputPath(target)));

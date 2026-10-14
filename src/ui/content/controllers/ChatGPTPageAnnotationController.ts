@@ -1,3 +1,4 @@
+import { normalizeSelectionToolbarActions, type SelectionToolbarActions } from '../../../core/settings/selectionToolbar';
 import { readMarkDocumentTitle } from '../../../drivers/content/chatgpt/readMarkDocumentTitle';
 import type { SiteAdapter } from '../../../drivers/content/adapters/base';
 import {
@@ -50,7 +51,7 @@ import { PageAnnotationOverlay } from '../pageAnnotations/PageAnnotationOverlay'
 import { ComposerAnnotationChip } from '../pageAnnotations/ComposerAnnotationChip';
 import { PageAnnotationMarkers, type MarkersAnchorRender } from '../pageAnnotations/PageAnnotationMarkers';
 import { PageAnnotationManagerPopover } from '../pageAnnotations/PageAnnotationManagerPopover';
-import { ReaderCommentPopover } from '../reader/ReaderCommentPopover';
+import { ReaderCommentPopover, getAnnotationEditorLabels } from '../reader/ReaderCommentPopover';
 import { OverlaySession } from '../overlay/OverlaySession';
 import { showToast } from '../../../utils/toast';
 import { t } from '../components/i18n';
@@ -91,6 +92,7 @@ type PointerAnchor = {
 };
 
 export type ReaderSettingsInput = {
+    selectionToolbar?: SelectionToolbarActions;
     persistAnnotations?: boolean;
     commentExport?: ReaderCommentExportSettings;
 };
@@ -104,6 +106,7 @@ export class ChatGPTPageAnnotationController {
     private appearance: AppearanceSnapshot;
     private persistEnabled = false;
     private selectionToolbarEnabled = true;
+    private selectionToolbarActions = normalizeSelectionToolbarActions(undefined);
     private annotationsEnabled = true;
     private highlightSaving = false;
     private readonly highlights = new HighlightSession(
@@ -186,6 +189,9 @@ export class ChatGPTPageAnnotationController {
         if (enabled) this.init();
         else this.dispose();
     }
+
+    /** @deprecated The annotation entry is always enabled when annotations exist. */
+    setComposerControlVisible(_visible: boolean): void { this.syncChip(); }
 
     setSelectionToolbarEnabled(enabled: boolean): void {
         if (enabled === this.selectionToolbarEnabled) return;
@@ -288,6 +294,11 @@ export class ChatGPTPageAnnotationController {
     }
 
     setReaderSettings(settings: ReaderSettingsInput): void {
+        if (settings.selectionToolbar) {
+            this.selectionToolbarActions = normalizeSelectionToolbarActions(settings.selectionToolbar);
+            const frame = this.selectionCoordinator.getCurrentFrame() ?? this.selectionCoordinator.refreshNow();
+            if (frame && this.selectionToolbarEnabled && this.initialized) this.showToolbar(frame, selectionKey(frame));
+        }
         const persist = settings.persistAnnotations ?? false;
         if (persist !== this.persistEnabled) {
             this.persistEnabled = persist;
@@ -384,7 +395,11 @@ export class ChatGPTPageAnnotationController {
     }
 
     private renderToolbar(frame: ChatGPTPageSelectionFrame): boolean {
-        const canHighlight = isHighlightableTextSelection(frame.location.range, frame.location.root);
+        const canHighlight = this.selectionToolbarActions.highlight && isHighlightableTextSelection(frame.location.range, frame.location.root);
+        if (!this.selectionToolbarActions.copy && !(this.selectionToolbarActions.annotation && this.annotationsEnabled) && !canHighlight) {
+            this.ensureOverlay().renderToolbar(null);
+            return false;
+        }
         const position = this.resolveToolbarPosition(frame, canHighlight);
         if (!position) {
             this.ensureOverlay().renderToolbar(null);
@@ -405,7 +420,8 @@ export class ChatGPTPageAnnotationController {
             },
             onCopy: () => void this.copyCurrentSelection(),
             onComment: () => this.openCreateCommentFromCurrentSelection(),
-            commentEnabled: this.annotationsEnabled,
+            copyEnabled: this.selectionToolbarActions.copy,
+            commentEnabled: this.annotationsEnabled && this.selectionToolbarActions.annotation,
             onHighlight: canHighlight ? color => this.saveHighlight(color) : undefined,
         });
         return true;
@@ -416,7 +432,8 @@ export class ChatGPTPageAnnotationController {
             const buttonSize = this.readPxVar('--aimd-size-control-icon-panel', 32);
             const pointerGap = this.readPxVar('--aimd-space-2', 8);
             const pointerEdge = this.readPxVar('--aimd-space-3', 12);
-            const actionWidth = buttonSize * (canHighlight ? (this.annotationsEnabled ? 5 : 4) : (this.annotationsEnabled ? 2 : 1)) + pointerGap * (canHighlight ? 3 : 1);
+            const count = Number(this.selectionToolbarActions.copy) + Number(this.annotationsEnabled && this.selectionToolbarActions.annotation) + (canHighlight ? 3 : 0);
+            const actionWidth = buttonSize * count + pointerGap * Math.max(0, count - 1);
             let left = this.pointerAnchor.x + pointerGap;
             if (left + actionWidth > window.innerWidth - pointerEdge) {
                 left = Math.max(pointerEdge, this.pointerAnchor.x - actionWidth - pointerGap);
@@ -460,7 +477,7 @@ export class ChatGPTPageAnnotationController {
             this.reportSelectionUnavailable();
             return;
         }
-        const ok = await copyCanonicalMarkdownToClipboard(snapshot.canonicalMarkdown);
+        const ok = await copyCanonicalMarkdownToClipboard(snapshot.canonicalMarkdown, snapshot.literal);
         showToast({
             text: ok
                 ? this.getLabel('btnCopied', 'Copied!')
@@ -530,6 +547,14 @@ export class ChatGPTPageAnnotationController {
     // ---------- comment popover ----------
 
     private openCreateComment(snapshot: PageMarkdownSelectionSnapshot): void {
+        const documentKey = this.lastDocumentKey;
+        const target = this.resolveTarget(snapshot.evidence);
+        const record = createPageCommentRecord({
+            id: `${ID_PREFIX}${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+            itemId: this.itemIdForEvidence(snapshot.evidence), comment: '', range: snapshot.range,
+            root: snapshot.root, sourceMarkdown: snapshot.canonicalMarkdown,
+        });
+        record.target = target ?? undefined;
         this.closeToolbar();
         this.mode = 'editing';
         this.commentPopover.open({
@@ -540,28 +565,25 @@ export class ChatGPTPageAnnotationController {
             anchorRect: this.selectionViewportRect(snapshot),
             mode: 'create',
             labels: this.commentLabels(),
-            onSave: (value) => this.saveNewAnnotation(snapshot, value),
+            onSave: (value) => {
+                if (!snapshot.root.isConnected && !documentKey) throw new Error(this.getLabel('pageAnnotationSelectionUnavailable', 'Selection unavailable. Select text again and try.'));
+                return this.saveNewAnnotation(record, value, documentKey);
+            },
             onCancel: () => {
                 this.closeToolbar();
             },
         });
     }
 
-    private async saveNewAnnotation(snapshot: PageMarkdownSelectionSnapshot, value: string): Promise<void> {
-        const target = this.resolveTarget(snapshot.evidence);
-        const record = createPageCommentRecord({
-            id: `${ID_PREFIX}${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-            itemId: this.itemIdForEvidence(snapshot.evidence),
-            comment: value,
-            range: snapshot.range,
-            root: snapshot.root,
-            sourceMarkdown: snapshot.canonicalMarkdown,
-        });
-        record.target = target ?? undefined;
+    private async saveNewAnnotation(record: ReaderCommentRecord, value: string, documentKey: string | null): Promise<void> {
+        if (documentKey !== this.lastDocumentKey) throw new Error(this.getLabel('pageAnnotationSelectionUnavailable', 'Selection unavailable. Select text again and try.'));
+        const target = record.target ?? null;
         try {
             const document = this.store.getDocument();
             if (document) await this.store.bindDocument(readMarkDocumentTitle(document));
-            const saved = await this.store.create(record, target);
+            if (documentKey !== this.lastDocumentKey) throw new Error(this.getLabel('pageAnnotationSelectionUnavailable', 'Selection unavailable. Select text again and try.'));
+            const saved = await this.store.create({ ...record, comment: value }, target);
+            if (documentKey !== this.lastDocumentKey) return;
             this.activeAnnotationId = saved.id;
         } catch (error) {
             showToast({
@@ -575,6 +597,7 @@ export class ChatGPTPageAnnotationController {
     }
 
     private openEditComment(record: ReaderCommentRecord, anchorRect: DOMRect): void {
+        const documentKey = this.lastDocumentKey;
         this.closeHighlightActions();
         this.activeAnnotationId = record.id;
         this.closeToolbar();
@@ -597,7 +620,9 @@ export class ChatGPTPageAnnotationController {
             initialText: record.comment,
             onSave: async (value) => {
                 try {
+                    if (documentKey !== this.lastDocumentKey) throw new Error(this.getLabel('pageAnnotationSelectionUnavailable', 'Selection unavailable. Select text again and try.'));
                     await this.store.update({ ...record, comment: value, updatedAt: Date.now() }, record.target ?? this.targetFromItemId(record));
+                    if (documentKey !== this.lastDocumentKey) return;
                     this.activeAnnotationId = record.id;
                 } catch (error) {
                     showToast({
@@ -611,7 +636,9 @@ export class ChatGPTPageAnnotationController {
             },
             onDelete: async () => {
                 try {
+                    if (documentKey !== this.lastDocumentKey) throw new Error(this.getLabel('pageAnnotationSelectionUnavailable', 'Selection unavailable. Select text again and try.'));
                     await this.store.remove(record);
+                    if (documentKey !== this.lastDocumentKey) return;
                 } catch (error) {
                     showToast({
                         text: error instanceof Error ? error.message : this.getLabel('readerCommentPersistenceUnavailable', 'Annotation could not be deleted.'),
@@ -647,20 +674,11 @@ export class ChatGPTPageAnnotationController {
         );
     }
 
-    private commentLabels(): {
-        addTitle: string;
-        editTitle: string;
-        close: string;
-        selectedSource: string;
-        placeholder: string;
-        cancel: string;
-        delete: string;
-        save: string;
-        saveShortcut: string;
-    } {
+    private commentLabels() {
         return {
-            addTitle: this.getLabel('readerCommentAddTitle', 'Add comment'),
-            editTitle: this.getLabel('readerCommentEditTitle', 'Edit comment'),
+            ...getAnnotationEditorLabels((key, fallback) => this.getLabel(key, fallback)),
+            addTitle: this.getLabel('readerCommentAddTitle', 'Add annotation'),
+            editTitle: this.getLabel('readerCommentEditTitle', 'Edit annotation'),
             close: this.getLabel('btnClose', 'Close'),
             selectedSource: this.getLabel('readerCommentSelectedSource', 'Selected content'),
             placeholder: this.getLabel('readerCommentPlaceholder', 'Write your annotation...'),
@@ -934,13 +952,25 @@ export class ChatGPTPageAnnotationController {
         const range = cached?.range;
         const union = cached?.layout?.unionRect;
         if (!cached?.root.isConnected || !range || !union) return false;
-        const top = cached.root.getBoundingClientRect().top + union.top;
-        if (top >= 0 && top + union.height <= window.innerHeight) return false;
-        const source = range.startContainer instanceof Element
-            ? range.startContainer
-            : range.startContainer.parentElement;
-        if (!source) return false;
-        source.scrollIntoView({ block: 'center', inline: 'nearest' });
+        return this.revealSourceRect(cached.root, union);
+    }
+
+    private revealSourceRect(root: HTMLElement, rect: ReaderCommentRect): boolean {
+        const scrollRoot = this.adapter.getConversationScrollRoot?.() ?? null;
+        const viewport = scrollRoot?.getBoundingClientRect();
+        const viewportTop = viewport?.top ?? 0;
+        const viewportHeight = viewport?.height || window.innerHeight;
+        const top = root.getBoundingClientRect().top + rect.top;
+        if (top >= viewportTop && top + rect.height <= viewportTop + viewportHeight) return false;
+        const delta = top + Math.min(rect.height, viewportHeight) / 2 - viewportTop - viewportHeight / 2;
+        // Relative movement works for both ordinary and column-reverse roots;
+        // clamping a negative scrollTop would jump to the end of the thread.
+        if (scrollRoot) {
+            if (typeof scrollRoot.scrollBy === 'function') scrollRoot.scrollBy({ top: delta, behavior: 'auto' });
+            else scrollRoot.scrollTop += delta;
+        } else {
+            window.scrollBy({ top: delta, behavior: 'auto' });
+        }
         return true;
     }
 
@@ -1062,7 +1092,8 @@ export class ChatGPTPageAnnotationController {
     private async locateAndEdit(record: ReaderCommentRecord): Promise<void> {
         if (this.navigation && record.target?.assistantMessageId) {
             const result = await this.navigation.navigate({
-                position: record.target.position ?? 0,
+                // Stored ordinals are display hints; history can prepend.
+                position: 0,
                 roundId: record.target.roundId ?? null,
                 userMessageId: record.target.userMessageId ?? null,
                 assistantMessageId: record.target.assistantMessageId,
@@ -1079,6 +1110,7 @@ export class ChatGPTPageAnnotationController {
             showToast({ text: this.getLabel('pageAnnotationSourceUnavailable', 'The source reply is not available on this page.'), tone: 'error' });
             return;
         }
+        this.revealSourceRect(root, resolved.unionRect);
         const rootRect = root.getBoundingClientRect();
         const rect = new DOMRect(
             rootRect.left + resolved.unionRect.left,
@@ -1099,7 +1131,6 @@ export class ChatGPTPageAnnotationController {
             const documentKey = this.contentSource?.read().document?.key ?? null;
             const materializationToken = this.materialization?.read().materializationToken ?? '';
             if (documentKey !== this.lastDocumentKey) {
-                this.lastDocumentKey = documentKey;
                 void this.syncDocument();
             } else if (materializationToken !== this.lastMaterializationToken) {
                 this.lastMaterializationToken = materializationToken;
@@ -1121,7 +1152,7 @@ export class ChatGPTPageAnnotationController {
         const sourceDocument = createReaderAnnotationDocument(state.document, this.pageUrl());
         const annotationDocument = sourceDocument ? readMarkDocumentTitle(sourceDocument) : undefined;
         const nextKey = annotationDocument ? readerAnnotationDocumentKey(annotationDocument) : null;
-        if (previousKey !== null && previousKey !== nextKey) {
+        if (previousKey !== nextKey) {
             // Conversation identity changed: close transient UI before swapping data.
             this.commentPopover.close(this.ensureOverlay().getShadow(), false);
             this.mode = 'closed';

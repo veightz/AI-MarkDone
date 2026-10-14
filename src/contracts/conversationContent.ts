@@ -6,6 +6,7 @@
 
 import type { SemanticContentProvenanceV1 } from './semanticContent';
 import type { DiscoveryHistoryStatusV1 } from './conversationDiscoveryDiagnostics';
+import { freezeRichBlocks, isRichBlocksV1, type RichBlockV1 } from './richContent';
 
 export type ConversationContentTokenV1 = string;
 
@@ -84,6 +85,9 @@ export type ConversationTurnV1 = Readonly<{
     identity: ConversationTurnIdentityV1;
     userText: string;
     assistantMarkdown: string;
+    /** Captured source before user-facing cleanup; older snapshots may omit it. */
+    assistantSourceMarkdown?: string;
+    assistantRichBlocks?: readonly RichBlockV1[];
     /**
      * Additive source-quality evidence. Older V1 snapshots may omit it; all
      * current discovery implementations must publish it.
@@ -247,6 +251,8 @@ export function isConversationSnapshotV1(value: unknown): value is ConversationS
         if (!isNullableString(identity.userMessageId)) return false;
         if (identity.userMessageId && userIds.has(identity.userMessageId)) return false;
         if (typeof turn.userText !== 'string' || typeof turn.assistantMarkdown !== 'string') return false;
+        if (turn.assistantSourceMarkdown !== undefined && typeof turn.assistantSourceMarkdown !== 'string') return false;
+        if (turn.assistantRichBlocks !== undefined && !isRichBlocksV1(turn.assistantRichBlocks)) return false;
         if (!isOptionalSemanticContentProvenanceV1(turn.assistantProvenance)) return false;
 
         keys.add(turn.key);
@@ -263,6 +269,9 @@ export function freezeConversationSnapshotV1(
     const turns = snapshot.turns.map((turn) => Object.freeze({
         ...turn,
         identity: Object.freeze({ ...turn.identity }),
+        ...(turn.assistantRichBlocks !== undefined
+            ? { assistantRichBlocks: freezeRichBlocks(turn.assistantRichBlocks) }
+            : {}),
         ...(turn.assistantProvenance
             ? { assistantProvenance: Object.freeze({ ...turn.assistantProvenance }) }
             : {}),

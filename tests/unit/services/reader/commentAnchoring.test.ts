@@ -9,6 +9,45 @@ import {
 import type { SelectedAtomicUnit } from '@/services/reader/atomicSelection';
 
 describe('commentAnchoring', () => {
+    it.each(['page-to-reader', 'reader-to-page'])('keeps a unique exact passage through layout whitespace changes (%s)', (direction) => {
+        const paragraphs = ['<p>Earlier context.</p>', '<p>Chosen passage.</p>', '<p>Following context.</p>'];
+        document.body.innerHTML = '<div id="root"></div>';
+        const root = document.querySelector<HTMLElement>('#root')!;
+        root.innerHTML = paragraphs.join(direction === 'page-to-reader' ? '' : '\n');
+        const range = document.createRange(); range.selectNodeContents(root.querySelectorAll('p')[1]!);
+        const record = createPageCommentRecord({ id: 'cross-surface', itemId: 'reply', comment: '', range, root, sourceMarkdown: 'Chosen passage.' });
+        root.innerHTML = paragraphs.join(direction === 'page-to-reader' ? '\n' : '');
+        const resolved = resolveReaderCommentAnchor(root, record);
+        expect(resolved.range?.toString()).toBe('Chosen passage.');
+        expect(resolved.range?.endContainer.parentElement).toBe(root.querySelectorAll('p')[1]);
+    });
+
+    it('does not guess between repeated quotes whose normalized context is ambiguous', () => {
+        document.body.innerHTML = '<div id="root"><p>A Chosen B</p><p>A Chosen B</p></div>';
+        const root = document.querySelector<HTMLElement>('#root')!;
+        const range = document.createRange(); range.selectNodeContents(root.querySelector('p')!);
+        const record = createPageCommentRecord({ id: 'ambiguous-context', itemId: 'reply', comment: '', range, root, sourceMarkdown: 'Chosen' });
+        record.quoteText = 'Chosen';
+        record.selectors = { textQuote: { exact: 'Chosen', prefix: 'A\n', suffix: '\nB' }, textPosition: { start: null, end: null }, domRange: null, atomicRefs: [] };
+        expect(resolveReaderCommentAnchor(root, record).range).toBeNull();
+    });
+
+    it.each(['dom-path', 'text-position'])('rejects a stale %s that now points to a different occurrence of the same quote', (shortcut) => {
+        document.body.innerHTML = '<div id="root"><p>ALPHA Same tailA</p><p>BRAVO Same tailB</p></div>';
+        const root = document.querySelector<HTMLElement>('#root')!;
+        const target = root.querySelectorAll('p')[1]!.firstChild!;
+        const range = document.createRange();
+        range.setStart(target, 6);
+        range.setEnd(target, 10);
+        const record = createPageCommentRecord({ id: 'same-quote', itemId: 'reply', comment: 'note', range, root, sourceMarkdown: 'Same' });
+        if (shortcut === 'text-position') record.selectors.domRange = null;
+        root.insertAdjacentHTML('afterbegin', '<p>OMEGA Same tail0</p>');
+
+        const resolved = resolveReaderCommentAnchor(root, record);
+        expect(resolved.range?.toString()).toBe('Same');
+        expect(resolved.range?.startContainer.parentElement?.textContent).toBe('BRAVO Same tailB');
+    });
+
     it('captures and resolves a mixed text + atomic-unit anchor', () => {
         document.body.innerHTML = `
           <div id="root">

@@ -2,7 +2,6 @@ import { loadBookmarksDoc } from '../../content/loader';
 import { parseBookmarksDoc } from '../../content/parser';
 import { t } from '../../../components/i18n';
 import { renderInfoBlocks } from './renderInfoBlocks';
-import { TARGET_SURFACE_SOCIAL_FOLLOW_CARD_ENABLED } from '../../../../../config/targetSurface';
 
 export type AboutTabViewActions = {
     getAssetUrl: (assetPath: string) => string;
@@ -107,7 +106,7 @@ export class AboutTabView {
         }
 
         shell.append(hero, profileCard, infoSections);
-        if (TARGET_SURFACE_SOCIAL_FOLLOW_CARD_ENABLED && actions.showSocialFollowCard !== false) {
+        if (actions.showSocialFollowCard !== false) {
             const socialFollow = document.createElement('section');
             socialFollow.className = 'social-follow-card';
             socialFollow.innerHTML = `

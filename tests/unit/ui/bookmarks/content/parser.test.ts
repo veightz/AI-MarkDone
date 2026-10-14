@@ -6,13 +6,14 @@ import { loadBookmarksDoc } from '@/ui/content/bookmarks/content/loader';
 describe('bookmarks content parser', () => {
     it('parses changelog markdown for both locales', () => {
         const zh = parseChangelogDoc(loadBookmarksDoc('changelog', 'zh_CN'));
-        expect(zh.entries[0]?.version).toBe('6.0.0');
-        expect(zh.entries[1]?.version).toBe('5.4.1');
-        zh.entries = zh.entries.filter(entry => entry.version !== '6.0.0' && entry.version !== '5.4.1');
+        expect(zh.entries[0]?.version).toBe('6.2.0');
+        expect(zh.entries[0]?.leadBlocks[0]).toEqual(expect.objectContaining({ text: expect.stringContaining('朋友们好') }));
+        expect(zh.entries[1]?.version).toBe('6.1.0');
+        zh.entries = zh.entries.filter(entry => !['6.2.0', '6.1.0', '6.0.0', '5.4.1'].includes(entry.version));
         const en = parseChangelogDoc(loadBookmarksDoc('changelog', 'en'));
-        expect(en.entries[0]?.version).toBe('6.0.0');
-        expect(en.entries[1]?.version).toBe('5.4.1');
-        en.entries = en.entries.filter(entry => entry.version !== '6.0.0' && entry.version !== '5.4.1');
+        expect(en.entries[0]?.version).toBe('6.2.0');
+        expect(en.entries[1]?.version).toBe('6.1.0');
+        en.entries = en.entries.filter(entry => !['6.2.0', '6.1.0', '6.0.0', '5.4.1'].includes(entry.version));
 
         expect(zh.title).toBe('更新日志');
         expect(en.title).toBe('Changelog');
@@ -70,7 +71,8 @@ describe('bookmarks content parser', () => {
     it('parses about markdown into title, lead, and sections', () => {
         const zh = parseBookmarksDoc(loadBookmarksDoc('about', 'zh_CN'));
 
-        expect(zh.title).toBe('关于我');
+        expect(zh.title).toBe('关于作者');
+        expect(parseBookmarksDoc(loadBookmarksDoc('about', 'en')).title).toBe('About the author');
         expect(zh.leadBlocks[0]).toEqual(
             expect.objectContaining({
                 type: 'paragraph',
@@ -97,13 +99,37 @@ describe('bookmarks content parser', () => {
 
         expect(en.title).toBe('FAQ');
         expect(en.leadBlocks).toEqual([]);
-        expect(en.items).toHaveLength(16);
-        expect(en.items[0]?.question).toContain('Which platforms does this extension support');
+        expect(en.items).toHaveLength(18);
+        expect(en.items[0]?.question).toBe('Where can I use AI-MarkDone?');
         expect(en.items[0]?.blocks[0]).toEqual(
             expect.objectContaining({
                 type: 'paragraph',
             }),
         );
+    });
+
+    it('keeps current bilingual guidance aligned with the panel and available workflows', () => {
+        const zh = loadBookmarksDoc('faq', 'zh_CN');
+        const en = loadBookmarksDoc('faq', 'en');
+        expect(parseFaqDoc(zh).items).toHaveLength(parseFaqDoc(en).items.length);
+        expect(zh).toContain('功能全览');
+        expect(en).toContain('Feature overview');
+        expect(zh).toContain('关闭按钮旁的“全屏”');
+        expect(en).toContain('Full screen beside Close');
+        const zhExport = parseFaqDoc(zh).items.find((item) => item.question === '如何导出？');
+        const enExport = parseFaqDoc(en).items.find((item) => item.question === 'How do I export messages?');
+        expect(JSON.stringify(zhExport?.blocks)).toContain('Markdown 可继续编辑');
+        expect(JSON.stringify(zhExport?.blocks)).toContain('PDF 会打开浏览器打印窗口');
+        expect(JSON.stringify(zhExport?.blocks)).toContain('PNG 保存为长图片');
+        expect(JSON.stringify(enExport?.blocks)).toContain('Markdown remains editable');
+        expect(JSON.stringify(enExport?.blocks)).toContain('PDF opens the browser’s print dialog');
+        expect(JSON.stringify(enExport?.blocks)).toContain('PNG saves long images');
+        expect(zh).toContain('提问和回复分别保留开头 250 与结尾 250');
+        expect(en).toContain('questions and replies longer than 500 characters each');
+        expect(zh).toContain('阅读器设置中的“保存新建的注释”默认关闭');
+        expect(zh).toContain('原 ChatGPT 标签页保持打开');
+        expect(zh).not.toMatch(/批注|Prompt|独立窗口 Reader|标记与注释|按钮与快捷键|阅读与导航/);
+        expect(en).not.toMatch(/detached Reader|Buttons & shortcuts|Reading & navigation/);
     });
 
     it('parses standalone static markdown images as image blocks', () => {

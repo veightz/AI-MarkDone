@@ -2,6 +2,7 @@ import { unified } from 'unified';
 import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
 import remarkParse from 'remark-parse';
+import { getRichBlockIdFromUrl, type RichContentBindingV1 } from '../../contracts/richContent';
 
 import type {
     CanonicalContentSourceV1,
@@ -327,6 +328,40 @@ export class SemanticContent implements SemanticContentModuleV1 {
                 units: internal.units,
                 outline: internal.outline,
                 diagnostics: document.diagnostics,
+            });
+        }
+
+        if (request.kind === 'rich-content') {
+            const replacements = new Map(request.replacements.map(replacement => [replacement.id, replacement.markdown]));
+            if (replacements.size !== request.replacements.length) {
+                return projectionFailure(request.kind, 'RICH_CONTENT_BINDING_AMBIGUOUS', 'Resource replacement identities must be unique.');
+            }
+            const edits: Array<{ start: number; end: number; markdown: string }> = [];
+            const bindings: RichContentBindingV1[] = [];
+            const diagnostics = [...document.diagnostics];
+            const visit = (node: SemanticNodeV1): void => {
+                const url = node.attributes.url;
+                if (node.kind === 'image' && typeof url === 'string' && url.startsWith('aimd-rich:') && node.span) {
+                    const id = getRichBlockIdFromUrl(url);
+                    const replacement = id ? replacements.get(id) : undefined;
+                    if (id) bindings.push(Object.freeze({ id, span: node.span }));
+                    const label = String(node.attributes.alt ?? node.text ?? 'Dynamic content').replace(/[\r\n\[\]]/g, ' ').trim();
+                    edits.push({ start: node.span.start, end: node.span.end, markdown: replacement ?? `[${label || 'Dynamic content'}]` });
+                    if (replacement === undefined) diagnostics.push(Object.freeze({
+                        code: 'RICH_CONTENT_BINDING_MISSING', phase: 'project', severity: 'warning',
+                        message: 'A resource reference has no matching resource description.', span: node.span,
+                    }));
+                }
+                node.children.forEach(visit);
+            };
+            document.nodes.forEach(visit);
+            let markdown = internal.sourceText;
+            for (const edit of edits.sort((left, right) => right.start - left.start)) {
+                markdown = markdown.slice(0, edit.start) + edit.markdown + markdown.slice(edit.end);
+            }
+            return Object.freeze({
+                status: 'ready', kind: request.kind, revision: document.revision, markdown,
+                bindings: Object.freeze(bindings), diagnostics: Object.freeze(diagnostics),
             });
         }
 

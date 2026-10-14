@@ -66,7 +66,7 @@ function formatDate(value: number): string {
 
 function getCss(): string {
     return `
-.mock-modal--reader-annotation-manager { --_modal-width: min(880px, calc(100% - (var(--aimd-space-5) * 2))); --_modal-max-height: min(760px, calc(100% - (var(--aimd-space-5) * 2))); border-color: var(--aimd-workspace-border); background: var(--aimd-workspace-card); box-shadow: var(--aimd-shadow-workspace), var(--aimd-workspace-edge-shadow); }
+.mock-modal--reader-annotation-manager { --_modal-content-max-width: 880px; --_modal-content-max-height: 760px; border-color: var(--aimd-workspace-border); background: var(--aimd-workspace-card); box-shadow: var(--aimd-shadow-workspace), var(--aimd-workspace-edge-shadow); }
 .mock-modal--reader-annotation-manager .mock-modal__head, .mock-modal--reader-annotation-manager .mock-modal__footer { background: var(--aimd-workspace-card); border-color: var(--aimd-workspace-border); }
 .mock-modal--reader-annotation-manager .mock-modal__title-copy strong { color: var(--aimd-text-primary); }
 .mock-modal--reader-annotation-manager .mock-modal__content { overflow: hidden; }

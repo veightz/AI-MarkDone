@@ -1,3 +1,4 @@
+import type { FormulaAssetActionSettings } from '../../../core/settings/formula';
 import type { LatexSnippetItem } from '../../../core/math/latexSnippets';
 import type { FormulaSvgAsset } from '../../../core/math/formulaAssetTypes';
 import type { MarkdownMathKind } from '../../../core/sending/markdownMath';
@@ -21,6 +22,10 @@ import {
     type SurfacePositioner,
 } from './SurfaceRuntime';
 import { getAnchoredMotionCss } from './styles/anchoredMotionCss';
+import { createFormulaAssetActionItems, createFormulaAssetActionButton, getFormulaAssetActionRowCss } from './formulaAssetActionItems';
+import type { FormulaAssetAction } from '../../../services/math/formulaAssetActions';
+import { getAnnotationActionButtonCss } from '../pageAnnotations/annotationActionButtonCss';
+import { getSurfaceMaterialCss } from './styles/surfaceMaterialCss';
 
 export type FormulaPreviewState =
     | { status: 'loading' }
@@ -38,6 +43,8 @@ export type FormulaComposerAssistantView = {
 export type FormulaComposerAssistantDismissReason = 'escape' | 'outside';
 
 const CSS = `
+${getAnnotationActionButtonCss()}
+${getFormulaAssetActionRowCss()}
 :host {
   box-sizing: border-box;
   color: var(--aimd-text-primary);
@@ -47,20 +54,20 @@ const CSS = `
 .formula-assistant {
   width: 100%;
   min-width: 0;
-  display: grid;
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100vh - var(--aimd-space-4) * 2);
   overflow: hidden;
-  border: 1px solid var(--aimd-border-subtle);
-  border-radius: var(--aimd-radius-lg);
-  background: var(--aimd-bg-surface);
-  box-shadow: var(--aimd-shadow-panel);
 }
 .formula-preview-header {
   display: flex;
+  flex: none;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: var(--aimd-space-2);
   padding: var(--aimd-space-2) var(--aimd-space-3);
-  border-bottom: 1px solid var(--aimd-border-subtle);
+  border-bottom: 1px solid var(--aimd-workspace-border);
   color: var(--aimd-text-secondary);
   font-size: var(--aimd-font-size-xs);
 }
@@ -68,6 +75,7 @@ const CSS = `
   font-family: var(--aimd-font-family-mono);
 }
 .formula-preview {
+  flex: 0 1 auto;
   min-height: var(--aimd-size-control-action-panel);
   max-height: min(220px, 40vh);
   display: grid;
@@ -75,7 +83,7 @@ const CSS = `
   overflow: auto;
   padding: var(--aimd-space-4);
   color: var(--aimd-text-primary);
-  background: var(--aimd-bg-secondary);
+  margin: var(--aimd-space-2);
 }
 .formula-preview svg {
   display: block;
@@ -93,15 +101,22 @@ const CSS = `
   color: var(--aimd-color-danger);
 }
 .formula-suggestions {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
   min-height: 0;
+  overflow: hidden;
 }
+.formula-suggestions .composer-suggestion-list { flex: 1 1 auto; align-content: start; }
+.formula-export-actions { flex: none; }
 .formula-assistant[data-has-preview="1"] .formula-suggestions {
-  border-top: 1px solid var(--aimd-border-subtle);
+  border-top: 1px solid var(--aimd-workspace-border);
 }
 ${COMPOSER_SUGGESTION_LIST_CSS}
 @media (prefers-reduced-motion: reduce) {
   .formula-assistant { transition: none; }
 }
+${getSurfaceMaterialCss()}
 `;
 
 const RESPONSIVE_PROFILE: ResponsiveProfile = {
@@ -140,11 +155,24 @@ export class FormulaComposerAssistantPopover {
     private view: FormulaComposerAssistantView | null = null;
     private openState = false;
 
+    private exportAvailable=false;
+    setExportAvailable(available:boolean):void {this.exportAvailable=available&&this.view?.preview?.status==='ready';this.root.querySelectorAll<HTMLButtonElement>('.formula-export-actions button').forEach(button=>{button.disabled=this.exportPending||!this.exportAvailable;});}
+    private exportPending=false;
+    private async performExport(action:FormulaAssetAction,asset:FormulaSvgAsset):Promise<void>{
+        if(this.exportPending||!this.exportAvailable)return;this.exportPending=true;this.root.querySelectorAll<HTMLButtonElement>('.formula-export-actions button').forEach(button=>{button.disabled=true;});
+        try{await this.params.onExport?.(action,asset);}catch{/* The export controller owns user-visible errors. */}
+        finally{this.exportPending=false;this.root.querySelectorAll<HTMLButtonElement>('.formula-export-actions button').forEach(button=>{button.disabled=!this.exportAvailable;});}
+    }
+
+    private assetActionSettings: FormulaAssetActionSettings | undefined;
+    setAssetActionSettings(settings: FormulaAssetActionSettings | undefined): void {if(JSON.stringify(this.assetActionSettings)===JSON.stringify(settings))return; this.assetActionSettings = settings; if (this.view) this.render(); }
+
     constructor(private readonly params: {
         onSelect: (index: number) => void;
         onHover?: (index: number) => void;
         onDismiss?: (reason: FormulaComposerAssistantDismissReason) => void;
         getDismissRoots?: () => ReadonlyArray<HTMLElement | null | undefined>;
+        onExport?: (action: FormulaAssetAction, asset: FormulaSvgAsset) => Promise<void>;
     }) {
         this.host = markTransientRoot(document.createElement('div'));
         this.host.dataset.aimdRole = 'formula-composer-assistant';
@@ -156,7 +184,7 @@ export class FormulaComposerAssistantPopover {
         this.host.hidden = true;
         this.shadow = this.host.attachShadow({ mode: 'open' });
         this.root = document.createElement('section');
-        this.root.className = 'formula-assistant';
+        this.root.className = 'formula-assistant aimd-material-surface';
         this.root.setAttribute('role', 'region');
         this.root.dataset.aimdSurfaceProfile = 'anchored';
         this.shadow.appendChild(this.root);
@@ -201,6 +229,7 @@ export class FormulaComposerAssistantPopover {
         const wasOpen = this.openState;
         this.surfaceSession.cancelClose();
         this.view = view;
+        this.exportAvailable=view.preview?.status==='ready';
         this.openState = true;
         this.host.hidden = false;
         this.host.style.pointerEvents = '';
@@ -229,9 +258,16 @@ export class FormulaComposerAssistantPopover {
     updateSelectedIndex(selectedIndex: number): void {
         if (!this.view || this.view.selectedIndex === selectedIndex) return;
         this.view = { ...this.view, selectedIndex };
-        this.render();
+        this.root.querySelectorAll<HTMLButtonElement>('[data-role="formula-suggestion"]').forEach((button,index)=>{button.classList.toggle('is-active',index===selectedIndex);button.setAttribute('aria-selected',String(index===selectedIndex));});
     }
 
+    reposition(anchorRect:DOMRect):void {if(!this.view||!this.openState)return;this.view={...this.view,anchorRect};this.surfaceSession.position();}
+    setSuggestions(suggestions:readonly LatexSnippetItem[],selectedIndex:number):void {
+        if(!this.view)return;this.view={...this.view,suggestions,selectedIndex};
+        this.root.querySelector('.formula-suggestions')?.remove();
+        if(!suggestions.length)return;
+        const root=document.createElement('div');root.className='formula-suggestions';renderComposerSuggestionList({root,items:suggestions.map(item=>({title:item.label,content:item.detail,trailing:item.category})),selectedIndex,role:'formula-suggestion',rowClassName:'aimd-material-choice',onHover:index=>this.params.onHover?.(index),onSelect:this.params.onSelect});this.root.append(root);this.surfaceSession.position();
+    }
     isOpen(): boolean {
         return this.openState;
     }
@@ -267,58 +303,7 @@ export class FormulaComposerAssistantPopover {
     private render(): void {
         const view = this.view;
         if (!view) return;
-        this.root.replaceChildren();
-        this.root.dataset.hasPreview = view.preview ? '1' : '0';
-        this.root.setAttribute('aria-label', t('chatgptFormulaPreviewTitle'));
-
-        if (view.preview) {
-            const header = document.createElement('header');
-            header.className = 'formula-preview-header';
-            const title = document.createElement('span');
-            title.textContent = t('chatgptFormulaPreviewTitle');
-            const kind = document.createElement('span');
-            kind.className = 'formula-preview-kind';
-            kind.textContent = view.mathKind === 'display'
-                ? t('chatgptFormulaDisplayKind')
-                : t('chatgptFormulaInlineKind');
-            header.append(title, kind);
-
-            const preview = document.createElement('div');
-            preview.className = 'formula-preview';
-            preview.dataset.role = 'formula-preview';
-            if (view.preview.status === 'ready') {
-                const svg = createPreviewSvg(view.preview.asset);
-                if (svg) preview.appendChild(svg);
-            } else {
-                const status = document.createElement('span');
-                status.className = 'formula-preview-status';
-                status.dataset.role = 'formula-preview-status';
-                status.dataset.state = view.preview.status;
-                status.textContent = view.preview.status === 'loading'
-                    ? t('chatgptFormulaPreviewLoading')
-                    : t('chatgptFormulaPreviewError');
-                preview.appendChild(status);
-            }
-            this.root.append(header, preview);
-        }
-
-        if (view.suggestions.length > 0) {
-            const suggestions = document.createElement('div');
-            suggestions.className = 'formula-suggestions';
-            renderComposerSuggestionList({
-                root: suggestions,
-                items: view.suggestions.map((item) => ({
-                    title: item.label,
-                    content: item.detail,
-                    trailing: item.category,
-                })),
-                selectedIndex: view.selectedIndex,
-                role: 'formula-suggestion',
-                onHover: (index) => this.params.onHover?.(index),
-                onSelect: this.params.onSelect,
-            });
-            this.root.appendChild(suggestions);
-        }
+        renderFormulaAssistantView(this.root,view,{onSelect:this.params.onSelect,onHover:this.params.onHover,onExport:this.params.onExport ? (action,asset)=>this.performExport(action,asset) : undefined,assetActions:this.assetActionSettings,exportPending:this.exportPending||!this.exportAvailable});
     }
 
     private position(view: FormulaComposerAssistantView): void {
@@ -385,3 +370,77 @@ export class FormulaComposerAssistantPopover {
         };
     }
 }
+
+export type FormulaAssistantViewActions = {
+    onSelect:(index:number)=>void;onHover?:(index:number)=>void;
+    onExport?:(action:FormulaAssetAction,asset:FormulaSvgAsset)=>Promise<void>;
+    assetActions?:FormulaAssetActionSettings;exportPending?:boolean;
+};
+/** Same view for the live caret popover and isolated Settings sample. */
+export function renderFormulaAssistantView(root:HTMLElement,view:FormulaComposerAssistantView,params:FormulaAssistantViewActions):void {
+        root.replaceChildren();
+        root.classList.add('aimd-material-surface');
+        root.dataset.hasPreview = view.preview ? '1' : '0';
+        root.setAttribute('aria-label', t('chatgptFormulaPreviewTitle'));
+
+        if (view.preview) {
+            const header = document.createElement('header');
+            header.className = 'formula-preview-header aimd-material-chrome';
+            const title = document.createElement('span');
+            title.textContent = t('chatgptFormulaPreviewTitle');
+            const kind = document.createElement('span');
+            kind.className = 'formula-preview-kind';
+            kind.textContent = view.mathKind === 'display'
+                ? t('chatgptFormulaDisplayKind')
+                : t('chatgptFormulaInlineKind');
+            header.append(title, kind);
+
+            const preview = document.createElement('div');
+            preview.className = 'formula-preview aimd-material-field';
+            preview.dataset.role = 'formula-preview';
+            if (view.preview.status === 'ready') {
+                const svg = createPreviewSvg(view.preview.asset);
+                if (svg) preview.appendChild(svg);
+            } else {
+                const status = document.createElement('span');
+                status.className = 'formula-preview-status';
+                status.dataset.role = 'formula-preview-status';
+                status.dataset.state = view.preview.status;
+                status.setAttribute('role', 'status');
+                status.setAttribute('aria-live', 'polite');
+                status.textContent = view.preview.status === 'loading'
+                    ? t('chatgptFormulaPreviewLoading')
+                    : t('chatgptFormulaPreviewError');
+                preview.appendChild(status);
+            }
+            root.append(header, preview);
+            if (view.preview.status === 'ready' && params.onExport) {
+                const asset = view.preview.asset;
+                const actions = document.createElement('div');
+                actions.className = 'formula-export-actions aimd-material-chrome';
+                for(const item of createFormulaAssetActionItems(action=>{void params.onExport?.(action,asset);},params.assetActions)){const button=createFormulaAssetActionButton(item);button.classList.add('aimd-material-button');button.disabled=Boolean(params.exportPending);actions.append(button);}
+                root.append(actions);
+            }
+        }
+
+        if (view.suggestions.length > 0) {
+            const suggestions = document.createElement('div');
+            suggestions.className = 'formula-suggestions';
+            renderComposerSuggestionList({
+                root: suggestions,
+                items: view.suggestions.map((item) => ({
+                    title: item.label,
+                    content: item.detail,
+                    trailing: item.category ?? '',
+                })),
+                selectedIndex: view.selectedIndex,
+                role: 'formula-suggestion',
+                rowClassName: 'aimd-material-choice',
+                onHover: (index) => params.onHover?.(index),
+                onSelect: params.onSelect,
+            });
+            root.appendChild(suggestions);
+        }
+}
+export function getFormulaAssistantViewCss():string{return CSS;}
+export function getFormulaAssistantMaxWidth():string{return RESPONSIVE_PROFILE.maxWidthCss!;}

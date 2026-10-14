@@ -20,6 +20,7 @@ export type PageAnnotationToolbarRender = {
     onActionPointerDown?: () => void;
     onActionPointerCancel?: () => void;
     onCopy: () => void;
+    copyEnabled?: boolean;
     onComment: () => void;
     commentEnabled?: boolean;
     onHighlight?: (color: HighlightColor) => Promise<void>;
@@ -34,7 +35,7 @@ export type PageHighlightActionsRender = {
 };
 
 function getOverlayCss(): string {
-    return getHighlightSwatchesCss() + getAnnotationActionButtonCss() + `
+    return getPageSelectionToolbarCss() + `
 :host {
   position: fixed;
   inset: 0;
@@ -70,19 +71,6 @@ function getOverlayCss(): string {
   outline-offset: 2px;
 }
 
-.reader-comment-action {
-  position: absolute;
-  pointer-events: auto;
-  display: inline-flex;
-  align-items: center;
-  gap: var(--aimd-space-1);
-  white-space: nowrap;
-  padding: var(--aimd-space-1) var(--aimd-space-2);
-  border: 1px solid var(--aimd-workspace-border);
-  border-radius: var(--aimd-radius-full);
-  background: var(--aimd-workspace-card);
-  box-shadow: var(--aimd-workspace-raised);
-}
 
 .reader-highlight-actions {
   position: absolute;
@@ -220,66 +208,7 @@ export class PageAnnotationOverlay {
     renderToolbar(toolbar: PageAnnotationToolbarRender | null): void {
         this.clearToolbar();
         if (!toolbar) return;
-        const group = document.createElement('div');
-        group.className = 'reader-comment-action';
-        group.style.left = `${Math.round(toolbar.left)}px`;
-        group.style.top = `${Math.round(toolbar.top)}px`;
-
-        const copyButton = document.createElement('button');
-        copyButton.type = 'button';
-        copyButton.className = 'icon-btn reader-comment-action__button annotation-action-button';
-        copyButton.dataset.action = 'page-selection-copy';
-        copyButton.setAttribute('aria-label', toolbar.copyLabel);
-        copyButton.title = toolbar.copyLabel;
-        copyButton.appendChild(createIcon(copyIcon));
-        copyButton.addEventListener('pointerdown', (event) => {
-            event.preventDefault();
-            toolbar.onActionPointerDown?.();
-        });
-        copyButton.addEventListener('pointercancel', () => toolbar.onActionPointerCancel?.());
-        copyButton.addEventListener('click', () => {
-            try {
-                toolbar.onCopy();
-            } finally {
-                toolbar.onActionPointerCancel?.();
-            }
-        });
-
-        const commentButton = document.createElement('button');
-        commentButton.type = 'button';
-        commentButton.className = 'icon-btn reader-comment-action__button annotation-action-button';
-        commentButton.dataset.action = 'page-comment-add';
-        commentButton.setAttribute('aria-label', toolbar.commentLabel);
-        commentButton.title = toolbar.commentLabel;
-        commentButton.appendChild(createIcon(messageSquareTextIcon));
-        commentButton.addEventListener('pointerdown', (event) => {
-            event.preventDefault();
-            toolbar.onActionPointerDown?.();
-        });
-        commentButton.addEventListener('pointercancel', () => toolbar.onActionPointerCancel?.());
-        commentButton.addEventListener('click', () => {
-            try {
-                toolbar.onComment();
-            } finally {
-                toolbar.onActionPointerCancel?.();
-            }
-        });
-
-        group.append(copyButton);
-        if (toolbar.commentEnabled !== false) group.append(commentButton);
-        if (toolbar.onHighlight) {
-            const swatches = createHighlightSwatches({ onSelect: async color => {
-                group.querySelectorAll<HTMLButtonElement>('button').forEach(button => { button.disabled = true; });
-                try { await toolbar.onHighlight!(color); }
-                finally {
-                    group.querySelectorAll<HTMLButtonElement>('button').forEach(button => { button.disabled = false; });
-                    toolbar.onActionPointerCancel?.();
-                }
-            } });
-            swatches.addEventListener('pointerdown', () => toolbar.onActionPointerDown?.());
-            swatches.addEventListener('pointercancel', () => toolbar.onActionPointerCancel?.());
-            group.append(swatches);
-        }
+        const group = createPageSelectionToolbar(toolbar);
         this.markersLayer.appendChild(group);
         this.toolbarEl = group;
     }
@@ -329,4 +258,86 @@ export class PageAnnotationOverlay {
         this.toolbarEl?.remove();
         this.toolbarEl = null;
     }
+}
+
+/** Pure action row shared with Settings; callbacks define its side effects. */
+export function createPageSelectionToolbar(toolbar: PageAnnotationToolbarRender): HTMLElement {
+        const group = document.createElement('div');
+        group.className = 'reader-comment-action';
+        group.style.left = `${Math.round(toolbar.left)}px`;
+        group.style.top = `${Math.round(toolbar.top)}px`;
+
+        const copyButton = document.createElement('button');
+        copyButton.type = 'button';
+        copyButton.className = 'icon-btn reader-comment-action__button annotation-action-button';
+        copyButton.dataset.action = 'page-selection-copy';
+        copyButton.setAttribute('aria-label', toolbar.copyLabel);
+        copyButton.title = toolbar.copyLabel;
+        copyButton.appendChild(createIcon(copyIcon));
+        copyButton.addEventListener('pointerdown', (event) => {
+            event.preventDefault();
+            toolbar.onActionPointerDown?.();
+        });
+        copyButton.addEventListener('pointercancel', () => toolbar.onActionPointerCancel?.());
+        copyButton.addEventListener('click', () => {
+            try {
+                toolbar.onCopy();
+            } finally {
+                toolbar.onActionPointerCancel?.();
+            }
+        });
+
+        const commentButton = document.createElement('button');
+        commentButton.type = 'button';
+        commentButton.className = 'icon-btn reader-comment-action__button annotation-action-button';
+        commentButton.dataset.action = 'page-comment-add';
+        commentButton.setAttribute('aria-label', toolbar.commentLabel);
+        commentButton.title = toolbar.commentLabel;
+        commentButton.appendChild(createIcon(messageSquareTextIcon));
+        commentButton.addEventListener('pointerdown', (event) => {
+            event.preventDefault();
+            toolbar.onActionPointerDown?.();
+        });
+        commentButton.addEventListener('pointercancel', () => toolbar.onActionPointerCancel?.());
+        commentButton.addEventListener('click', () => {
+            try {
+                toolbar.onComment();
+            } finally {
+                toolbar.onActionPointerCancel?.();
+            }
+        });
+
+        if (toolbar.copyEnabled !== false) group.append(copyButton);
+        if (toolbar.commentEnabled !== false) group.append(commentButton);
+        if (toolbar.onHighlight) {
+            const swatches = createHighlightSwatches({ onSelect: async color => {
+                group.querySelectorAll<HTMLButtonElement>('button').forEach(button => { button.disabled = true; });
+                try { await toolbar.onHighlight!(color); }
+                finally {
+                    group.querySelectorAll<HTMLButtonElement>('button').forEach(button => { button.disabled = false; });
+                    toolbar.onActionPointerCancel?.();
+                }
+            } });
+            swatches.addEventListener('pointerdown', () => toolbar.onActionPointerDown?.());
+            swatches.addEventListener('pointercancel', () => toolbar.onActionPointerCancel?.());
+            group.append(swatches);
+        }
+    return group;
+}
+
+export function getPageSelectionToolbarCss(): string {
+    return getHighlightSwatchesCss() + getAnnotationActionButtonCss() + `.reader-comment-action {
+  position: absolute;
+  pointer-events: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--aimd-space-1);
+  white-space: nowrap;
+  padding: var(--aimd-space-1) var(--aimd-space-2);
+  border: 1px solid var(--aimd-workspace-border);
+  border-radius: var(--aimd-radius-full);
+  background: var(--aimd-workspace-card);
+  box-shadow: var(--aimd-workspace-raised);
+}
+`;
 }

@@ -1,19 +1,19 @@
-# About
+# About the author
 
-AI-MarkDone did not start as some grand product idea. It started as me trying to fix a workflow that kept getting in my way. I am a graduate student, and ChatGPT is one of the tools I use all the time. It is useful, obviously, but once it became part of my daily workbench, the rough edges of the web experience got harder and harder to ignore.
+I am an engineering graduate student, and I use ChatGPT regularly for reading and writing. I built AI-MarkDone to make the tasks I repeat every day easier: reading long replies, copying formulas, saving useful content, and preparing follow-up questions.
 
 ## Why I built AI-MarkDone
 
-In the end, this project came from three annoyances that kept interrupting how I actually work.
+The project started with three problems in my own work.
 
-1. Formula handling was rough. There was a stretch where ChatGPT formulas failed to render pretty often. Even when the page looked mostly fine, the copied Markdown was unreliable, especially around math delimiters, so pasting into Typora often meant fixing the output by hand. And sometimes I only wanted one formula. Before that, I often had to copy the whole block first just to pull one formula out of it, which felt clumsy every single time.
+1. Copying formulas took extra work. Formulas sometimes failed to render, and copied Markdown often needed repairs before I could use it in Typora. I also wanted to copy one formula without extracting it from an entire reply.
 
-2. Long conversations did not hold up well. For someone in engineering, long threads full of formulas are normal, not some special case. But once a page gets heavy, reading slows down, scrolling gets annoying, and finding the part I need takes longer than it should. A tool like this is supposed to save time, not quietly waste it.
+2. Long conversations were hard to navigate. Threads with many formulas could become slow to scroll. I wanted a clearer reading view and a way to return to the passages I needed.
 
-3. The follow-up workflow was still awkward. Sharing usually meant sending a link, and those links were not always convenient for the other person. There was no real batch export flow, and no official bookmarking system, so important conversations got buried once I had too many of them. On top of that, when I used ChatGPT for writing revision, I often wanted to change only a few lines. Without sentence-level annotations, it was too easy for the model to rewrite parts that were already fine.
+3. Reusing a reply involved too many steps. I wanted to export selected messages, keep useful replies as bookmarks, and attach revision notes to specific passages. Those notes could then provide context for a follow-up instead of making me describe each change again.
 
-So in the beginning, AI-MarkDone was really just my way of removing those daily points of friction. I did not want to turn the page into a different product. I just wanted reading, copying, exporting, bookmarking, and annotation to feel less awkward.
+AI-MarkDone grew from those needs. Its focus is still the work around a conversation: reading, copying, exporting, bookmarking, and annotating.
 
-Later on, I realized I was not the only person dealing with these things. Some people cared most about formulas. Some cared about export. Some just wanted a better way to keep track of important conversations. Every time someone told me a feature helped with a real task, I felt genuinely happy. It made the whole project feel worth continuing.
+Feedback has helped me see which details matter to other people, from formula copying to export and organization. I use those experiences to decide what to improve next.
 
-If you use this extension, thank you. The project still has a very personal starting point, and maybe that is why I care so much about getting the details right.
+Thank you for using AI-MarkDone and sharing your experience. It is a personal project, and your feedback helps me keep working on the details.

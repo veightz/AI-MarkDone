@@ -1298,6 +1298,43 @@ describe('MessageToolbarOrchestrator ChatGPT reader path', () => {
         }
     });
 
+    it.each(['same', 'changed'])('revalidates the exact toolbar bookmark when older history shifts its ordinal (%s body)', async (body) => {
+        renderVirtualizedChatGptBookmarkDom();
+        vi.mocked(bookmarkSaveDialog.open).mockReset();
+        let confirm!: (result: any) => void;
+        vi.mocked(bookmarkSaveDialog.open).mockImplementationOnce(() => new Promise(resolve => { confirm = resolve; }));
+        const initial = buildVirtualizedChatGptSnapshot();
+        const source = createConversationSource(initial);
+        const bookmarksController = {
+            isPositionBookmarked: vi.fn(() => false),
+            readPositionBookmarkStatus: vi.fn(async () => ({ ok: true, data: { saved: false } })),
+            getDefaultFolderPath: vi.fn(() => '/Inbox'),
+            setPositionBookmarkSaved: vi.fn(async () => ({ ok: true, data: { saved: true } })), selectFolder: vi.fn(),
+        } as any;
+        const adapter = new ChatGPTAdapter();
+        const orchestrator = createOrchestrator(adapter, { readerPanel: { show: vi.fn() }, bookmarksController, conversationContentSource: source, bookmarkSaveDialog }) as any;
+        let toolbar: MessageToolbar | null = null;
+        try {
+            const message = document.querySelector<HTMLElement>('[data-message-id="payload-a50"]')!;
+            toolbar = new MessageToolbar('light', orchestrator.getActionsForMessage(message, () => toolbar), { showStats: false });
+            document.body.appendChild(toolbar.getElement());
+            const button = toolbar.getElement().shadowRoot!.querySelector<HTMLButtonElement>('[data-action="bookmark_toggle"]')!;
+            button.click();
+            await vi.waitFor(() => expect(bookmarkSaveDialog.open).toHaveBeenCalledOnce());
+            source.publish(readyConversationState({ ...initial, revision: 2, rounds: [
+                { id: 'older-round', position: 1, userPrompt: 'Older question', assistantContent: 'Older answer', messageId: 'older-assistant', assistantMessageId: 'older-assistant', userMessageId: 'older-user' },
+                ...initial.rounds.map(round => ({ ...round, position: round.position + 1, ...(body === 'changed' && round.assistantMessageId === 'payload-a50' ? { assistantContent: 'Changed selected reply' } : {}) })),
+            ] }));
+            confirm({ ok: true, folderPath: '/Research', title: 'Question 50' });
+            await vi.waitFor(() => expect(button.disabled).toBe(false));
+            if (body === 'same') {
+                expect(bookmarksController.setPositionBookmarkSaved).toHaveBeenCalledWith(expect.objectContaining({ position: 51, messageId: 'payload-a50', userMessage: 'Question 50', aiResponse: 'Answer 50' }), true);
+            } else {
+                expect(bookmarksController.setPositionBookmarkSaved).not.toHaveBeenCalled();
+            }
+        } finally { toolbar?.dispose(); toolbar?.getElement().remove(); orchestrator.dispose(); adapter.dispose(); }
+    });
+
     it('keeps the Toolbar bookmark disabled until the current message has canonical content', async () => {
         renderVirtualizedChatGptBookmarkDom();
 

@@ -8,6 +8,7 @@ import rehypeHighlight from 'rehype-highlight';
 import rehypeKatex from 'rehype-katex';
 import rehypeSanitize, { defaultSchema } from 'rehype-sanitize';
 import rehypeStringify from 'rehype-stringify';
+import { getRichBlockIdFromUrl, type RichBlockV1 } from '../../contracts/richContent';
 import type {
     SemanticOutlineItemV1,
     SemanticReaderUnitKindV1,
@@ -23,6 +24,10 @@ import { mergeReaderSectionOutline } from '../reader/readerSectionOutline';
 export type MarkdownRenderOptions = {
     softBreaks?: boolean;
     highlightCode?: boolean;
+    richContent?: {
+        blocks: readonly RichBlockV1[];
+        assets?: readonly { blockId: string; url: string; mimeType: string }[];
+    };
 };
 
 export type ReaderAtomicUnitKind = SemanticReaderUnitKindV1;
@@ -70,8 +75,65 @@ const markdownSanitizeSchema: any = {
             ['disabled', true],
             ['checked', true, false],
         ],
+        img: [...((defaultSchema.attributes?.img as any[]) || []), 'dataAimdRichBlock'],
+        span: [...((defaultSchema.attributes?.span as any[]) || []), 'dataAimdRichBlock'],
     },
 };
+
+function isLocalRichImage(url: string, mimeType: string): boolean {
+    if (!['image/png', 'image/svg+xml', 'image/jpeg', 'image/webp'].includes(mimeType)) return false;
+    if (!url.startsWith('blob:') || typeof location === 'undefined') return false;
+    try {
+        const resource = new URL(url.slice(5));
+        const owner = new URL(location.href);
+        return ['http:', 'https:', 'chrome-extension:', 'moz-extension:'].includes(owner.protocol)
+            && resource.protocol === owner.protocol && resource.host === owner.host
+            && !resource.username && !resource.password;
+    } catch {
+        return false;
+    }
+}
+
+function prepareRichImages(options?: MarkdownRenderOptions) {
+    const blocks = options?.richContent?.blocks ?? [];
+    return () => (tree: HastNode) => {
+        visitTree(tree, node => {
+            if (node.tagName !== 'img') return;
+            const source = node.properties?.src;
+            if (typeof source !== 'string' || !source.startsWith('aimd-rich:')) return;
+            const id = getRichBlockIdFromUrl(source);
+            const matches = id ? blocks.filter(block => block.id === id) : [];
+            const block = matches.length === 1 ? matches[0] : undefined;
+            const asset = block && options?.richContent?.assets?.find(candidate => (
+                candidate.blockId === block.id && isLocalRichImage(candidate.url, candidate.mimeType)
+            ));
+            if (block && asset) {
+                // Internal references have no URL permission. A matching local
+                // asset capability is applied only after normal sanitization.
+                node.properties = { alt: block.label, dataAimdRichBlock: block.id };
+                return;
+            }
+            const fallback = block?.fallbackMarkdown || String(node.properties?.alt || 'Visual content unavailable');
+            node.tagName = 'span';
+            node.properties = block ? { dataAimdRichBlock: block.id } : {};
+            node.children = [{ type: 'text', value: fallback.replace(/^>\s*/gm, '') }];
+        });
+    };
+}
+
+function attachRichImages(options?: MarkdownRenderOptions) {
+    return () => (tree: HastNode) => {
+        visitTree(tree, node => {
+            if (node.tagName !== 'img') return;
+            const id = node.properties?.dataAimdRichBlock;
+            if (typeof id !== 'string') return;
+            const asset = options?.richContent?.assets?.find(candidate => (
+                candidate.blockId === id && isLocalRichImage(candidate.url, candidate.mimeType)
+            ));
+            if (asset) node.properties = { ...node.properties, src: asset.url };
+        });
+    };
+}
 
 function annotateCodeBlocks() {
     return (tree: HastNode) => {
@@ -128,7 +190,9 @@ function createProcessor(options?: MarkdownRenderOptions) {
 
     const pipeline = processor
         .use(remarkRehype)
+        .use(prepareRichImages(options))
         .use(rehypeSanitize, markdownSanitizeSchema)
+        .use(attachRichImages(options))
         .use(rehypeKatex, {
             strict: 'ignore',
         });
@@ -152,6 +216,9 @@ let noHighlightProcessor: ReturnType<typeof createProcessor> | null = null;
 let softBreaksNoHighlightProcessor: ReturnType<typeof createProcessor> | null = null;
 
 function getProcessor(options?: MarkdownRenderOptions) {
+    // Resource capabilities are scoped to one message/revision, never cached
+    // in a processor shared with another Reader item or export document.
+    if (options?.richContent) return createProcessor(options);
     const highlightCode = options?.highlightCode !== false;
     if (options?.softBreaks) {
         if (highlightCode) {

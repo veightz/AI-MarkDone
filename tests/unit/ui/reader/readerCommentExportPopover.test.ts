@@ -89,12 +89,12 @@ describe('ReaderCommentExportPopover', () => {
         vi.useRealTimers();
     });
 
-    it('uses the same rounded surface and field tokens as the main comment popover', () => {
+    it('composes the shared material owner instead of copying surface and field recipes', () => {
         const source = fs.readFileSync(path.join(process.cwd(), 'src/ui/content/reader/ReaderCommentExportPopover.ts'), 'utf8');
 
-        expect(source).toContain('border-radius: var(--aimd-radius-2xl);');
-        expect(source).toContain('box-shadow: var(--aimd-shadow-lg);');
-        expect(source).toContain('border-radius: var(--aimd-radius-xl);');
+        expect(source).toContain('getSurfaceMaterialCss()');
+        expect(source).toContain('aimd-material-surface');
+        expect(source).toContain('aimd-material-field');
         expect(source).not.toContain('[data-role="commentTemplate"]');
     });
 });

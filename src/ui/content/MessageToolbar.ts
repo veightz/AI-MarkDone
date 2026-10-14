@@ -27,6 +27,16 @@ export type MessageToolbarMenuItem = {
     onClick: () => Promise<void | ToolbarActionResult>;
 };
 
+export type MessageToolbarHoverAction = {
+    id: string;
+    label: string;
+    tooltip?: string;
+    icon: string;
+    placement?: 'top' | 'bottom';
+    progress?: boolean;
+    onClick: (context?: ToolbarActionContext) => Promise<void | ToolbarActionResult>;
+};
+
 export type MessageToolbarAction = {
     id: string;
     label: string;
@@ -37,13 +47,8 @@ export type MessageToolbarAction = {
     onPrepare?: () => void | Promise<void>;
     onClick: () => Promise<void | ToolbarActionResult>;
     menu?: MessageToolbarMenuItem[];
-    hoverAction?: {
-        id: string;
-        label: string;
-        tooltip?: string;
-        icon: string;
-        onClick: (context?: ToolbarActionContext) => Promise<void | ToolbarActionResult>;
-    };
+    hoverAction?: MessageToolbarHoverAction;
+    hoverActions?: MessageToolbarHoverAction[];
 };
 
 export class MessageToolbar {
@@ -70,17 +75,21 @@ export class MessageToolbar {
     private lastTimestamp: number | undefined;
     private readonly collapsible: boolean;
     private expanded = false;
+    private toolbarHovered = false;
     private capsuleCloseTimer: number | null = null;
     private capsuleToggle: HTMLButtonElement | null = null;
     private capsuleActions: HTMLElement | null = null;
-    // Capsule actions stay always visible (no telescope / auto-collapse).
+    private pinnedActions: HTMLElement | null = null;
+    private drawerActionGroup: HTMLElement | null = null;
+    private readonly pinnedActionIds: ReadonlySet<string>;
+    private readonly showTimestamp: boolean;
+    private readonly preview: boolean;
+    // Always-visible MarkDone capsule: ignore outside / Escape collapse.
     private readonly collapseOutside = (_event: Event) => {};
     private readonly collapseOnEscape = (_event: KeyboardEvent) => {};
     private readonly resizeCapsule = () => {
-        const right = this.capsuleActions?.getBoundingClientRect().right
-            ?? this.capsuleToggle?.getBoundingClientRect().right
-            ?? 0;
-        this.host.style.setProperty('--_capsule-available-width', `${Math.max(0, right - 8)}px`);
+        const right = this.capsuleToggle?.getBoundingClientRect().right ?? 0;
+        this.host.style.setProperty('--_capsule-available-width', `${Math.max(0, right - (this.preview ? this.host.parentElement?.getBoundingClientRect().left ?? 8 : 8))}px`);
     };
 
     constructor(theme: Theme, actions: MessageToolbarAction[], opts?: {
@@ -88,19 +97,22 @@ export class MessageToolbar {
         themeOverrides?: UserThemeOverrides;
         variant?: 'default' | 'bare';
         collapsible?: boolean;
+        pinnedActions?: readonly string[];
+        showTimestamp?: boolean;
+        preview?: boolean;
     }) {
         this.appearance = createAppearanceSnapshot(theme, opts?.themeOverrides ?? {});
         this.actions = actions;
         this.collapsible = opts?.collapsible === true;
+        this.pinnedActionIds = new Set(opts?.pinnedActions ?? []);
+        this.showTimestamp = opts?.showTimestamp ?? true;
+        this.preview = opts?.preview === true;
         this.showStats = opts?.showStats ?? false;
         this.host = document.createElement('div');
         this.host.className = 'aimd-message-toolbar-host';
         this.host.dataset.aimdVariant = this.collapsible ? 'capsule' : opts?.variant ?? 'default';
         if (this.collapsible) {
             this.host.dataset.bookmarked = '0';
-            // Always-visible capsule: actions stay expanded; no hover/click telescope.
-            this.expanded = true;
-            this.host.dataset.expanded = 'true';
             this.host.dataset.alwaysExpanded = '1';
         }
         this.host.setAttribute('data-aimd-theme', this.appearance.theme);
@@ -198,29 +210,33 @@ export class MessageToolbar {
         time.textContent = `${day} ${clock}`;
     }
 
-    private setExpanded(expanded: boolean): void {
+    setExpanded(expanded: boolean): void {
         if (!this.collapsible) return;
-        // Always-visible: never collapse the capsule entry.
-        if (!expanded) {
-            this.clearCapsuleCloseTimer();
-            document.removeEventListener('pointerdown', this.collapseOutside, true);
-            window.removeEventListener('keydown', this.collapseOnEscape, true);
-            window.removeEventListener('resize', this.resizeCapsule);
-            this.expanded = true;
-            this.host.dataset.expanded = 'true';
-            this.capsuleToggle?.setAttribute('aria-expanded', 'true');
-            this.capsuleActions?.toggleAttribute('inert', false);
-            this.capsuleActions?.setAttribute('aria-hidden', 'false');
-            return;
-        }
-        if (expanded === this.expanded) return;
+        // Always-visible: stay expanded; still sync pinned layout when asked to open.
+        void expanded;
+        this.clearCapsuleCloseTimer();
+        this.closeMenu(); this.closeHoverAction();
+        document.removeEventListener('pointerdown', this.collapseOutside, true);
+        window.removeEventListener('keydown', this.collapseOnEscape, true);
+        window.removeEventListener('resize', this.resizeCapsule);
         this.expanded = true;
+        this.syncPinnedActions();
         this.host.dataset.expanded = 'true';
+        this.host.dataset.alwaysExpanded = '1';
         this.capsuleToggle?.setAttribute('aria-expanded', 'true');
         this.capsuleActions?.toggleAttribute('inert', false);
         this.capsuleActions?.setAttribute('aria-hidden', 'false');
         this.resizeCapsule();
-        window.addEventListener('resize', this.resizeCapsule);
+    }
+
+    private syncPinnedActions(): void {
+        if (!this.pinnedActions || !this.drawerActionGroup) return;
+        // Move the same nodes: one handler and one focus target per action.
+        for (const action of this.actions) {
+            const button = this.actionButtons.get(action.id);
+            if (button) (this.expanded || !this.pinnedActionIds.has(action.id) ? this.drawerActionGroup : this.pinnedActions).append(button);
+        }
+        this.pinnedActions.hidden = this.expanded || this.pinnedActions.childElementCount === 0;
     }
 
     private clearCapsuleCloseTimer(): void {
@@ -230,8 +246,14 @@ export class MessageToolbar {
     }
 
     private scheduleCapsuleClose(): void {
-        // Always-visible capsule: pointer leave must not hide actions.
         this.clearCapsuleCloseTimer();
+        if (!this.expanded) return;
+        this.capsuleCloseTimer = window.setTimeout(() => {
+            this.capsuleCloseTimer = null;
+            const capsule = this.capsuleToggle?.parentElement;
+            if (this.toolbarHovered || this.hoverActionPortalInside || (this.shadow.activeElement && capsule?.contains(this.shadow.activeElement))) return;
+            this.setExpanded(false);
+        }, 120);
     }
 
     setActionActive(actionId: string, active: boolean): void {
@@ -285,8 +307,8 @@ export class MessageToolbar {
             btn.type = 'button';
             btn.dataset.action = action.id;
             btn.dataset.tooltip = action.tooltip || action.label;
-            if (action.hoverAction) {
-                btn.dataset.tooltipPlacement = 'bottom';
+            if (this.getHoverActions(action).length) {
+                btn.dataset.tooltipPlacement = action.hoverActions?.some(item => item.placement === 'bottom') ? 'left' : 'bottom';
             }
             btn.setAttribute('aria-label', action.tooltip || action.label);
             btn.appendChild(createIcon(action.icon));
@@ -300,7 +322,7 @@ export class MessageToolbar {
             btn.addEventListener('pointerdown', prepare);
             btn.addEventListener('focusin', prepare);
             btn.addEventListener('mouseenter', prepare);
-            if (action.hoverAction) {
+            if (this.getHoverActions(action).length) {
                 this.attachHoverAction(action, btn);
             }
             btn.addEventListener('click', (e) => void this.handleActionClick(action, e));
@@ -316,10 +338,10 @@ export class MessageToolbar {
         metadataBox.className = 'message-metadata';
         if (this.collapsible) {
             const capsule = document.createElement('div'); capsule.className = 'capsule';
+            // Always-visible: no hover telescope / auto-collapse.
             const drawer = document.createElement('div'); drawer.className = 'capsule-actions'; drawer.id = 'capsule-actions';
             drawer.setAttribute('aria-hidden', 'false');
             drawer.append(left); this.capsuleActions = drawer;
-            // Keep a stable landmark for tests/a11y, but do not use it to telescope.
             const toggle = document.createElement('button'); toggle.type = 'button'; toggle.className = 'icon-btn capsule-toggle';
             toggle.dataset.action = 'toggle-capsule';
             toggle.setAttribute('aria-label', t('messageActions'));
@@ -328,9 +350,9 @@ export class MessageToolbar {
             toggle.hidden = true;
             toggle.tabIndex = -1;
             toggle.append(createIcon(moreHorizontalIcon));
-            this.capsuleToggle = toggle;
-            capsule.append(drawer, toggle);
-            bar.append(capsule);
+            const pinned = document.createElement('div'); pinned.className = 'group capsule-pinned';
+            this.pinnedActions = pinned; this.drawerActionGroup = left;
+            this.capsuleToggle = toggle; capsule.append(pinned, drawer, toggle); bar.append(capsule);
             this.setExpanded(true);
         } else bar.append(left);
         if (this.showStats) {
@@ -344,10 +366,11 @@ export class MessageToolbar {
             (this.collapsible ? metadataBox : bar).appendChild(stats);
         }
 
-        if (this.collapsible) {
+        if (this.collapsible && this.showTimestamp) {
             const time = document.createElement('time'); time.dataset.role = 'message-time'; time.hidden = true;
-            metadataBox.append(time); bar.append(metadataBox);
+            metadataBox.append(time);
         }
+        if (this.collapsible) bar.append(metadataBox);
         const note = document.createElement('span');
         note.className = 'note';
         note.dataset.field = 'note';
@@ -459,7 +482,7 @@ export class MessageToolbar {
         const btn = this.actionButtons.get(action.id);
         if (!btn) return;
 
-        if (action.hoverAction && !this.supportsPointerHover()) {
+        if (this.getHoverActions(action).length && !this.supportsPointerHover()) {
             ev.preventDefault();
             ev.stopPropagation();
             this.openHoverAction(action, btn);
@@ -558,7 +581,8 @@ export class MessageToolbar {
         this.clearHoverActionOpenTimer();
         this.clearHoverActionCloseTimer();
         this.hoverActionCloseTimer = window.setTimeout(() => {
-            if (this.hoverActionTriggerInside || this.hoverActionPortalInside) return;
+            const focusedAction = this.actions.find(action => action.id === (this.shadow.activeElement as HTMLElement | null)?.dataset.action);
+            if (this.hoverActionTriggerInside || this.hoverActionPortalInside || this.hoverActionPortal?.hasFocus() || (focusedAction && this.getHoverActions(focusedAction).length)) return;
             this.closeHoverAction();
         }, 120);
     }
@@ -578,17 +602,25 @@ export class MessageToolbar {
         return this.hoverActionPortal;
     }
 
+    private getHoverActions(action: MessageToolbarAction): MessageToolbarHoverAction[] {
+        return action.hoverActions ?? (action.hoverAction ? [action.hoverAction] : []);
+    }
+
     private openHoverAction(action: MessageToolbarAction, anchor: HTMLButtonElement): void {
-        if (!action.hoverAction) return;
+        const hoverActions = this.getHoverActions(action);
+        if (!hoverActions.length || anchor.disabled) return;
         this.clearHoverActionOpenTimer();
         this.clearHoverActionCloseTimer();
         this.getHoverActionPortal().open({
             anchorEl: anchor,
-            id: action.hoverAction.id,
-            label: action.hoverAction.label,
-            tooltip: action.hoverAction.tooltip || action.hoverAction.label,
-            icon: action.hoverAction.icon,
-            onClick: () => void this.handleHoverActionClick(action, anchor),
+            actions: hoverActions.map(hoverAction => ({
+                id: hoverAction.id,
+                label: hoverAction.label,
+                tooltip: hoverAction.tooltip || hoverAction.label,
+                icon: hoverAction.icon,
+                placement: hoverAction.placement,
+                onClick: () => void this.handleHoverActionClick(action, hoverAction, anchor),
+            })),
             onPointerEnter: () => {
                 this.hoverActionPortalInside = true;
                 this.clearCapsuleCloseTimer();
@@ -603,14 +635,19 @@ export class MessageToolbar {
         });
     }
 
-    private async handleHoverActionClick(action: MessageToolbarAction, button: HTMLButtonElement): Promise<void> {
-        if (!action.hoverAction) return;
+    private async handleHoverActionClick(action: MessageToolbarAction, hoverAction: MessageToolbarHoverAction, button: HTMLButtonElement): Promise<void> {
+        if (button.disabled) return;
+        if (hoverAction.progress === false) {
+            await this.handleActionClick({ ...action, hoverAction: undefined, hoverActions: undefined, onClick: () => hoverAction.onClick() }, new Event('click'));
+            this.closeHoverAction();
+            return;
+        }
         const abort = new AbortController();
         this.activeTaskAbort = abort;
-        this.openTaskProgress(button, { label: action.hoverAction.label, value: 0, indeterminate: false });
+        this.openTaskProgress(button, { label: hoverAction.label, value: 0, indeterminate: false });
         try {
             button.disabled = true;
-            const res = await action.hoverAction.onClick({
+            const res = await hoverAction.onClick({
                 signal: abort.signal,
                 onProgress: (event) => this.updateTaskProgress(event),
             });
@@ -857,10 +894,18 @@ export class MessageToolbar {
 :host([data-aimd-variant="capsule"]) { margin-inline-start: auto; }
 :host([data-aimd-variant="capsule"]) .bar { padding: 0; gap: var(--aimd-space-3); border: none; background: transparent; box-shadow: none; }
 :host([data-aimd-variant="capsule"]) .icon-btn { border-radius: var(--aimd-radius-full); flex: none; }
-.capsule { position: relative; display: inline-flex; align-items: center; }
+.capsule { position: relative; display: inline-flex; }
+.capsule-pinned { gap: var(--aimd-space-1); margin-inline-end: var(--aimd-space-1); }
+.capsule-pinned[hidden] { display: none; }
 .capsule-toggle { box-sizing: border-box; background: var(--aimd-workspace-card); border: 1px solid var(--aimd-workspace-border); box-shadow: var(--aimd-workspace-edge-shadow), var(--aimd-shadow-xs); z-index: var(--aimd-z-base); }
-.capsule-toggle[hidden] { display: none !important; }
-.capsule-actions { position: static; width: max-content; max-width: none; display: flex; align-items: center; overflow: hidden; border: 1px solid var(--aimd-workspace-border); border-radius: var(--aimd-radius-full); background: var(--aimd-workspace-card); box-shadow: var(--aimd-shadow-xs); clip-path: none; visibility: visible; box-sizing: border-box; }
+:host([data-bookmarked="1"]:not([data-expanded="true"])) .capsule-toggle { background: var(--aimd-interactive-primary); color: var(--aimd-text-on-primary); box-shadow: none; }
+:host([data-bookmarked="1"]:not([data-expanded="true"])) .capsule-toggle:hover { background: var(--aimd-interactive-primary-hover); color: var(--aimd-text-on-primary); }
+.capsule-toggle svg { transition: transform var(--aimd-duration-base) var(--aimd-ease-out); }
+:host([data-expanded="true"]) .capsule-toggle svg { transform: rotate(90deg); }
+.capsule-actions { position: absolute; top: 0; bottom: 0; right: 100%; width: max-content; max-width: max(0px, calc(var(--_capsule-available-width) - var(--aimd-size-control-icon-toolbar))); display: flex; align-items: center; overflow: hidden; border: 1px solid var(--aimd-workspace-border); border-radius: var(--aimd-radius-full) 0 0 var(--aimd-radius-full); border-right: none; background: var(--aimd-workspace-card); box-shadow: var(--aimd-shadow-xs); clip-path: inset(0 0 0 100%); visibility: hidden; transition: clip-path var(--aimd-duration-base) var(--aimd-ease-out), visibility var(--aimd-duration-base); }
+:host([data-expanded="true"]) .capsule-toggle { border-left: none; border-radius: 0 var(--aimd-radius-full) var(--aimd-radius-full) 0; box-shadow: none; }
+:host([data-expanded="true"]) .capsule-actions { clip-path: inset(0); visibility: visible; }
+.capsule-actions { box-sizing: border-box; }
 .capsule-actions .group-left { min-width: 0; overflow-x: auto; scrollbar-width: none; gap: var(--aimd-space-1); }
 .message-metadata { display: flex; flex-direction: column; justify-content: center; align-items: flex-end; gap: 0; font-size: var(--aimd-text-xs); line-height: var(--aimd-leading-normal); color: var(--aimd-text-secondary); white-space: nowrap; font-variant-numeric: tabular-nums; }
 .message-metadata time { font-size: calc(var(--aimd-text-xs) * 0.9); }

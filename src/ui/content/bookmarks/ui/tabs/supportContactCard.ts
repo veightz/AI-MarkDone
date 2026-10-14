@@ -3,7 +3,7 @@ import { copyTextToClipboard } from '../../../../../drivers/content/clipboard/cl
 import { t } from '../../../components/i18n';
 
 const SUPPORT_EMAIL = 'zhaoliangbin42@gmail.com';
-const SUPPORT_MAILTO = `mailto:${SUPPORT_EMAIL}?subject=AI-MarkDone%20Safari%20Feedback`;
+const SUPPORT_MAILTO = `mailto:${SUPPORT_EMAIL}?subject=AI-MarkDone%20Feedback`;
 
 function tr(key: string, fallback: string): string {
     const value = t(key);

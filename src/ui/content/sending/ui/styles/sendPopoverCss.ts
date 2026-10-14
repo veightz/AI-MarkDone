@@ -1,4 +1,5 @@
 import { getInputFieldCss } from '../../../components/styles/inputFieldCss';
+import { getSurfaceMaterialCss } from '../../../components/styles/surfaceMaterialCss';
 
 export function getSendPopoverCss(): string {
     return `
@@ -10,33 +11,16 @@ ${getInputFieldCss()}
   left: 0;
   bottom: calc(100% + var(--_send-popover-offset));
   padding: calc(var(--aimd-space-3) + var(--aimd-space-1) / 2);
-  border-radius: var(--aimd-radius-2xl);
-  border: 1px solid color-mix(in srgb, var(--aimd-border-strong) 74%, transparent);
-  background: color-mix(in srgb, var(--aimd-bg-surface) 98%, var(--aimd-bg-primary));
-  box-shadow: var(--aimd-shadow-lg);
   display: flex;
   flex-direction: column;
   gap: var(--aimd-space-3);
-  min-width: min(320px, calc(100vw - var(--aimd-space-4)));
-  min-height: min(220px, calc(100vh - var(--aimd-space-4) * 2));
+  min-width: 0;
+  min-height: 0;
   max-width: min(680px, calc(100vw - var(--aimd-space-4)));
   max-height: min(520px, calc(100vh - var(--aimd-space-4) * 2));
   overflow: hidden;
   z-index: var(--aimd-z-tooltip);
   color: var(--aimd-text-primary);
-}
-
-.send-popover::after {
-  content: '';
-  position: absolute;
-  left: calc(var(--aimd-space-4) + var(--aimd-space-1) / 2);
-  bottom: calc(var(--_send-popover-arrow-size) / -2);
-  width: var(--_send-popover-arrow-size);
-  height: var(--_send-popover-arrow-size);
-  transform: rotate(45deg);
-  background: inherit;
-  border-right: 1px solid color-mix(in srgb, var(--aimd-border-strong) 74%, transparent);
-  border-bottom: 1px solid color-mix(in srgb, var(--aimd-border-strong) 74%, transparent);
 }
 
 .send-popover__head,
@@ -70,24 +54,11 @@ ${getInputFieldCss()}
   flex: 1 1 auto;
   min-height: 0;
   padding: var(--aimd-space-3) calc(var(--aimd-space-3) + var(--aimd-space-1) / 2);
-  border-radius: var(--aimd-radius-xl);
-  border: 1px solid color-mix(in srgb, var(--aimd-border-strong) 72%, transparent);
-  background: color-mix(in srgb, var(--aimd-bg-surface) 94%, var(--aimd-bg-primary));
-  color: var(--aimd-text-primary);
   font-size: var(--aimd-text-sm);
   line-height: 1.45;
   outline: none;
   overflow: auto;
   resize: none;
-  box-shadow: var(--aimd-shadow-field-inset);
-}
-
-.send-popover__input::placeholder {
-  color: var(--aimd-text-secondary);
-}
-
-.send-popover__input:hover {
-  border-color: color-mix(in srgb, var(--aimd-interactive-primary) 36%, var(--aimd-border-default));
 }
 
 .send-popover__foot {
@@ -131,8 +102,7 @@ ${getInputFieldCss()}
   margin-inline-start: auto;
 }
 
-.send-popover .icon-btn,
-.send-popover .studio-btn {
+.send-popover :where(.icon-btn, .studio-btn) {
   all: unset;
   box-sizing: border-box;
   cursor: pointer;
@@ -144,23 +114,7 @@ ${getInputFieldCss()}
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border-radius: var(--aimd-radius-full);
-  border: 1px solid transparent;
-  color: var(--aimd-text-secondary);
-  background: transparent;
   flex: 0 0 auto;
-  transition:
-    background var(--aimd-duration-fast) var(--aimd-ease-in-out),
-    border-color var(--aimd-duration-fast) var(--aimd-ease-in-out),
-    color var(--aimd-duration-fast) var(--aimd-ease-in-out),
-    transform var(--aimd-duration-fast) var(--aimd-ease-in-out),
-    box-shadow var(--aimd-duration-fast) var(--aimd-ease-in-out);
-}
-
-.send-popover .icon-btn:hover {
-  border-color: color-mix(in srgb, var(--aimd-interactive-primary) 32%, var(--aimd-border-default));
-  background: color-mix(in srgb, var(--aimd-button-icon-hover) 90%, var(--aimd-surface-hover));
-  color: var(--aimd-button-icon-text-hover);
 }
 
 .send-popover .icon-btn:focus-visible,
@@ -176,57 +130,9 @@ ${getInputFieldCss()}
   align-items: center;
   justify-content: center;
   gap: var(--aimd-space-2);
-  border-radius: var(--aimd-radius-full);
-  border: 1px solid color-mix(in srgb, var(--aimd-border-strong) 70%, transparent);
-  background: var(--aimd-button-secondary-bg);
-  color: var(--aimd-button-secondary-text);
   font-size: var(--aimd-text-sm);
   line-height: 1;
   font-weight: var(--aimd-font-medium);
-}
-
-.send-popover .studio-btn:hover,
-.send-popover .send-popover__input:hover {
-  border-color: color-mix(in srgb, var(--aimd-interactive-primary) 32%, var(--aimd-border-default));
-}
-
-.send-popover .studio-btn:hover {
-  background: color-mix(in srgb, var(--aimd-button-secondary-hover) 90%, var(--aimd-surface-hover));
-}
-
-.send-popover .studio-btn:active {
-  background: color-mix(in srgb, var(--aimd-button-secondary-hover) 78%, var(--aimd-button-icon-active));
-}
-
-.send-popover .studio-btn--primary {
-  background: var(--aimd-interactive-primary);
-  color: var(--aimd-text-on-primary);
-  border-color: transparent;
-}
-
-.send-popover .studio-btn--primary:hover {
-  background: var(--aimd-interactive-primary-hover);
-}
-
-.send-popover .studio-btn--primary:active {
-  background: var(--aimd-interactive-primary-hover);
-}
-
-.send-popover .studio-btn--ghost {
-  background: transparent;
-  border-color: transparent;
-  color: var(--aimd-text-secondary);
-}
-
-.send-popover .studio-btn--ghost:hover {
-  background: color-mix(in srgb, var(--aimd-button-icon-hover) 90%, var(--aimd-surface-hover));
-  color: var(--aimd-button-icon-text-hover);
-}
-
-.send-popover .studio-btn[disabled],
-.send-popover .icon-btn[disabled] {
-  opacity: 0.55;
-  cursor: not-allowed;
 }
 
 .send-popover .aimd-icon,
@@ -276,5 +182,6 @@ ${getInputFieldCss()}
   background:
     linear-gradient(135deg, transparent 0 40%, currentColor 40% 48%, transparent 48% 60%, currentColor 60% 68%, transparent 68% 80%, currentColor 80% 88%, transparent 88% 100%);
 }
+${getSurfaceMaterialCss()}
 `;
 }

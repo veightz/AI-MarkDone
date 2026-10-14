@@ -1,14 +1,35 @@
 import { describe, expect, it } from 'vitest';
 import { buildReaderSessionSnapshot } from '@/services/reader/readerSessionSnapshot';
 import type { ReaderItem } from '@/services/reader/types';
+import { richSvgBlock } from '../../../helpers/richContentFixtures';
 
 describe('buildReaderSessionSnapshot', () => {
+    it('retains immutable rich descriptors in the detached snapshot', async () => {
+        const blocks = [richSvgBlock()];
+        const snapshot = await buildReaderSessionSnapshot({ items: [{ id: 'rich', userPrompt: '', content: '![Diagram](aimd-rich:block-1)', richBlocks: blocks }], startIndex: 0, sourceUrl: 'https://chatgpt.com/c/rich', theme: 'light' });
+        expect(snapshot.items[0]?.richBlocks).toEqual(blocks);
+        expect(snapshot.items[0]?.richBlocks).not.toBe(blocks);
+        expect(Object.isFrozen(snapshot.items[0]?.richBlocks?.[0]?.source)).toBe(true);
+    });
+
+    it('redacts page-owned image URLs from the serializable descriptor', async () => {
+        const snapshot = await buildReaderSessionSnapshot({ items: [{ id: 'image', userPrompt: '', content: '![Image](aimd-rich:block-1)', richBlocks: [richSvgBlock({ kind: 'image', source: { kind: 'loaded-image', url: 'blob:https://chatgpt.com/private-resource' } })] }], startIndex: 0, sourceUrl: 'https://chatgpt.com/c/image', theme: 'light' });
+        expect(JSON.stringify(snapshot)).not.toContain('blob:https://chatgpt.com');
+        expect(snapshot.items[0]?.richBlocks?.[0]?.source).toMatchObject({ kind: 'loaded-image', url: 'aimd-source:live-image' });
+    });
+
+    it('refuses an oversized aggregate rich snapshot before runtime storage', async () => {
+        const blocks = Array.from({ length: 4 }, (_, index) => richSvgBlock({ id: `block-${index}`, source: { kind: 'svg', svg: `<svg>${'x'.repeat(200_000)}</svg>` } }));
+        await expect(buildReaderSessionSnapshot({ items: Array.from({ length: 3 }, (_, index) => ({ id: `item-${index}`, userPrompt: '', content: 'Diagram', richBlocks: blocks })), startIndex: 0, sourceUrl: 'https://chatgpt.com/c/budget', theme: 'light' })).rejects.toThrow('session budget');
+    });
+
     it('resolves ReaderItem content into a serializable detached reader snapshot', async () => {
         const items: ReaderItem[] = [
             {
                 id: 'reader-item-1',
                 userPrompt: 'Prompt',
                 content: () => 'Resolved markdown',
+                sourceContent: () => 'Resolved [markdown](https://example.com)',
                 meta: {
                     platformId: 'chatgpt',
                     position: 3,
@@ -40,6 +61,7 @@ describe('buildReaderSessionSnapshot', () => {
                     id: 'reader-item-1',
                     userPrompt: 'Prompt',
                     content: 'Resolved markdown',
+                    sourceContent: 'Resolved [markdown](https://example.com)',
                     meta: {
                         platformId: 'chatgpt',
                         position: 3,

@@ -21,6 +21,7 @@ vi.mock('@/runtimes/background/handlers/bookmarks', () => ({
 
 vi.mock('@/runtimes/background/handlers/settings', () => ({
     handleSettingsRequest: vi.fn(async () => null),
+    initializeSettingsForInstall: vi.fn(async () => undefined),
 }));
 
 describe('background entry changelog notice wiring', () => {

@@ -113,7 +113,8 @@ describe('UI style governance', () => {
 
     it('keeps the unsupported popup on public tokens instead of a copied reference token table', () => {
         const source = fs.readFileSync(path.join(repoRoot, 'src/popup/popup.html'), 'utf8');
-        expect(source).toContain('--aimd-bg-primary');
+        expect(source).toContain('--aimd-workspace-surface');
+        expect(source).toContain('/src/popup/popup-tokens.css');
         expect(source).not.toContain('--aimd-ref-');
         expect(source).not.toContain('--aimd-sys-');
     });

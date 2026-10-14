@@ -91,6 +91,8 @@ export function buildChatGPTReaderContent(
         // boundary; this compatibility helper must not create a second
         // normalization path.
         content: turn.assistantMarkdown,
+        sourceContent: turn.assistantSourceMarkdown,
+        ...(turn.assistantRichBlocks !== undefined ? { richBlocks: turn.assistantRichBlocks } : {}),
         meta: {
             platformId: snapshot.document.platformId,
             messageId: turn.identity.assistantMessageId,

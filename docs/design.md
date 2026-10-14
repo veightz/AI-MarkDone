@@ -1,5 +1,18 @@
 # AI-MarkDone Design Reference
 
+## Rich-content output controls (2026-10-08)
+
+Save Messages uses the existing modal, token system and selection contract.
+Formats are Markdown, Markdown offline bundle (ZIP), PDF and PNG. PDF/PNG show
+one two-choice rich-content group only when the selection contains visual
+blocks: Include images (default) / Use text placeholders. Do not expose capture
+channels, SVG/foreignObject details or per-block technical choices in this flow.
+Preparation keeps selection fixed, offers cancellation and overall progress;
+PNG additionally retains detailed rendering progress. Native PDF preview opens
+only after preparation. A degraded success reports included/placeholder counts
+without requesting an additional confirmation. Plain-message controls stay compact.
+The real-component evidence surface is `mocks/components/message-export`.
+
 This document is the single source of truth for AI-MarkDone product UI design, style-system rules, and visual governance. It replaces the previous split style and token references.
 
 Runtime token values live in `src/style/reference-tokens.ts`, `src/style/system-tokens.ts`, and `src/style/public-tokens.ts`; `src/style/tokens.ts` composes those layers for callers. This document defines what those values mean, how they may be used, and how future UI work should be judged.
@@ -72,7 +85,7 @@ The named Surface profiles are:
 | `anchored` | Contextual popover, preview, suggestion list, or hover action | Own anchor measurement, flip/clamp, visual-viewport collision, outside-click/Escape policy, and anchor-loss fallback |
 | `inline` | Compact controls integrated into a host layout | Preserve host geometry and interaction; no global focus trap or page scroll ownership |
 
-Extension documents such as the unsupported-page popup are documented exceptions. They use the same public visual tokens but own their document lifecycle instead of a Surface session.
+Extension documents such as the unsupported-page popup are documented exceptions. They use the same generated public tokens and shared materials but own their document lifecycle instead of a Surface session.
 
 ### 3.1 Complete Surface Catalog
 
@@ -84,23 +97,26 @@ The catalog is normative for visual and interaction ownership. Appearance means 
 | Toolbar hover action and task progress; opened from a toolbar action | Message Toolbar family; page portal/ShadowRoot; `anchored` | Same snapshot as owning toolbar | Live refresh required | Hover/focus bridge; hover action closes on the established outside-pointer/resize/scroll boundary; task progress owns cancellation | Flip/clamp to visual viewport; progress content must not resize the toolbar | `mocks/components/host-integrated-controls` (family coverage) |
 | Lower-right page-control cluster; fixed ChatGPT page entry | Page Controls family; documented light-DOM host; `inline` | Page appearance scope | Live refresh required | Button focus; no focus trap; each transient child owns dismissal | No wrapping; at `<=560px` use compact icon-only controls with tooltip and `aria-label`; never obscure the composer | `mocks/components/host-integrated-controls` (family coverage) |
 | ChatGPT directory rail and prompt preview; page navigation entry | Directory family; rail ShadowRoot plus contextual preview; `inline` + `anchored` | Shared snapshot | Live refresh required | Rail buttons remain keyboard reachable; preview closes on anchor loss/Escape/outside click; Export reuses the Message Toolbar action | Preview is available in Preview and Expanded modes, clamps to the visual viewport, and truncates by the configured 200–2000 character limit; close preview first, then compact the rail; if usable conversation width still cannot be preserved, hide the rail for that viewport without changing the saved setting | `mocks/components/host-integrated-controls` (family coverage) |
+| Button configuration and previews; Settings → Buttons | Settings family; nested ShadowRoot; `inline` | Shared snapshot | Live refresh required | Acknowledged row writes; primary-action Pin disabled while its button is off; preview actions have no side effects | Five groups; Directory has rows only; other groups have local previews; container-responsive navigation | `mocks/components/buttons-settings` |
+| Settings JSON export/import/recovery; Settings → Data | Settings family; nested ShadowRoot; `inline` | Shared snapshot | Live refresh required | Export notice; diff/category selection; explicit apply or cancel; operation buttons disabled while pending | Wrapped actions; bounded change-list scrolling | `mocks/components/buttons-settings` (family coverage) |
 | Input enhancement settings and syntax guide | Settings family; shared ShadowRoot and modal host | Shared snapshot | Live refresh required | Settings category/search focus; guide uses ModalHost | Existing controls remain directly editable across categories | `mocks/components/bookmarks-workspace` |
 | Formula composer assistant; active formula caret | Composer family; ShadowRoot portal; `anchored` | Shared snapshot | Live refresh required | Keyboard selection precedes composer Enter handling; Escape closes without changing source | Follow caret when measurable, otherwise anchor to composer; preview/suggestion areas own internal max height | `mocks/components/formula-composer-assistant` |
 | Prompt autocomplete suggestion list; `\` token in a supported composer | Prompt family; page portal; `anchored` | Shared snapshot | Live refresh required | Arrow/Enter/Tab/Escape contract; selection returns focus/caret; anchor loss closes | Caret anchored with composer fallback; no viewport overflow or overlap with the input’s critical controls | `mocks/components/prompt-family` |
 | Prompt manager; page controls, Settings, Reader, or detached Reader entry | Prompt family; draggable ShadowRoot portal; `anchored` | Shared snapshot | Live refresh required | Dialog-like initial focus and Escape; outside-click policy is explicit; drag and item reorder remain isolated | Clamp after drag and viewport changes; body is the only scroll owner; footer remains reachable at short heights | `mocks/components/prompt-family` (family coverage) |
 | Formula asset hover actions and formula settings; formula hover/settings entry | Formula Asset family; page portal/ShadowRoot; `anchored` | Shared snapshot | Live refresh required | Hover actions use the established outside-pointer/resize/scroll bridge; settings owns its dialog Escape policy; action-pending states | Clamp to viewport; settings owns internal scrolling; never cover the source formula when an alternate side is available | `mocks/components/formula-asset-actions` |
 | In-page Reader; per-message toolbar, bookmark preview, or workflow entry | Reader family; overlay ShadowRoot; `panel` | Shared snapshot plus Reader-scoped content state | Live refresh required | Focus entry/return, Escape policy, resize lifecycle, deterministic scroll-lock cleanup | Header/footer remain stable and body owns scroll; at `<=900px` auxiliary rails overlay or hide, at `<=560px` use one column; sticky content stays inside viewport | `mocks/components/reader-panel` and `mocks/components/reader-comments` |
-| Detached Reader extension page; lower-right Split View entry | Reader family; extension page plus Reader ShadowRoot; `panel` | Session snapshot plus Reader-scoped content state | Live refresh required | Same Reader focus/navigation contract; page close owns teardown | Full viewport by default; use the same short-height and narrow-width rules as in-page Reader | `mocks/components/reader-panel` (family coverage) |
-| Reader settings, comments, comment list/export, template editor, Prompt picker, and Send popover; Reader header/body actions | Reader family; modal or ShadowRoot portal; `modal` / `anchored` | Same snapshot as Reader | Live refresh required | Named modal/anchored lifecycle; focus returns to originating Reader control; close never mutates content implicitly | One internal body scroll owner; header/footer/actions remain reachable at `320px` width and `568px` height | `mocks/components/reader-comments` plus Reader panel transient states |
+| Separate reader extension page; lower-right Separate reader entry | Reader family; extension page plus Reader ShadowRoot; `panel` | Session snapshot plus Reader-scoped content state | Live refresh required | Same Reader focus/navigation contract; page close owns teardown | Full viewport by default; use the same short-height and narrow-width rules as in-page Reader | `mocks/components/reader-panel` (family coverage) |
+| Reader settings, annotations, annotation list/export, template editor, Prompt picker, and Send popover; Reader header/body actions | Reader family; modal or ShadowRoot portal; `modal` / `anchored` | Same snapshot as Reader | Live refresh required | Named modal/anchored lifecycle; focus returns to originating Reader control; close never mutates content implicitly | One internal body scroll owner; header/footer/actions remain reachable at `320px` width and `568px` height | `mocks/components/reader-comments` plus Reader panel transient states |
 | Reader annotation manager; Reader header annotation entry | Reader family; shared overlay ShadowRoot; `modal` | Same Reader appearance snapshot | Live refresh required | Reuses `ModalHost` focus entry/return, Escape and close motion; deletion confirmation is a nested shared modal state | Single-column list; header and scope/search controls remain visible while the list scrolls; at `<=560px` controls stack; rows remain readable at 200% zoom | `mocks/components/reader-comments` direct real-component fixture plus Reader header trigger test |
 | Bookmarks workspace, tree, preview, and primary tabs; extension action or page-control entry | Bookmarks family; overlay ShadowRoot; `panel` | Shared snapshot | Live refresh required | Focus entry/return, Escape policy, stable selection and inline editing focus | Workspace owns scrolling; `980/720/560px` profiles progressively reduce columns and chrome. Message bookmarks open the Reader preview, page bookmarks navigate directly, bookmark actions remain compact and inline, and mark selection controls stay in-flow | `mocks/components/bookmarks-workspace` |
+| Feature overview; Settings information group | Bookmarks/Settings family; panel body; `inline` | Shared snapshot | Live refresh required | Search, group jump and related-setting navigation remain keyboard reachable; empty results offer a clear reset | Each group owns one semantic two-column table, with one feature per row: actual function name on the left and its purpose on the right, followed by a concise semantic entry; narrow layouts preserve that reading order without clipping, with panel-owned body scrolling | `mocks/components/bookmarks-workspace` (family coverage) |
 | Settings, data management, Cloud Backup, formula settings, and information tabs; Bookmarks tab entry | Bookmarks/Settings family; panel body plus local anchored surfaces | Shared snapshot; settings values do not style controls directly | Live refresh required | Form focus order, pending/disabled/error states; local popovers return focus | Labels/help text keep intrinsic height; panel body scrolls; at narrow widths rows stack and destructive actions remain separated | `mocks/components/bookmarks-workspace` (family coverage) |
 | Bookmark Save dialog; toolbar/page bookmark action | Save family; shared overlay ShadowRoot; `modal` | Shared snapshot | Live refresh required | Initial field focus, Escape/cancel, pending lock, focus return | Dialog body scrolls when needed; actions remain visible at narrow width/short height | `mocks/components/workflow-dialogs` |
-| Save Messages dialog; toolbar action | Export/Save family; shared overlay ShadowRoot; `modal` | Shared snapshot | Live refresh required | Selection keyboard flow, Escape/cancel, pending/progress/error, focus return | Selection body owns scroll; footer remains visible; long titles truncate without hiding selection state | `mocks/components/workflow-dialogs` |
+| Save Messages dialog; toolbar action | Export/Save family; shared overlay ShadowRoot; `modal` | Shared snapshot | Live refresh required | Selection keyboard flow, Escape/cancel, pending/progress/error, focus return | Selection body owns scroll; footer remains visible; long titles truncate without hiding selection state | `mocks/components/message-export` |
 | Send popover; Reader or detached Reader send action | Sending family; anchored ShadowRoot | Shared snapshot | Live refresh required | Draft focus, pending send blocks duplicates, focus returns | Text area and body share one declared scroll strategy; actions remain reachable under virtual keyboard/short viewport | `mocks/components/workflow-dialogs` |
 | Shared notices, confirm/prompt dialogs, changelog notice, and import review; workflow-owned trigger | Overlay family; shared ShadowRoot; `modal` | Shared snapshot | Live refresh required | Modal focus containment/return, Escape policy, backdrop, scroll lock, reduced motion | Centered with viewport gutters; body becomes the sole scroll owner; no dialog may exceed the visual viewport | `mocks/components/overlay-host` |
 | Tooltip and toast feedback; control hover/focus or operation result | Feedback family; page feedback layer or owning ShadowRoot preview | Shared snapshot | Live refresh required | Tooltip follows hover/focus and is non-interactive unless declared; toast never captures focus | Clamp to viewport; tooltip must not be clipped by host controls; toast must not block page interaction | `mocks/components/host-integrated-controls` (family coverage) |
-| Unsupported-page popup; extension toolbar icon on an unsupported page | Popup document; extension document exception | Minimal public-token fallback | Locale at document load | Normal document focus; no overlay lifecycle | Remains usable at `320px`; content wraps without horizontal overflow | `mocks/components/unsupported-popup` |
+| Unsupported-page popup; extension toolbar icon on an unsupported page | Popup document; extension document exception | Build-generated page tokens and shared material CSS | Locale and saved appearance at document load | Normal document focus; no overlay lifecycle | Remains usable at `320px`; content wraps without horizontal overflow | `mocks/components/unsupported-popup` |
 
 Hidden export-renderer and formula-renderer documents are rendering infrastructure, not product Surfaces. Their visual output contracts belong to export testing and must not be changed as part of UI chrome convergence.
 
@@ -116,7 +132,7 @@ Hidden export-renderer and formula-renderer documents are rendering infrastructu
 
 - The manager remains inside the Reader family and reuses `ModalHost`; it is not a second workspace or a standalone notes page.
 - The modal has two scopes: `current conversation` and `all annotations`. The all scope has two in-memory projections: `by conversation` and `timeline`.
-- Search matches conversation title, selected quote, and user comment. It does not create a server-side or persistent search index.
+- Search matches conversation title, selected quote, and user annotation. It does not create a server-side or persistent search index.
 - The source excerpt keeps up to 50 characters at both ends and uses a single ellipsis for omitted middle content.
 - Bulk edit is a light selection mode: users can select all visible rows and confirm one batch deletion; individual deletion remains available outside that mode.
 - Current-conversation rows follow canonical response order and source position. Grouped all-annotation rows follow conversation recency, then source order; timeline rows follow annotation update time.
@@ -126,6 +142,15 @@ Hidden export-renderer and formula-renderer documents are rendering infrastructu
 - The manager exposes the same explicit persistence preference as Reader Settings. The setting row states that saved annotations always remain visible and that the switch only controls newly created annotations.
 - `reader.persistAnnotations` defaults off. Durable ChatGPT annotations are always read and displayed, and their later edits/deletions remain durable regardless of the switch. When off, only newly created annotations stay in the current page runtime; turning it on does not silently migrate those session-only records.
 - The visual fixture must mount the production manager with real tokens and cover dense multi-conversation data, long Chinese/English text, empty state, unanchored state, deletion confirmation, narrow width, dark mode, and 200% zoom. A Reader header trigger test must enter the manager through the real user path.
+
+### 3.4 Annotation editor
+
+- The shared Page/Reader annotation editor is nonmodal: outside clicks neither close it nor pull focus back from reading. Its textarea has a visible boundary and keyboard focus treatment; icon controls have localized action names.
+- Header drag, minimize, expand and close preserve input. Dragged placement stops following the selection and clamps against the owning container and visual viewport after resize/scroll. At narrow widths and short heights, only the editor body scrolls; draft status and Save remain reachable.
+- Close/Escape preserve a draft. Discard draft and Delete annotation have explicit confirmation states, and pending destructive actions lock conflicting editing/saving. IME composition cannot trigger Escape dismissal or shortcut submission.
+- Draft-saving, local/session recovery, conflict, quota and save failure are distinct visible states. A failed local write preserves text and offers retry; a successful formal save clears only the submitted draft version. Draft status must not imply that the formal annotation has been saved.
+- Reader redraws reattach the same editing DOM and keyboard scope. Target changes close and flush the original target instead of attaching its writing to the new message. Persistent draft identity excludes synthetic page identities; runtime recovery uses caller-owned document/message/selection identity.
+- Both locales use the writing authority in [WRITING.md](WRITING.md). The production reader-comments fixture covers selection-triggered editing, outside reading, drag/collapse/expand, close/reopen recovery, responsive layouts and both themes.
 
 ## 4. Color Tokens
 
@@ -166,14 +191,14 @@ Core palette:
 | Secondary text | `--aimd-ref-color-neutral-700` | `#374151` | `#D1D5DB` |
 | Primary text | `--aimd-ref-color-neutral-900` | `#111827` | `#F3F4F6` |
 | White / on-accent | `--aimd-ref-color-neutral-white` | `#ffffff` | `#ffffff` |
-| Brand accent | `--aimd-ref-color-brand-600` | `#2563eb` | `#2563eb` |
-| Brand hover | `--aimd-ref-color-brand-700` | `#1d4ed8` | `#1d4ed8` |
+| Brand accent | `--aimd-ref-color-brand-600` | `#3b5bdb` | `#3b5bdb` |
+| Brand hover | `--aimd-ref-color-brand-700` | `#304bc0` | `#304bc0` |
 
 Approved user theme swatches:
 
 | Swatch | Stored value | Rule |
 |:--|:--|:--|
-| Default blue | `null` / `#2563eb` preview | Product default; reset state stores `null`. |
+| Default blue | `null` / `#3b5bdb` preview | Product default; reset state stores `null`. |
 | Emerald | `#059669` | Optional user accent. |
 | Violet | `#7c3aed` | Optional user accent. |
 | Rose | `#e11d48` | Optional user accent. |
@@ -188,9 +213,9 @@ Alpha and interaction palette:
 | Default border / hover | `--aimd-ref-color-neutral-alpha-12` | `rgba(0,0,0,0.12)` | `rgba(255,255,255,0.12)` |
 | Strong border / hover | `--aimd-ref-color-neutral-alpha-16` | `rgba(0,0,0,0.16)` | `rgba(255,255,255,0.16)` |
 | Pressed neutral | `--aimd-ref-color-neutral-alpha-18` | `rgba(0,0,0,0.18)` | `rgba(255,255,255,0.18)` |
-| Brand soft | `--aimd-ref-color-brand-alpha-12` | `rgba(37, 99, 235, 0.12)` | `rgba(37, 99, 235, 0.18)` |
-| Brand flash | `--aimd-ref-color-brand-alpha-28` | `rgba(37, 99, 235, 0.28)` | `rgba(37, 99, 235, 0.36)` |
-| Focus / info border | `--aimd-ref-color-brand-alpha-35` | `rgba(37,99,235,0.35)` | `rgba(37,99,235,0.35)` |
+| Brand soft | `--aimd-ref-color-brand-alpha-12` | `rgba(59, 91, 219, 0.12)` | `rgba(59, 91, 219, 0.18)` |
+| Brand flash | `--aimd-ref-color-brand-alpha-28` | `rgba(59, 91, 219, 0.28)` | `rgba(59, 91, 219, 0.36)` |
+| Focus / info border | `--aimd-ref-color-brand-alpha-35` | `rgba(59,91,219,0.35)` | `rgba(59,91,219,0.35)` |
 
 State palette:
 
@@ -233,7 +258,7 @@ Rules:
 - Long text must wrap or truncate by component contract, not by accidental overflow.
 - User-facing global font size is an appearance setting, not a component prop: `appearance.fontSizePx` is limited to `12px`-`20px`, defaults to `16px`, changes by `1px` stepper controls only, and maps to `UserThemeOverrides.baseFontScale`.
 - Reader-facing body font size is a Reader setting, not a global appearance override: `reader.bodyFontSizePx` is limited to the same readable range, defaults to `16px`, changes by `1px` stepper controls inside Reader, and maps only to Reader markdown content.
-- Reader markdown typography follows a semantic scale from the Reader body size. Headings, code, lists, quotes, tables, math, comments, and prompt/source blocks derive from Reader body size through relative units and Reader tokens; they are not independently user-configurable levels.
+- Reader markdown typography follows a semantic scale from the Reader body size. Headings, code, lists, quotes, tables, math, annotations, and prompt/source blocks derive from Reader body size through relative units and Reader tokens; they are not independently user-configurable levels.
 - Reader shell chrome keeps using the global UI type tokens so changing Reader body size does not resize icon buttons, modal labels, Settings rows, or page controls.
 - User-facing theme color is also an appearance setting: `appearance.accentColor` is selected through visual swatches only, never typed text, and maps to `UserThemeOverrides.accentColor`.
 
@@ -247,7 +272,7 @@ Rules:
 - Markdown headings continue to use proportional `em` sizing from the Reader body size.
 - Inline code and code blocks use the mono family with proportional sizing from Reader body size.
 - KaTeX formulas derive from the Reader body scale, but their assets have two scopes: selector/layout CSS stays inside the Reader Shadow DOM, while KaTeX `@font-face` rules are registered at the document layer so detached Reader pages do not depend on ChatGPT host-page fonts.
-- Reader settings changes apply live to any open Reader surface after settings persistence succeeds.
+- Reader settings changes apply live to any open Reader surface after settings persistence succeeds. The Reader header gear owns a compact, internally scrollable anchored panel; it groups display and annotation preferences and stays within the Reader shell. Shared content-retention switches live in global Settings because Reader, Markdown copy, and exports consume the same projection.
 - Reader content width remains a separate measure control; it does not imply font scaling.
 
 ### 5.2 Current Typography Values
@@ -487,6 +512,31 @@ Global requirements:
 
 ## 9. Pure CSS Contract
 
+### Shared surface materials (2026-10-08)
+
+`src/ui/content/components/styles/surfaceMaterialCss.ts` is the appearance owner
+for neutral surface/chrome/card/field, primary/quiet/danger buttons, segmented
+choices and native checkbox accent. Its `aimd-material-*` classes consume existing
+public tokens. Existing panel/modal/workspace aliases converge through this same
+entry; new features must not copy those recipes or create another token layer.
+Compose feature geometry first and this material entry last. The material module
+must not acquire geometry, scrolling, settings, content, focus or dismissal state.
+
+Selected choices consume existing `aria-selected`, `aria-checked`, `aria-pressed`
+or established data states. Focus remains visible, disabled actions retain native
+semantics, and reduced motion disables optional material transitions. Owner-specific
+geometry remains explicit at narrow widths and short heights. Shared modal padding
+provides the gutter once; modal width must not subtract that gutter a second time.
+Modal families supply only `--_modal-content-max-width` and
+`--_modal-content-max-height` caps; the shared shell alone computes viewport
+constraints. This applies to page and Reader annotation managers and legacy lists.
+
+Reader template layout is component-owned in `readerSettingsDialog.css`, shared
+by Settings and Reader through ReaderSettingsDialogShell. Backup review bodies
+reuse ModalHost, and fixture preview routes must never apply or delete backups.
+The popup stylesheet is generated at build time from the page-token/material
+sources; its HTML owns only document layout. See [ADR-0033](adr/ADR-0033-unified-surface-materials.md).
+
 AI-MarkDone shipped UI uses custom CSS plus `--aimd-*` tokens. External style frameworks, generated utility themes, and framework-prefixed utility classes are not part of the active runtime styling system.
 
 Rules:
@@ -607,6 +657,12 @@ The iteration may stop only when the average score is above 90 and verification 
 
 ### Collapsible page controls
 
+The 2026-09-30 update moves configurable entries into Settings → Buttons. Five groups (Page, Message, Formula, Selection, Directory) use local previews above icon/name rows, Pin buttons, and visibility switches. Page and Message expose individual pins; other groups keep contextual placement. Pin is editable only while its button is enabled; disabling preserves the preference. Writes update the preview only after acknowledgement. The ordinary drawer has no per-button pin controls. The same action elements serve expanded and pinned views; only the trigger opens the full drawer, so pinned actions remain directly usable. For message controls, hovering More opens the drawer; hovering pinned actions or metadata leaves it collapsed and preserves normal action tooltips. Hidden actions preserve their pin preference. The Input Enhancement anchored ShadowRoot surface uses the shared settings snapshot and rolls back failed writes. Its production mock is `mocks/components/host-integrated-controls`.
+
+Directory interaction (2026-09-27): the rail and its preview form one hover/focus region. Keep rail width and the active-item expansion stable while crossing into the preview. After the pointer and focus leave both surfaces, close the preview and collapse the rail together after 400ms. Pointer re-entry cancels closure; outside click and Escape dismiss immediately.
+
+Directory navigation (2026-09-30): dock the reused Previous/Next buttons in a vertical column at the viewport bottom right, above the brand trigger. Keep this dock outside the vertically translated rail shell; fixed positioning must be relative to the viewport. Bound the centered list's height to leave a clear gap above the dock, and keep the non-interactive host transparent to pointer hit testing. Short tooltips include Left/Right shortcuts when keyboard navigation is enabled. The existing visibility switch remains in Directory settings; these controls are excluded from the drawer and its pin choices.
+
 The existing lower-right light-DOM page-control surface collapses to a compact circular brand icon with a border and small shadow. At the default token scale, controls are 24px, glyphs 14px, internal gaps 2px, and shell padding 1px, giving an approximately 28px-high shell; these dimensions derive from existing public size/spacing tokens. Hover, focus, or click expands the existing actions to the left without changing their order. The trigger precedes the actions in keyboard order, remains fixed at the right edge visually, and exposes `aria-expanded`/`aria-controls`; collapsed actions are inert. Escape returns focus to the trigger, and outside pointer interaction closes the drawer. An internally focused control keeps the drawer open. The narrow layout scrolls actions horizontally while retaining the trigger. Glass tint, border, blur radius, shadows, spacing, and easing derive from existing public tokens; unsupported backdrop filtering uses an opaque surface, and reduced motion removes the expansion transition. The live fixture is `mocks/components/host-integrated-controls`.
 
 ## Library UI implementation — 2026-09-12
@@ -630,10 +686,40 @@ Annotation creation and editing use the shared `ReaderCommentPopover` in Page an
 - Library and Settings share a stable sidebar. The module grid fills remaining panel height; switching changes grid tracks and inert state rather than replacing navigation DOM. Bookmark bulk controls are hidden and inert until explicitly opened.
 - `LibraryBookmarkPresentation` keeps 20 record rows mounted and windows large folder lists; scroll within the same window does not rebuild folders. `LibraryMarksView` uses independent typed projections with the same page size.
 - The SVG family in `workspaceIcons.ts` uses rounded 1.75 strokes. The compatibility icon module has individually removable constants; no icon registry must be retained solely for one named glyph.
-- Selection actions share Copy, Annotation and blue/yellow/coral swatches. Reader retains Stick. Highlight colors are composed as a group over the text: multiply in light mode, screen in dark mode. Opaque colors within the group implement last-modified overlap precedence without hiding glyphs.
+- Selection actions share Copy, Annotation and blue/yellow/coral swatches. Reader retains Keep excerpt. Highlight colors are composed as a group over the text: multiply in light mode, screen in dark mode. Opaque colors within the group implement last-modified overlap precedence without hiding glyphs.
 - Message capsules preserve a stable statistics area. Expansion is clipped toward the left; hidden actions are inert; outside click and Escape collapse without aborting export/copy work. Motion honors reduced-motion.
 - Static Reader and bookmark picker CSS is imported through Vite `?inline` and still injected into the existing ShadowRoot. Stylesheet order and selectors are preserved; this is build-time CSS minification, not a second theme or framework.
 
-2026-09-14 导航与归档更新：`WorkspaceNavigationButton` 统一类型和设置分类的图标槽、文字槽、行高及状态。默认模块标题 16px、分类 14px、图标 18px、行高 40px、行间距 4px，随已有字号比例缩放；替代上一轮分类约 15px 的独立配置。文件夹选中使用较轻的内凹材质。对话折叠横条在主区域呈现，文件夹树保留在左侧。设置分类区域独立滚动，底部信息链接和两个特色入口常显；短/窄窗口不缩小点击区域。消息胶囊与选区使用 workspace 材质令牌，页面抽屉复用相同边缘与阴影；不为消息列表逐条增加 backdrop filter。信息页及设置之间切换必须恢复正确选中态；设置目标须经 LazyBookmarksPanel 传递，不能只验证直接构造的面板。
+2026-09-14 导航与归档更新：`WorkspaceNavigationButton` 统一类型和设置分类的图标槽、文字槽、行高及状态。默认模块标题 16px、分类 14px、图标 18px、行高 40px、行间距 4px，随已有字号比例缩放；替代上一轮分类约 15px 的独立配置。文件夹选中使用较轻的内凹材质。对话折叠横条在主区域呈现，文件夹树保留在左侧。设置分类与信息链接按 2026-10-02 合同共享滚动，只有两个特色入口固定在底部；短/窄窗口不缩小点击区域。消息胶囊与选区使用 workspace 材质令牌，页面抽屉复用相同边缘与阴影；不为消息列表逐条增加 backdrop filter。信息页及设置之间切换必须恢复正确选中态；设置目标须经 LazyBookmarksPanel 传递，不能只验证直接构造的面板。
 
 2026-09-21 字体与布局收敛：页面标题以正文比例形成约 22px / 窄窗 20px，分区标题 16px，导航及条目主文 14px，说明 12–13px；采用既有 500/600 字重与正常行高，中文标题不额外收紧字距。设置项的说明与控件整体垂直居中，主模块按钮不得以超过 grid 行高的 min-height 或 padding 撑出轨道。材质仍集中在 `workspaceMaterials.css`，删除被它覆盖的旧材质规则。消息胶囊的 border-box 宽度须计入内边距和按钮间距，统计采用等宽数字，时间降低一级字号。收起的目录预览同时隐藏视觉与指针命中；透明度为零不能代替关闭。
+
+### Settings groups and accent update (2026-09-27)
+
+Eight searchable categories retain all existing controls and now contain task-oriented subgroups. Formula toolbar visibility controls, formula image font size, and message-image width/scale are separate groups. Copy, Annotation and Highlight visibility is shared by page and Reader; Reader retains its existing Keep excerpt action. Default brand blue is `#3b5bdb` with `#304bc0` hover. Explicit existing accents remain valid, including Classic blue `#2563eb`; semantic highlight colors are unchanged.
+
+Settings language names the visible result and its location: “after selecting text,” “above formulas in replies,” or “bottom-right buttons.” A short group hint explains shared scope or a dependency; individual rows describe the consequence or exception only when the label alone is insufficient. Keep one setting per row, and preserve searchability after changing labels. This presentation rule does not change stored keys or defaults.
+
+
+### Button settings and configuration files (2026-09-30)
+
+`ButtonsSettingsView` owns an isolated ShadowRoot. Message previews instantiate the production `MessageToolbar` in preview mode; page previews consume `pageControlsCss`, reply formula previews use the production hover-action renderer, and selection previews use the production annotation action row and highlight swatches. Preview actions perform no clipboard, navigation, persistence or export work. Reply formula samples render `E=mc²` with a hovered frame and cursor. “输入公式时的预览” uses the same complete view factory as the live formula assistant: header, kind badge, SVG body, asset buttons and optional completion list, with inline/display/completion examples. Directory has settings rows without a preview; the retired composer-entry group is absent. Directory navigation independently docks Previous above Next at the bottom right; Prompt controls use their own icon. Reply formula actions and composer formula actions preserve separate defaults. Hovering or focusing message Copy opens Copy PNG above and Question + reply below in one shared portal, with a paired-conversation icon for the lower choice. Both retain independent visibility switches and follow Copy visibility; neither is a standalone pinned action. Existing secondary pin preferences remain stored but do not create a toolbar button. Previews reuse this interaction, including pointer bridges, focus retention, outside dismissal and viewport-edge placement. Message timestamps and character counts have independent preferences. Group navigation stacks above the preview in narrow containers; previews do not install host discovery or global keyboard/navigation controllers.
+
+`SettingsTransferPanel` lives under Data independently of content backups. Data has four separate, titled cards: configuration files, Library preferences, cloud backups and local backups; retain the existing controls and callbacks without nesting backup cards. Export first explains included preference categories and excluded credentials, content records, Prompts and custom templates. Import/recovery show a human-readable diff and category selection before confirmation. Failed operations retain or request re-reading current settings; a stale preview never silently overwrites them. Visual evidence and trigger-path regressions are listed in `tests/support/uiSurfaceCoverage.ts` under `buttons-settings` and `settings-transfer`.
+
+Button group navigation uses a bounded, compact column with existing icons, consistent row spacing and selected-state emphasis. Reuse navigation button nodes so keyboard focus survives a group change. At narrow container widths, use a horizontal scrolling group row. The page Input enhancement entry reflects effective available-and-enabled state; its visibility remains independent.
+
+Settings cards own consistent outer padding; standard rows separate only with bottom borders, and edge rows inherit the card's padding. The Buttons card delegates padding to its two columns so the vertical divider spans the full card height. Pin icons use the existing icon family with a block SVG inside a centered flex wrapper. Configuration-transfer content follows the same card inset.
+
+Appearance offers eight distinct presets, including Light pink, plus an empty custom-color button. Classic blue and Lilac are omitted from the preset list; saved values remain valid and appear as custom colors. Clicking it exposes one hexadecimal RGB input; hashes are removed, case is ignored, Enter/valid blur saves, and Escape cancels. Store six-digit lowercase hex values and export only validated colors. Accent foreground contrast is derived from luminance. Composer Input enhancement has no entry button; button settings have five groups, and the annotation entry has no independent visibility preference and follows the existing annotation-enabled state and current-conversation records.
+
+
+## Feature overview and management panel — 2026-10-02
+
+The sidebar gives Settings categories and five information entries one scroll owner. A subtle divider separates the eight categories from Feature overview, Changelog, FAQ, About the author and Feedback; none of those five entries is pinned to the footer. Mappamory and Buy Me Coffee remain together at the bottom. Keep the existing module movement, active/focus states and intrinsic hit areas; short viewports scroll rather than shrink labels or clip the information links.
+
+Feature overview is a quiet, complete guide to real use. Eight groups cover Reader, Directory/navigation, Copy/export, Writing/prompts, Formulas, Bookmarks/Library, Annotations/highlights and Settings/backup. Each item states what it helps with and where to use it; show shortcuts and brief notes only when they affect use. Each group has a distinct header background separating its heading from the table body, using existing workspace tokens. It uses one semantic two-column table with one feature per row, ordered from top to bottom. Use actual functional nouns for the left cell, such as Reader, Separate reader and Heading outline. In the right cell explain the purpose first, then show the specific tool/menu entry and any shortcut or necessary note. Combine ordinary UI operations instead of making full-screen, resizing or closing controls separate features. Entry text names the relevant tool or action rather than a corner alone; Separate reader explicitly names ChatGPT’s lower-right website toolbar. Do not arrange two features beside each other or alternate their reading order. Use typography, restrained row dividers and existing workspace tokens for hierarchy. Search checks group and item copy, including entries, shortcuts and notes. Group jumps and related-settings links work inside the existing panel. Empty search results expose one clear reset; long Chinese/English text wraps without hiding its entry. Do not expose discovery/storage architecture, planned workflows, invented integrations or absolute reliability claims.
+
+Full screen is a reversible workspace layout, controlled beside Close in the panel's upper-right corner. Both icons are embedded in the surface without a separate title bar or footer; reserve only the adjacent heading or search space so content stays clear of them. The same surface fills the visual viewport and returns to its window geometry, with mounted content, focus, search, selection and scroll state retained. It uses workspace/public tokens and the same responsive profiles, not the browser Fullscreen API. Closing resets this transient mode; it creates no settings field. Keep both controls visible at short heights, narrow widths and increased text size. Reader's own full-screen preference remains separate.
+
+Use the product terms in `CONTEXT.md` throughout page titles, labels, tooltips and authored FAQ. Excerpt tray means a temporary reading workspace; Keep visible refers to button placement. Neither implies saving a bookmark. User questions and reusable prompts must have distinct labels, including Question + reply copy and prompt placement in annotation output.

@@ -3,6 +3,7 @@ import { copyIcon, messageSquareTextIcon, xIcon } from '../../../assets/icons';
 import { createIcon } from '../components/Icon';
 import { markTransientRoot } from '../components/transientUi';
 import { ensureStyle } from '../../../style/shadow';
+import { getSurfaceMaterialCss } from '../components/styles/surfaceMaterialCss';
 
 type OpenParams = {
     shadow: ShadowRoot;
@@ -33,14 +34,12 @@ function getExportPopoverCss(): string {
 
 .reader-comment-export {
   pointer-events: auto;
-  width: min(560px, calc(100% - 32px));
+  width: min(560px, calc(100% - var(--aimd-space-4) * 2));
+  max-height: min(100%, calc(100dvh - var(--aimd-space-4) * 2));
+  min-height: 0;
   display: grid;
-  gap: var(--aimd-space-4);
-  padding: var(--aimd-space-4);
-  border-radius: var(--aimd-radius-2xl);
-  border: 1px solid color-mix(in srgb, var(--aimd-border-default) 82%, transparent);
-  background: color-mix(in srgb, var(--aimd-bg-surface) 98%, var(--aimd-bg-primary));
-  box-shadow: var(--aimd-shadow-lg);
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  overflow: hidden;
 }
 
 .reader-comment-export__head,
@@ -49,6 +48,8 @@ function getExportPopoverCss(): string {
   align-items: center;
   justify-content: space-between;
   gap: var(--aimd-space-3);
+  padding: var(--aimd-space-4);
+  min-width: 0;
 }
 
 .reader-comment-export__title {
@@ -60,6 +61,8 @@ function getExportPopoverCss(): string {
   line-height: 1.4;
   font-weight: var(--aimd-font-medium);
   color: var(--aimd-text-primary);
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .reader-comment-export__title .aimd-icon {
@@ -67,19 +70,19 @@ function getExportPopoverCss(): string {
 }
 
 .reader-comment-export__close {
-  color: var(--aimd-text-secondary);
+  flex: none;
+  width: calc(var(--aimd-size-control-action-panel) + var(--aimd-space-1));
+  height: calc(var(--aimd-size-control-action-panel) + var(--aimd-space-1));
 }
 
+.reader-comment-export__actions { justify-content: flex-end; }
+
 .reader-comment-export__preview {
-  margin: 0;
-  min-height: 112px;
+  margin: var(--aimd-space-4);
+  min-height: calc(var(--aimd-size-control-action-panel) * 3);
   max-height: 320px;
   overflow: auto;
   padding: var(--aimd-space-3);
-  border-radius: var(--aimd-radius-xl);
-  border: 1px solid color-mix(in srgb, var(--aimd-border-default) 82%, transparent);
-  background: color-mix(in srgb, var(--aimd-bg-primary) 92%, transparent);
-  color: var(--aimd-text-primary);
   font-family: var(--aimd-font-family-mono);
   font-size: var(--aimd-text-sm);
   line-height: 1.6;
@@ -90,13 +93,17 @@ function getExportPopoverCss(): string {
 .reader-comment-export__btn {
   gap: var(--aimd-space-2);
   padding-inline: var(--aimd-space-4);
+  min-width: 0;
+  max-width: 100%;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 .reader-comment-export__btn:disabled {
-  opacity: 0.5;
   cursor: not-allowed;
 }
-`;
+@media (max-height: 568px) { .reader-comment-export__preview { min-height: 0; } }
+${getSurfaceMaterialCss()}`;
 }
 
 export class ReaderCommentExportPopover {
@@ -137,16 +144,16 @@ export class ReaderCommentExportPopover {
         layer.className = 'reader-comment-export-layer';
 
         const popover = document.createElement('div');
-        popover.className = 'reader-comment-export';
+        popover.className = 'reader-comment-export aimd-material-surface';
         popover.setAttribute('data-aimd-theme', params.theme);
         popover.innerHTML = `
-          <div class="reader-comment-export__head">
+          <div class="reader-comment-export__head aimd-material-chrome">
             <h3 class="reader-comment-export__title">${createIcon(messageSquareTextIcon).outerHTML}<span>${labels.title}</span></h3>
-            <button class="icon-btn reader-comment-export__close" type="button" data-action="close" aria-label="${labels.close}">${createIcon(xIcon).outerHTML}</button>
+            <button class="icon-btn reader-comment-export__close aimd-material-button aimd-material-button--quiet" type="button" data-action="close" aria-label="${labels.close}">${createIcon(xIcon).outerHTML}</button>
           </div>
-          <pre class="reader-comment-export__preview" data-role="preview"></pre>
-          <div class="reader-comment-export__actions">
-            <button class="secondary-btn secondary-btn--primary reader-comment-export__btn" type="button" data-action="copy">${createIcon(copyIcon).outerHTML}<span data-role="copy-label">${labels.copy}</span></button>
+          <pre class="reader-comment-export__preview aimd-material-field" data-role="preview"></pre>
+          <div class="reader-comment-export__actions aimd-material-chrome">
+            <button class="secondary-btn secondary-btn--primary reader-comment-export__btn aimd-material-button aimd-material-button--primary" type="button" data-action="copy">${createIcon(copyIcon).outerHTML}<span data-role="copy-label">${labels.copy}</span></button>
           </div>
         `;
 

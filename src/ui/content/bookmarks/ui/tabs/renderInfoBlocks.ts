@@ -1,6 +1,7 @@
 import type { BookmarksDocBlock } from '../../content/types';
 import { maximizeIcon } from '../../../../../assets/icons';
 import { createIcon } from '../../../components/Icon';
+import { t } from '../../../components/i18n';
 
 export function renderInfoBlocks(
     blocks: BookmarksDocBlock[],
@@ -28,11 +29,16 @@ export function renderInfoBlocks(
             const fullscreenButton = document.createElement('button');
             fullscreenButton.type = 'button';
             fullscreenButton.className = 'info-media__fullscreen';
-            fullscreenButton.setAttribute('aria-label', 'Enlarge image');
-            fullscreenButton.title = 'Enlarge image';
+            fullscreenButton.setAttribute('aria-label', t('infoEnlargeImage'));
+            fullscreenButton.setAttribute('aria-expanded', 'false');
+            fullscreenButton.title = t('infoEnlargeImage');
             fullscreenButton.appendChild(createIcon(maximizeIcon));
             fullscreenButton.addEventListener('click', () => {
-                frame.classList.toggle('info-media--expanded');
+                const expanded = frame.classList.toggle('info-media--expanded');
+                const label = t(expanded ? 'infoRestoreImage' : 'infoEnlargeImage');
+                fullscreenButton.setAttribute('aria-label', label);
+                fullscreenButton.setAttribute('aria-expanded', String(expanded));
+                fullscreenButton.title = label;
             });
 
             frame.append(fullscreenButton, image);

@@ -125,6 +125,49 @@ describe('ChatGPT conversation bridge', () => {
         ]);
     });
 
+    it('retains final non-text messages as descriptive seed content without exposing widget payloads', async () => {
+        const payload = graphPayload();
+        payload.mapping['assistant-node'].message.content = {
+            content_type: 'future_visual', payload: { private: 'opaque widget state' },
+        } as any;
+        vi.mocked(globalThis.fetch).mockResolvedValueOnce({
+            ok: true, url: `/backend-api/conversation/${conversationId}`,
+            headers: { get: () => 'application/json' }, clone: () => ({ json: async () => payload }),
+        } as any);
+        installBridge();
+        await window.fetch(`/backend-api/conversation/${conversationId}`);
+        await new Promise(resolve => setTimeout(resolve, 0));
+        const response = await new Promise<any>(resolveResponse => {
+            window.addEventListener('aimd:chatgpt-conversation-bridge:response', event => resolveResponse((event as CustomEvent).detail), { once: true });
+            window.dispatchEvent(new CustomEvent('aimd:chatgpt-conversation-bridge:request', {
+                detail: { requestId: 'visual-seed', type: 'peek', conversationId },
+            }));
+        });
+        const parsed = typeof response === 'string' ? JSON.parse(response) : response;
+        expect(parsed.snapshot.rounds).toHaveLength(1);
+        expect(parsed.snapshot.rounds[0].assistantMarkdown).toContain('Dynamic content');
+        expect(parsed.snapshot.rounds[0].assistantMarkdown).not.toContain('opaque widget state');
+    });
+
+    it('captures a conversation GET issued before SPA navigation updates the address', async () => {
+        history.replaceState({}, '', '/');
+        installBridge();
+        await window.fetch(`/backend-api/conversation/${conversationId}`);
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        history.replaceState({}, '', `/c/${conversationId}`);
+        const response = await new Promise<any>((resolveResponse) => {
+            window.addEventListener('aimd:chatgpt-conversation-bridge:response', (event) => {
+                resolveResponse((event as CustomEvent<any>).detail);
+            }, { once: true });
+            window.dispatchEvent(new CustomEvent('aimd:chatgpt-conversation-bridge:request', {
+                detail: { requestId: 'peek-prefetched', type: 'peek', conversationId },
+            }));
+        });
+        const parsed = typeof response === 'string' ? JSON.parse(response) : response;
+        expect(parsed.ok).toBe(true);
+        expect(parsed.snapshot.rounds).toHaveLength(1);
+    });
+
     it('does not publish an incomplete streaming tail as source content', async () => {
         const fetchMock = vi.mocked(globalThis.fetch);
         fetchMock.mockResolvedValueOnce({

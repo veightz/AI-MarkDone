@@ -77,7 +77,7 @@ The production lifecycle is defined by
 | Formula independence | A formula outside the content pool still supports click copy and enabled PNG/SVG/MathML actions |
 | Pressure | 1,000 relevant mutation signals coalesce; there is one observer and no poll/retry ladder |
 | Safety | No extension conversation GET/POST, bounded website-owned GET observation only, no credential access |
-| Browser parity | Shared runtime tests pass; Chrome MV3 and Firefox MV2 contain the document-start bridge, Safari remains DOM-only |
+| Browser parity | Shared runtime tests pass; Chrome MV3 and Firefox MV2 contain the document-start bridge; no other browser target is supported |
 
 ## Same-page navigation contract
 

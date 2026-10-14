@@ -1,4 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
+import { richSvgBlock } from '../../../helpers/richContentFixtures';
+import { buildChatGPTReaderContent } from '@/services/reader/chatgptReaderItems';
 
 import {
     createConversationDocumentKeyV1,
@@ -8,6 +10,7 @@ import {
     readCurrentReaderContent,
     collectFreshReaderContent,
     isReaderContentSourceRevisionCurrent,
+    readerItemsToChatTurns,
 } from '@/services/reader/readerContentSource';
 
 const conversationId = 'conversation-v1';
@@ -55,6 +58,26 @@ function createSource(initialState: ConversationContentStateV1) {
 }
 
 describe('Reader Content Port V1 projection', () => {
+    it('carries canonical rich blocks and exact message context through both Reader projections into export turns', async () => {
+        const state = createState();
+        if (!state.snapshot) throw new Error('Expected snapshot');
+        const blocks = [richSvgBlock()];
+        const snapshot = { ...state.snapshot, turns: state.snapshot.turns.map(turn => ({ ...turn, assistantMarkdown: '![Diagram](aimd-rich:block-1)', assistantRichBlocks: blocks })) };
+        const source = createSource({ ...state, snapshot });
+        const result = readCurrentReaderContent(
+            { getPlatformId: () => 'chatgpt' } as any,
+            null,
+            { conversationContentSource: source, pageUrl: 'https://chatgpt.com/c/conversation-v1' },
+        );
+        expect(result.items[0]?.richBlocks).toEqual(blocks);
+        expect(buildChatGPTReaderContent(snapshot, 'https://chatgpt.com/c/conversation-v1').items[0]?.richBlocks).toEqual(blocks);
+        const turns = await readerItemsToChatTurns(result.items);
+        expect(turns[0]).toMatchObject({
+            assistant: '![Diagram](aimd-rich:block-1)', richBlocks: blocks,
+            messageId: 'assistant-1', documentUrl: 'https://chatgpt.com/c/conversation-v1',
+        });
+    });
+
     it('projects semantic turns without importing ChatGPT graph or DOM facts', () => {
         const source = createSource(createState());
         const anchor = document.createElement('article');

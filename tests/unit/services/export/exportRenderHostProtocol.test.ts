@@ -34,6 +34,11 @@ describe('exportRenderHostProtocol', () => {
         };
 
         expect(isRenderHostCommand(command)).toBe(true);
+        for (const field of ['richBlocks', 'richImages']) {
+            expect(isRenderHostCommand({ ...command, job: { ...command.job,
+                document: { ...command.job.document, sections: [{ ...command.job.document.sections[0], [field]: [] }] },
+            } })).toBe(false);
+        }
         expect(isRenderHostCommand({ ...command, v: 2 })).toBe(false);
         expect(isRenderHostCommand({
             ...command,

@@ -188,6 +188,13 @@ describe('Library through the production panel and bookmark controller', () => {
             expect(open).not.toHaveBeenCalled();
         } finally { open.mockRestore(); }
     });
+    it('carries the selected highlight identity through the existing source navigation', async () => {
+        vi.mocked(readerAnnotationsClient.navigate).mockResolvedValueOnce({ ok: true, data: { tabId: 77 } } as any);
+        click('Highlights'); await settle();
+        root.querySelector<HTMLButtonElement>('.library-mark-record')!.click();
+        root.querySelector<HTMLAnchorElement>('.library-detail a')!.click(); await settle();
+        expect(readerAnnotationsClient.navigate).toHaveBeenCalledWith(highlights[0]!.document, 'highlight:h0');
+    });
     it('expands same-title conversations independently and clears selection when switching folders', async () => {
         highlights[20].document = {...highlights[20].document, conversationId:'other', lastKnownUrl:'https://chatgpt.com/c/other'};
         click('Highlights'); await settle();
@@ -361,7 +368,7 @@ describe('Library through the production panel and bookmark controller', () => {
             expect(root.querySelector<HTMLElement>('.tab-panel[data-tab-id="settings"]')!.hidden).toBe(false);
             expect(root.querySelector<HTMLElement>(`.tab-panel[data-tab-id="${info}"]`)!.hidden).toBe(true);
             expect(root.querySelector('.aimd-panel-title')?.textContent).toBe('Settings');
-            expect(root.querySelector('.settings-catalog-header h2')?.textContent).toBe('Input & Prompts');
+            expect(root.querySelector('.settings-catalog-header h2')?.textContent).toBe('Writing & prompts');
         }
     });
     it.each(['Highlights','Annotations'])('keeps %s readable when the folder service is unavailable and retries without writes', async type => {

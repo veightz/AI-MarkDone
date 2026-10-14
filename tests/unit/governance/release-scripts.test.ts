@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 type PackageJson = {
@@ -35,6 +35,19 @@ describe('release scripts', () => {
         expect(releaseGuide).not.toContain('package:safari');
         expect(releaseGuide).not.toContain('SAFARI_APP_PATH');
         expect(releaseGuide).not.toContain('App Store Connect');
+        expect(Object.keys(scripts).some((key) => key.includes('safari'))).toBe(false);
+        for (const file of [
+            'manifest.safari.json',
+            'vite.config.safari.ts',
+            'vite.config.safari.reader.ts',
+            'vite.config.safari.background.ts',
+            'scripts/package-safari-xcode.ts',
+            'scripts/package-safari-dmg.ts',
+            'config/extension/surface.ts',
+            'src/config/targetSurface.ts',
+        ]) {
+            expect(existsSync(resolve(process.cwd(), file)), file).toBe(false);
+        }
     });
 
     it('keeps formal release artifacts under the release directory', () => {

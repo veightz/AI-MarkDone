@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { PROTOCOL_VERSION, createRequestId, type ExtRequest, type ReaderSessionSnapshot } from '@/contracts/protocol';
+import { richSvgBlock } from '../../../helpers/richContentFixtures';
 
 const STORAGE_KEY = 'aimd:readerSessions:v1';
 
@@ -97,6 +98,74 @@ describe('reader session background handler', () => {
 
     beforeEach(() => {
         vi.unstubAllGlobals();
+    });
+
+    it('binds asset requests to the Reader sender and replaces any supplied source with its session item', async () => {
+        const { handleReaderSessionRequest } = await loadHandler();
+        const captured = snapshot('assets');
+        captured.items[0]!.richBlocks = [richSvgBlock()];
+        const create = await handleReaderSessionRequest(request('readerSession:create', { snapshot: captured }), { tab: { id: 101 } });
+        const sessionId = (create!.response.data as { sessionId: string }).sessionId;
+        const payload = { version: 1, sessionId, itemId: captured.items[0]!.id, leaseId: 'reader-lease', blockVersions: [{ blockId: 'block-1', visualDigest: 'visual-1' }], sourceItem: { id: 'forged', richBlocks: [] } };
+        const denied = await handleReaderSessionRequest(request('readerSession:assets', payload), { tab: { id: 999 } });
+        expect(denied?.response.ok).toBe(false);
+        expect(tabs.sendMessage).not.toHaveBeenCalled();
+        tabs.sendMessage.mockImplementation((_tabId, forwarded, callback) => callback({ v: PROTOCOL_VERSION, id: forwarded.id, type: forwarded.type, ok: true, data: { version: 1, leaseId: 'reader-lease', refs: [{ assetId: 'asset-1', blockId: 'block-1', mimeType: 'image/png', byteLength: 10, widthPx: 10, heightPx: 10, objectUrl: 'blob:chrome-extension://mock/asset-1' }] } }));
+        const accepted = await handleReaderSessionRequest(request('readerSession:assets', payload), { tab: { id: 500 } });
+        expect(accepted?.response.ok).toBe(true);
+        expect(tabs.sendMessage.mock.calls[0]?.[1]?.payload.sourceItem).toEqual(captured.items[0]);
+        expect(tabs.sendMessage.mock.calls[0]?.[1]?.payload.sourceUrl).toBe(captured.sourceUrl);
+    });
+
+    it.each(['missing', 'duplicate', 'over-budget', 'stale-digest'] as const)('does not forward %s asset content', async (fault) => {
+        const { handleReaderSessionRequest } = await loadHandler();
+        const captured = snapshot('invalid-assets');
+        captured.items[0]!.richBlocks = [richSvgBlock()];
+        if (fault === 'duplicate') captured.items.push({ ...captured.items[0]! });
+        if (fault === 'over-budget') captured.items[0]!.richBlocks = Array.from({ length: 129 }, (_, index) => richSvgBlock({ id: `block-${index}` }));
+        const create = await handleReaderSessionRequest(request('readerSession:create', { snapshot: captured }), { tab: { id: 101 } });
+        if (fault === 'over-budget') {
+            expect(create?.response.ok).toBe(false);
+            expect(create?.response.error?.code).toBe('SOURCE_UNAVAILABLE');
+            expect(tabs.sendMessage).not.toHaveBeenCalled();
+            return;
+        }
+        const sessionId = (create!.response.data as { sessionId: string }).sessionId;
+        const result = await handleReaderSessionRequest(request('readerSession:assets', { version: 1, sessionId, itemId: fault === 'missing' ? 'missing' : captured.items[0]!.id, blockVersions: [{ blockId: 'block-1', visualDigest: fault === 'stale-digest' ? 'obsolete' : 'visual-1' }] }), { tab: { id: 500 } });
+        expect(result?.response.ok).toBe(false);
+        expect(tabs.sendMessage).not.toHaveBeenCalled();
+    });
+
+    it('releases a rejected page-origin asset response instead of forwarding it to Reader', async () => {
+        const { handleReaderSessionRequest } = await loadHandler();
+        const captured = snapshot('page-origin-assets');
+        captured.items[0]!.richBlocks = [richSvgBlock()];
+        const create = await handleReaderSessionRequest(request('readerSession:create', { snapshot: captured }), { tab: { id: 101 } });
+        const sessionId = (create!.response.data as { sessionId: string }).sessionId;
+        tabs.sendMessage.mockImplementation((_tabId, forwarded, callback) => callback({ v: PROTOCOL_VERSION, id: forwarded.id, type: forwarded.type, ok: true, data: { version: 1, leaseId: 'reader-lease', refs: [{ assetId: 'asset-1', blockId: 'block-1', mimeType: 'image/png', byteLength: 10, widthPx: 10, heightPx: 10, objectUrl: 'blob:https://chatgpt.com/asset-1' }] } }));
+        const result = await handleReaderSessionRequest(request('readerSession:assets', { version: 1, sessionId, itemId: captured.items[0]!.id, leaseId: 'reader-lease', blockVersions: [{ blockId: 'block-1', visualDigest: 'visual-1' }] }), { tab: { id: 500 } });
+        expect(result?.response.ok).toBe(false);
+        expect(tabs.sendMessage.mock.calls[1]?.[1]?.type).toBe('readerSession:releaseAssets');
+    });
+
+    it('releases a late successful asset response after its Reader session closed', async () => {
+        const { handleReaderSessionRequest } = await loadHandler();
+        const captured = snapshot('late-assets');
+        captured.items[0]!.richBlocks = [richSvgBlock()];
+        const create = await handleReaderSessionRequest(request('readerSession:create', { snapshot: captured }), { tab: { id: 101 } });
+        const sessionId = (create!.response.data as { sessionId: string }).sessionId;
+        let complete!: () => void;
+        tabs.sendMessage.mockImplementation((_tabId, forwarded, callback) => {
+            if (forwarded.type === 'readerSession:assets') {
+                complete = () => callback({ v: PROTOCOL_VERSION, id: forwarded.id, type: forwarded.type, ok: true, data: { version: 1, leaseId: 'late-lease', refs: [{ assetId: 'asset', blockId: 'block-1', mimeType: 'image/png', byteLength: 5, widthPx: 10, heightPx: 10, objectUrl: 'blob:chrome-extension://mock/asset' }] } });
+            } else callback({ v: PROTOCOL_VERSION, id: forwarded.id, type: forwarded.type, ok: true, data: {} });
+        });
+        const response = handleReaderSessionRequest(request('readerSession:assets', { version: 1, sessionId, itemId: captured.items[0]!.id, leaseId: 'late-lease', blockVersions: [{ blockId: 'block-1', visualDigest: 'visual-1' }] }), { tab: { id: 500 } });
+        await vi.waitFor(() => expect(complete).toBeTypeOf('function'));
+        await handleReaderSessionRequest(request('readerSession:close', { sessionId }), { tab: { id: 500 } });
+        complete();
+        expect((await response)?.response.ok).toBe(false);
+        expect(tabs.sendMessage.mock.calls.filter(([, message]) => message.type === 'readerSession:releaseAssets')).toHaveLength(2);
     });
 
     it('creates a session, opens a detached reader tab, and restricts get to the bound reader tab', async () => {

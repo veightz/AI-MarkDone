@@ -10,6 +10,8 @@ import {
 } from '../../drivers/shared/clients/clientResult';
 import { PROTOCOL_VERSION, createRequestId, isExtRequest, type ExtRequest, type ExtResponse } from '../../contracts/protocol';
 import { logger } from '../../core/logger';
+import { createConversationDocumentKeyV1 } from '../../contracts/conversationContent';
+import { showToast } from '../../utils/toast';
 import { ensurePageTokens } from '../../style/pageTokens';
 import { MessageToolbarOrchestrator } from '../../ui/content/controllers/MessageToolbarOrchestrator';
 import { BookmarksPanelController } from '../../ui/content/bookmarks/BookmarksPanelController';
@@ -24,6 +26,7 @@ import { ChatGPTSendPositionRestoreController } from '../../ui/content/controlle
 import { ChatGPTComposerEditingController } from '../../ui/content/controllers/ChatGPTComposerEditingController';
 import { ChatGPTMessageStepperController } from '../../ui/content/controllers/ChatGPTMessageStepperController';
 import { ChatGPTViewportReaderChipController } from '../../ui/content/controllers/ChatGPTViewportReaderChipController';
+import { InputEnhancementPopover } from '../../ui/content/components/InputEnhancementPopover';
 import { ChatGPTPromptAutocompleteController } from '../../ui/content/controllers/ChatGPTPromptAutocompleteController';
 import { ChatGPTOfficialNavigationVisibilityController } from '../../ui/content/controllers/ChatGPTOfficialNavigationVisibilityController';
 import { ChatGPTPageWidthController } from '../../ui/content/controllers/ChatGPTPageWidthController';
@@ -47,6 +50,7 @@ import {
 } from '../../services/reader/readerContentSource';
 import { setCanonicalMarkdownCopyFormulaFormat } from '../../services/copy/canonicalMarkdownCopy';
 import { buildReaderSessionSnapshot } from '../../services/reader/readerSessionSnapshot';
+import { matchesReaderRichBlockVersions } from '../../services/reader/readerRichAssetProtocol';
 import { sendText } from '../../services/sending/sendService';
 import { readComposer, writeComposer } from '../../drivers/content/sending/composerPort';
 import { armChatGPTSendPositionRestore } from '../../drivers/content/chatgpt/sendPositionRestoreEvents';
@@ -72,6 +76,7 @@ import {
     createLazyReaderPanel,
     createLazyRunFormulaAssetAction,
     createLazySaveMessagesDialog,
+    createLazyReaderRichAssetSessions,
     scheduleLazyContentFeaturePrewarm,
     setLazyContentFeatureLocale,
 } from './lazyContentFeatures';
@@ -121,6 +126,8 @@ if (adapter) {
         runFormulaAssetAction: createLazyRunFormulaAssetAction(),
     });
     const readerPanel = createLazyReaderPanel();
+    const readerRichAssets = createLazyReaderRichAssetSessions();
+    window.addEventListener('pagehide', () => { void readerRichAssets.dispose(); });
     const saveMessagesDialog = createLazySaveMessagesDialog();
     const bookmarkSaveDialog = createLazyBookmarkSaveDialog();
     const copyMessagePng = createLazyCopyMessagePng();
@@ -219,6 +226,7 @@ if (adapter) {
         ? new ChatGPTComposerEditingController(adapter, {
             bindingSource: chatGptComposerBindingSource ?? undefined,
             renderFormula: createLazyRenderFormulaSvgAsset(),
+            runFormulaAssetAction: createLazyRunFormulaAssetAction(),
         })
         : null;
     const promptLibraryClient = adapter.getPlatformId() === 'chatgpt'
@@ -250,18 +258,23 @@ if (adapter) {
             compose: record => chatGptPageAnnotation?.composeLibraryAnnotation(record) ?? record.comment,
         },
     });
+    const inputEnhancementPopover = adapter.getPlatformId() === 'chatgpt'
+        ? new InputEnhancementPopover(inputEnhancement => settingsClient.setCategory('chatgptBehavior', { inputEnhancement }))
+        : null;
     const chatGptMessageStepper = adapter.getPlatformId() === 'chatgpt'
         ? new ChatGPTMessageStepperController(adapter, {
             surface: chatGptConversationContentRuntime!.surface,
             navigation: conversationNavigation,
             activePositionTracker: chatGptActivePositionTracker ?? undefined,
             onOpenBookmarksPanel: () => bookmarksPanel.show({tab:'settings'}),
+            onNavigationControlsReady: (previous, next) => chatGptDirectory?.setNavigationControls(previous, next),
             onOpenDetachedReader: () => openDetachedReaderFromStepper(),
             onOpenPrompts: (anchor) => chatGptPromptAutocomplete?.openManager(anchor),
             pageIndex: getChatGPTPageIndex(adapter),
             // Secondary only. The stepper's primary click soft-rescans PageIndex
             // and the mounted surface. This reloads with an empty ?message= when
             // virtualized turns are still missing and the user asks for it.
+            onOpenInputEnhancement: anchor => inputEnhancementPopover?.toggle(anchor),
             onRefreshMessageNavigation: () => {
                 window.location.assign(withChatGPTMessageNavigationTrigger(window.location.href));
             },
@@ -470,6 +483,8 @@ if (adapter) {
     ) => {
         const next = resolveFormulaSettings(settings);
         mathClick.setFormulaSettings(next);
+        chatGptComposerEditing?.setFormulaAssetFontSize(next.assetFontSizePx);
+        chatGptComposerEditing?.setFormulaAssetActions?.(next.composerAssetActions);
         setCanonicalMarkdownCopyFormulaFormat(next.markdownCopyFormulaFormat);
         saveMessagesDialog.setMarkdownFormulaFormat(next.markdownCopyFormulaFormat);
         if (options.applyInteractionGate === false) return;
@@ -613,12 +628,14 @@ if (adapter) {
             settings,
         );
         const effectiveInputEnhancement = resolveChatGPTInputEnhancement(inputEnhancement);
+        chatGptMessageStepper?.setInputEnhancementEnabled?.(effectiveInputEnhancement.enabled);
         chatGptNavigationSeekStepPx = normalizeChatGPTNavigationSeekStepPx(next.navigationSeekStepPx);
         chatGptAtomicSelection?.setMarkdownCopyShortcut(next.atomicMarkdownCopyShortcut);
         setAtomicSelectionEnabled(Boolean(runtimeEnabled));
         chatGptSendPositionRestore?.setEnabled(Boolean(next.restorePositionAfterSend));
         chatGptSendPositionRestore?.setEnterKeyNewlineEnabled(effectiveInputEnhancement.enterKeyNewline);
         chatGptComposerEditing?.setInputEnhancementSettings(inputEnhancement);
+        inputEnhancementPopover?.updateSettings(inputEnhancement);
         chatGptPromptAutocomplete?.setFormulaAuthoringEnabled?.(
             effectiveInputEnhancement.formulaSuggestions || effectiveInputEnhancement.formulaPreview,
         );
@@ -626,6 +643,9 @@ if (adapter) {
         chatGptMessageStepper?.setPageBookmarkControlVisible(Boolean(next.showPageBookmarkControl));
         chatGptMessageStepper?.setDetachedReaderControlVisible(Boolean(next.showDetachedReaderControl));
         chatGptMessageStepper?.setPromptControlVisible(Boolean(next.showPromptControl));
+        chatGptMessageStepper?.setInputEnhancementControlVisible(next.showInputEnhancementControl ?? true);
+        chatGptMessageStepper?.setRefreshNavigationControlVisible?.(next.showRefreshNavigationControl ?? true);
+        chatGptMessageStepper?.setPinnedActions(next.pinnedPageControls ?? []);
         chatGptPromptAutocomplete?.setEnabled(Boolean(next.promptAutocomplete));
         chatGptMessageStepper?.setKeyboardEnabled(Boolean(next.enableArrowKeyMessageNavigation));
         chatGptPageWidth?.setScale(next.pageWidthScale);
@@ -654,6 +674,7 @@ if (adapter) {
         chatGptComposerEditing?.setAppearance(nextSnapshot);
         chatGptMessageStepper?.setAppearance(nextSnapshot);
         chatGptViewportReaderChip?.setAppearance(nextSnapshot);
+        inputEnhancementPopover?.setAppearance(nextSnapshot);
         chatGptPageAnnotation?.setAppearance(nextSnapshot);
     };
 
@@ -673,6 +694,7 @@ if (adapter) {
     const disableRuntime = () => {
         if (!runtimeEnabled) return;
         runtimeEnabled = false;
+        void readerRichAssets.dispose();
         writeDebugState({ RuntimeEnabled: runtimeEnabled });
         messageToolbars.dispose();
         conversationNavigation?.cancelActive();
@@ -688,6 +710,7 @@ if (adapter) {
         chatGptPromptAutocomplete?.dispose();
         chatGptMessageStepper?.dispose();
         chatGptViewportReaderChip?.dispose();
+        inputEnhancementPopover?.close(false);
         chatGptPageWidth?.dispose();
         chatGptPageAnnotation?.dispose();
         pageAnnotationEnabled = false;
@@ -704,6 +727,9 @@ if (adapter) {
         readerPanel.setReaderSettings(cachedSettings.reader);
         chatGptPageAnnotation?.setReaderSettings(cachedSettings.reader);
     }
+    readerPanel.setContentCleanupSettings(cachedSettings?.content ?? DEFAULT_SETTINGS.content);
+    saveMessagesDialog.setContentCleanupSettings(cachedSettings?.content ?? DEFAULT_SETTINGS.content);
+    messageToolbars.setContentCleanupSettings(cachedSettings?.content ?? DEFAULT_SETTINGS.content);
     const initialReaderSettings = cachedSettings?.reader ?? DEFAULT_SETTINGS.reader;
     let confirmedReaderSettings = cachedSettings?.reader ?? null;
     let readerSettingsWriteQueue: Promise<void> = Promise.resolve();
@@ -751,6 +777,10 @@ if (adapter) {
         showMessageToolbar: cachedSettings?.behavior?.showMessageToolbar ?? DEFAULT_SETTINGS.behavior.showMessageToolbar,
         showSaveMessages: cachedSettings?.behavior?.showSaveMessages ?? DEFAULT_SETTINGS.behavior.showSaveMessages,
         showWordCount: cachedSettings?.behavior?.showWordCount ?? DEFAULT_SETTINGS.behavior.showWordCount,
+        pinnedMessageControls: cachedSettings?.behavior?.pinnedMessageControls ?? DEFAULT_SETTINGS.behavior.pinnedMessageControls,
+        messageControls: cachedSettings?.behavior?.messageControls ?? DEFAULT_SETTINGS.behavior.messageControls,
+        showCopyPng: cachedSettings?.behavior?.showCopyPng ?? DEFAULT_SETTINGS.behavior.showCopyPng,
+        showMessageTimestamp: cachedSettings?.behavior?.showMessageTimestamp ?? DEFAULT_SETTINGS.behavior.showMessageTimestamp,
     });
     settingsClient.subscribe((snap) => {
         if (snap.settings.language !== lastLocale) {
@@ -768,6 +798,9 @@ if (adapter) {
         syncFormulaSettings(snap.settings.formula);
         confirmedReaderSettings = snap.settings.reader;
         readerPanel.setReaderSettings(snap.settings.reader);
+        readerPanel.setContentCleanupSettings(snap.settings.content);
+        saveMessagesDialog.setContentCleanupSettings(snap.settings.content);
+        messageToolbars.setContentCleanupSettings(snap.settings.content);
         chatGptPageAnnotation?.setReaderSettings(snap.settings.reader);
         saveMessagesDialog.setExportSettings(snap.settings.export ?? DEFAULT_SETTINGS.export);
         messageToolbars.setExportSettings(snap.settings.export ?? DEFAULT_SETTINGS.export);
@@ -776,6 +809,10 @@ if (adapter) {
             showMessageToolbar: snap.settings.behavior?.showMessageToolbar ?? DEFAULT_SETTINGS.behavior.showMessageToolbar,
             showSaveMessages: snap.settings.behavior?.showSaveMessages ?? DEFAULT_SETTINGS.behavior.showSaveMessages,
             showWordCount: snap.settings.behavior?.showWordCount ?? DEFAULT_SETTINGS.behavior.showWordCount,
+            pinnedMessageControls: snap.settings.behavior?.pinnedMessageControls ?? DEFAULT_SETTINGS.behavior.pinnedMessageControls,
+            messageControls: snap.settings.behavior?.messageControls ?? DEFAULT_SETTINGS.behavior.messageControls,
+            showCopyPng: snap.settings.behavior?.showCopyPng ?? DEFAULT_SETTINGS.behavior.showCopyPng,
+            showMessageTimestamp: snap.settings.behavior?.showMessageTimestamp ?? DEFAULT_SETTINGS.behavior.showMessageTimestamp,
         });
     });
 
@@ -786,6 +823,19 @@ if (adapter) {
 
     const handleDetachedReaderRequest = async (request: ExtRequest): Promise<ExtResponse> => {
         try {
+            if (request.type === 'readerSession:assets') {
+                const item = request.payload.sourceItem;
+                if (!runtimeEnabled || !item || item.id !== request.payload.itemId || !request.payload.sourceUrl
+                    || !matchesReaderRichBlockVersions(item.richBlocks ?? [], request.payload.blockVersions)) {
+                    return { v: PROTOCOL_VERSION, id: request.id, type: request.type, ok: false, error: { code: 'INVALID_REQUEST', message: 'Missing bound Reader asset source' } };
+                }
+                const data = await readerRichAssets.prepare(request.payload.sessionId, item, request.payload.sourceUrl, request.payload.leaseId ?? crypto.randomUUID());
+                return { v: PROTOCOL_VERSION, id: request.id, type: request.type, ok: true, data };
+            }
+            if (request.type === 'readerSession:releaseAssets') {
+                await readerRichAssets.release(request.payload.sessionId, request.payload.leaseId);
+                return { v: PROTOCOL_VERSION, id: request.id, type: request.type, ok: true, data: { released: true } };
+            }
             if (request.type === 'readerSession:refresh') {
                 const result = await collectFreshReaderContent(adapter, null, {
                     conversationContentSource,
@@ -914,6 +964,15 @@ if (adapter) {
 
     browser.runtime.onMessage.addListener((msg: unknown, _sender: unknown, sendResponse?: (response: unknown) => void) => {
         if (!isExtRequest(msg)) return;
+        if (msg.type === 'readerSession:assets' || msg.type === 'readerSession:releaseAssets') {
+            const sender = _sender as { id?: string; tab?: unknown } | null;
+            if (!sender || typeof sender.id !== 'string' || !browser.runtime.id || sender.id !== browser.runtime.id || sender.tab !== undefined) {
+                sendResponse?.({ v: PROTOCOL_VERSION, id: msg.id, type: msg.type, ok: false, error: { code: 'PERMISSION_DENIED', message: 'Reader assets require the bound background relay' } });
+                return true;
+            }
+            void handleDetachedReaderRequest(msg).then(response => sendResponse?.(response));
+            return true;
+        }
         if (msg.type === 'ping') {
             sendResponse?.({ v: PROTOCOL_VERSION, id: msg.id, ok: true, type: msg.type, data: { pong: true } });
             return true;
@@ -926,6 +985,19 @@ if (adapter) {
                 if (adapter.getPlatformId() !== 'chatgpt' || !conversationContentSource) {
                     sendResponse?.({ v: PROTOCOL_VERSION, id: msg.id, ok: false, type: msg.type, error: { code: 'SOURCE_UNAVAILABLE', message: 'ChatGPT Reader is unavailable' } });
                     return;
+                }
+                if (msg.payload.assistantMessageId && conversationNavigation) {
+                    const located = await conversationNavigation.navigate({
+                        documentKey: createConversationDocumentKeyV1('chatgpt', msg.payload.document.conversationId),
+                        position: 0,
+                        assistantMessageId: msg.payload.assistantMessageId,
+                        source: 'reader',
+                    }, { timeoutMs: 15000, align: 'start' });
+                    if (!located.ok) {
+                        showToast({ text: t('pageAnnotationSourceUnavailable'), tone: 'error' });
+                        sendResponse?.({ v: PROTOCOL_VERSION, id: msg.id, ok: false, type: msg.type, error: { code: 'SOURCE_UNAVAILABLE', message: 'The marked reply could not be located' } });
+                        return;
+                    }
                 }
                 const result = await collectFreshReaderContent(adapter, null, {
                     conversationContentSource,
@@ -953,12 +1025,13 @@ if (adapter) {
                     sendResponse?.({ v: PROTOCOL_VERSION, id: msg.id, ok: false, type: msg.type, error: { code: 'SOURCE_UNAVAILABLE', message: 'Conversation changed before annotation focus' } });
                     return;
                 }
-                const focused = await readerPanel.focusAnnotation(msg.payload.annotationId, undefined);
+                const focused = await readerPanel.focusAnnotation(msg.payload.annotationId, msg.payload.assistantMessageId);
                 if (!sourceRevisionIsCurrent()) {
                     readerPanel.hide();
                     sendResponse?.({ v: PROTOCOL_VERSION, id: msg.id, ok: false, type: msg.type, error: { code: 'SOURCE_UNAVAILABLE', message: 'Conversation changed during annotation focus' } });
                     return;
                 }
+                if (!focused) showToast({ text: t('pageAnnotationSourceUnavailable'), tone: 'error' });
                 sendResponse?.({ v: PROTOCOL_VERSION, id: msg.id, ok: focused, type: msg.type, ...(focused ? { data: { focused: true } } : { error: { code: 'NOT_FOUND', message: 'Annotation was not found in this conversation' } }) });
             })().catch((error) => {
                 sendResponse?.({ v: PROTOCOL_VERSION, id: msg.id, ok: false, type: msg.type, error: { code: 'INTERNAL_ERROR', message: error instanceof Error ? error.message : 'Could not focus annotation' } });

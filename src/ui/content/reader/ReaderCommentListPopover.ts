@@ -2,6 +2,7 @@ import { fileTextIcon, trashIcon } from '../../../assets/icons';
 import type { ReaderCommentSortMode } from '../../../core/settings/readerCommentExport';
 import { sortReaderComments, type ReaderCommentRecord } from '../../../services/reader/commentSession';
 import { ensureStyle } from '../../../style/shadow';
+import { getSurfaceMaterialCss } from '../components/styles/surfaceMaterialCss';
 import { createIcon } from '../components/Icon';
 import type { ModalHost } from '../components/ModalHost';
 
@@ -49,8 +50,8 @@ function formatTextPosition(record: ReaderCommentRecord): string {
 function getCommentListCss(): string {
     return `
 .mock-modal--reader-comment-list {
-  --_modal-width: min(760px, calc(100% - var(--aimd-space-5) * 2));
-  --_modal-max-height: min(720px, calc(100% - var(--aimd-space-5) * 2));
+  --_modal-content-max-width: 760px;
+  --_modal-content-max-height: 720px;
 }
 
 .mock-modal--reader-comment-list .mock-modal__content {
@@ -77,9 +78,7 @@ function getCommentListCss(): string {
   align-items: center;
   gap: var(--aimd-space-1);
   padding: var(--aimd-space-1);
-  border-radius: var(--aimd-radius-xl);
-  border: 1px solid var(--aimd-border-subtle);
-  background: var(--aimd-bg-secondary);
+  min-width: 0;
 }
 
 .reader-comment-list__sort-button {
@@ -88,15 +87,14 @@ function getCommentListCss(): string {
   cursor: pointer;
   min-height: var(--aimd-size-control-compact);
   padding: 0 var(--aimd-space-3);
-  border-radius: var(--aimd-radius-lg);
-  color: var(--aimd-text-secondary);
   font-size: var(--aimd-text-sm);
-  white-space: nowrap;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  min-width: 0;
+  text-align: center;
 }
 
 .reader-comment-list__sort-button[data-active="1"] {
-  color: var(--aimd-interactive-primary);
-  background: var(--aimd-interactive-selected);
   font-weight: var(--aimd-font-semibold);
 }
 
@@ -120,8 +118,6 @@ function getCommentListCss(): string {
 
 .reader-comment-list__empty {
   padding: var(--aimd-space-6);
-  border-radius: var(--aimd-radius-xl);
-  border: 1px dashed color-mix(in srgb, var(--aimd-border-default) 82%, transparent);
   color: var(--aimd-text-secondary);
   font-size: var(--aimd-text-sm);
   text-align: center;
@@ -133,15 +129,11 @@ function getCommentListCss(): string {
   display: grid;
   gap: var(--aimd-space-2);
   padding: var(--aimd-space-3);
-  border-radius: var(--aimd-radius-xl);
-  border: 1px solid color-mix(in srgb, var(--aimd-border-default) 72%, transparent);
-  background: color-mix(in srgb, var(--aimd-bg-primary) 94%, transparent);
 }
 
 .reader-comment-list__item:hover,
 .reader-comment-list__item:focus-within {
-  border-color: color-mix(in srgb, var(--aimd-interactive-primary) 42%, var(--aimd-border-default));
-  background: color-mix(in srgb, var(--aimd-surface-hover) 82%, var(--aimd-bg-primary));
+  background: var(--aimd-workspace-surface);
 }
 
 .reader-comment-list__item-head {
@@ -159,6 +151,7 @@ function getCommentListCss(): string {
   color: var(--aimd-text-tertiary);
   font-size: var(--aimd-text-xs);
   line-height: var(--aimd-leading-normal);
+  font-variant-numeric: tabular-nums;
 }
 
 .reader-comment-list__item-meta .aimd-icon {
@@ -218,7 +211,8 @@ function getCommentListCss(): string {
 .reader-comment-list__text--comment {
   color: var(--aimd-text-secondary);
 }
-`;
+@media (max-width: 560px) { .reader-comment-list__sort { width: 100%; } .reader-comment-list__sort-button { flex: 1 1 0; } }
+${getSurfaceMaterialCss()}`;
 }
 
 export class ReaderCommentListPopover {
@@ -246,9 +240,9 @@ export class ReaderCommentListPopover {
         body.className = 'reader-comment-list';
         body.innerHTML = `
           <div class="reader-comment-list__toolbar">
-            <div class="reader-comment-list__sort" role="group">
-              <button class="reader-comment-list__sort-button" type="button" data-sort-mode="created"></button>
-              <button class="reader-comment-list__sort-button" type="button" data-sort-mode="position"></button>
+            <div class="reader-comment-list__sort aimd-material-segmented" role="group">
+              <button class="reader-comment-list__sort-button aimd-material-choice" type="button" data-sort-mode="created"></button>
+              <button class="reader-comment-list__sort-button aimd-material-choice" type="button" data-sort-mode="position"></button>
             </div>
           </div>
           <div class="reader-comment-list__sort-error" data-role="sort-error" role="alert" aria-live="polite" hidden></div>
@@ -348,7 +342,7 @@ export class ReaderCommentListPopover {
         const comments = sortReaderComments(this.params.comments, this.params.sortMode);
         if (comments.length < 1) {
             const empty = document.createElement('div');
-            empty.className = 'reader-comment-list__empty';
+            empty.className = 'reader-comment-list__empty aimd-material-card';
             empty.textContent = this.params.labels.empty;
             list.replaceChildren(empty);
             return;
@@ -359,7 +353,7 @@ export class ReaderCommentListPopover {
 
     private createItem(record: ReaderCommentRecord): HTMLElement {
         const item = document.createElement('article');
-        item.className = 'reader-comment-list__item';
+        item.className = 'reader-comment-list__item aimd-material-card';
         item.dataset.commentId = record.id;
 
         const head = document.createElement('div');
@@ -375,7 +369,7 @@ export class ReaderCommentListPopover {
 
         const deleteButton = document.createElement('button');
         deleteButton.type = 'button';
-        deleteButton.className = 'icon-btn icon-btn--danger reader-comment-list__delete';
+        deleteButton.className = 'icon-btn icon-btn--danger reader-comment-list__delete aimd-material-button aimd-material-button--quiet aimd-material-button--danger';
         deleteButton.dataset.action = 'delete';
         deleteButton.setAttribute('aria-label', this.params!.labels.delete);
         deleteButton.title = this.params!.labels.delete;

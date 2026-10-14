@@ -25,6 +25,15 @@
 
 ### Refactor And Closeout Records
 
+- [README reference review](reviews/2026-10-12-readme-reference-review.md)
+  - mature extension references, bilingual landing-page structure and screenshot provenance
+
+- [6.2.0 review and release readiness](reviews/2026-10-12-6.2.0-release-readiness.md)
+  - consolidated branch scope, feedback disposition, copy and pending release acceptance
+
+- [Unified surface visual upgrade](plans/2026-10-08-unified-surface-visual-upgrade.md)
+  - remaining surface coverage, styling ownership and verification evidence
+
 These documents record bounded refactor execution and closeout evidence. They do not replace the long-lived architecture authority above:
 
 - `docs/refactor/UI_SYSTEM_REFACTOR_PLAN.md`
@@ -63,6 +72,9 @@ These documents record bounded refactor execution and closeout evidence. They do
 ### Decisions
 
 - `docs/adr/README.md`
+- `docs/adr/ADR-0032-chatgpt-rich-content-and-safe-lifecycle.md`
+  - rich-block source bindings, safe message replacement and transient asset ownership
+
 - `docs/adr/ADR-0024-chatgpt-dom-authoritative-content-pool.md`
   - current mounted-DOM content authority and page-level admission lifecycle
 - `docs/adr/ADR-0018-chatgpt-identity-proven-single-content-pool.md`
@@ -77,10 +89,15 @@ These documents record bounded refactor execution and closeout evidence. They do
 ADR-0009 through ADR-0017 are historical inputs where ADR-0018 says they are
 superseded. They are not alternate current ChatGPT architectures.
 
+Current implementation/verification record:
+[ChatGPT rich content and lifecycle](plans/2026-10-08-chatgpt-rich-content-lifecycle.md).
+
 ### Style
 
 - `docs/design.md`
   - single authority for product feel, UI tokens, component rules, Shadow DOM style injection, and UI-system governance
+- `docs/WRITING.md`
+  - bilingual product writing, interface language patterns, and maintainer review boundaries
 
 ### Testing
 

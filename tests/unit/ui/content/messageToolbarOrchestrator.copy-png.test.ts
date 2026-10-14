@@ -31,6 +31,7 @@ import { copyMessagePng } from '@/services/copy/copy-turn-png';
 import { collectFreshCurrentReaderItem } from '@/services/reader/readerContentSource';
 import { SiteAdapter, type ThemeDetector } from '@/drivers/content/adapters/base';
 import { MessageToolbarOrchestrator } from '@/ui/content/controllers/MessageToolbarOrchestrator';
+import { richSvgBlock } from '../../../helpers/richContentFixtures';
 
 const detector: ThemeDetector = {
     detect: () => 'light',
@@ -62,6 +63,36 @@ class TestAdapter extends SiteAdapter {
 describe('MessageToolbarOrchestrator Copy PNG', () => {
     beforeEach(() => {
         vi.clearAllMocks();
+    });
+
+    it('preserves rich blocks and exact identity through the real toolbar Copy PNG button', async () => {
+        document.body.innerHTML = '<main><div class="assistant-message" data-message-id="m1"><div class="content">Diagram</div><div class="official-toolbar"><button>Copy</button></div></div></main>';
+        const block = richSvgBlock();
+        vi.mocked(collectFreshCurrentReaderItem).mockResolvedValueOnce({ item: {
+            id: 'm1', userPrompt: 'Prompt', content: '![Diagram](aimd-rich:block-1)', richBlocks: [block],
+            meta: { assistantMessageId: 'm1', url: 'https://chatgpt.com/c/example' },
+        } });
+        const orchestrator = new MessageToolbarOrchestrator(new TestAdapter(), {
+            readerPanel: { show: vi.fn(), setTheme: vi.fn() } as any,
+            copyMessagePng: vi.mocked(copyMessagePng),
+        });
+        try {
+            orchestrator.setBehaviorFlags({ showCopyPng: true, pinnedMessageControls: ['copy_markdown'] });
+            orchestrator.init();
+            await vi.waitFor(() => expect(document.querySelector('[data-aimd-role="message-toolbar"]')).not.toBeNull());
+            const shadow = document.querySelector('[data-aimd-role="message-toolbar"]')!.shadowRoot!;
+            const copy = shadow.querySelector<HTMLButtonElement>('[data-action="copy_markdown"]')!;
+            copy.focus();
+            copy.dispatchEvent(new MouseEvent('mouseenter', { bubbles: true }));
+            const hover = document.querySelector('.aimd-toolbar-hover-action-host')!.shadowRoot!;
+            const button = hover.querySelector<HTMLButtonElement>('[data-action="copy_png"]')!;
+            expect(button).toBeTruthy();
+            button.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true, composed: true }));
+            button.click();
+            await vi.waitFor(() => expect(copyMessagePng).toHaveBeenCalledWith(expect.objectContaining({
+                richBlocks: [block], messageId: 'm1', documentUrl: 'https://chatgpt.com/c/example',
+            }), expect.any(Object), expect.any(Object)));
+        } finally { orchestrator.dispose(); }
     });
 
     it('copies markdown from the fresh current Reader item even when Reader is already open', async () => {

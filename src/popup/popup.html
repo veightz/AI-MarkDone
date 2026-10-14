@@ -4,54 +4,10 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
     <title>AI-MarkDone</title>
+    <link rel="stylesheet" href="/src/popup/popup-tokens.css" />
     <style>
-      :root {
-        color-scheme: light;
-        --aimd-bg-primary: #f6f7f9;
-        --aimd-bg-surface: #ffffff;
-        --aimd-bg-secondary: color-mix(in srgb, var(--aimd-bg-primary) 82%, var(--aimd-bg-surface));
-        --aimd-text-primary: #111827;
-        --aimd-text-secondary: #374151;
-        --aimd-border-default: rgba(0, 0, 0, 0.12);
-        --aimd-border-strong: rgba(0, 0, 0, 0.16);
-        --aimd-interactive-primary: #2563eb;
-        --aimd-interactive-primary-hover: #1d4ed8;
-        --aimd-interactive-selected: rgba(37, 99, 235, 0.12);
-        --aimd-shadow-lg: 0 10px 24px rgba(0, 0, 0, 0.18);
-        --aimd-radius-lg: 8px;
-        --aimd-radius-xl: 12px;
-        --aimd-radius-2xl: 16px;
-        --aimd-radius-full: 999px;
-        --aimd-space-1: 4px;
-        --aimd-space-2: 8px;
-        --aimd-space-3: 12px;
-        --aimd-space-4: 16px;
-        --aimd-space-5: calc(var(--aimd-space-4) + var(--aimd-space-1));
-        --aimd-space-6: calc(var(--aimd-space-4) + var(--aimd-space-2));
-        --aimd-size-logo: 40px;
-        --aimd-size-action-row: 44px;
-        --aimd-text-xs: 12px;
-        --aimd-text-sm: 13px;
-        --aimd-text-base: 16px;
-        --aimd-text-lg: 16px;
-        --aimd-font-family-sans: ui-sans-serif, -apple-system, "system-ui", "Segoe UI", Helvetica, "Apple Color Emoji", Arial, "sans-serif", "Segoe UI Emoji", "Segoe UI Symbol";
-        --aimd-font-medium: 500;
-        --aimd-font-semibold: 600;
-        --aimd-duration-fast: 150ms;
-        --aimd-ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
-      }
-
-      :root[data-aimd-theme="dark"] {
-        color-scheme: dark;
-        --aimd-bg-primary: #171717;
-        --aimd-bg-surface: #262626;
-        --aimd-text-primary: #f5f5f5;
-        --aimd-text-secondary: #d4d4d4;
-        --aimd-border-default: rgba(255, 255, 255, 0.14);
-        --aimd-border-strong: rgba(255, 255, 255, 0.22);
-        --aimd-interactive-selected: rgba(96, 165, 250, 0.16);
-        --aimd-shadow-lg: 0 10px 24px rgba(0, 0, 0, 0.34);
-      }
+      :root { color-scheme: light; }
+      :root[data-aimd-theme="dark"] { color-scheme: dark; }
 
       * {
         box-sizing: border-box;
@@ -61,9 +17,7 @@
       body {
         margin: 0;
         min-width: 320px;
-        background:
-          radial-gradient(circle at top right, var(--aimd-interactive-selected), transparent 38%),
-          var(--aimd-bg-primary);
+        background: var(--aimd-workspace-surface);
         color: var(--aimd-text-primary);
         font-family: var(--aimd-font-family-sans);
       }
@@ -76,12 +30,6 @@
         display: grid;
         gap: var(--aimd-space-5);
         padding: var(--aimd-space-5);
-        border-radius: var(--aimd-radius-2xl);
-        border: 1px solid var(--aimd-border-default);
-        background:
-          linear-gradient(180deg, color-mix(in srgb, var(--aimd-bg-surface) 97%, transparent), color-mix(in srgb, var(--aimd-bg-surface) 90%, transparent)),
-          var(--aimd-bg-surface);
-        box-shadow: var(--aimd-shadow-lg);
       }
 
       .popup-header {
@@ -96,8 +44,8 @@
       }
 
       .popup-logo {
-        width: var(--aimd-size-logo);
-        height: var(--aimd-size-logo);
+        width: calc(var(--aimd-size-control-icon-panel) + var(--aimd-space-2));
+        height: calc(var(--aimd-size-control-icon-panel) + var(--aimd-space-2));
         border-radius: var(--aimd-radius-xl);
         border: 1px solid var(--aimd-border-default);
         background: color-mix(in srgb, var(--aimd-bg-surface) 80%, transparent);
@@ -118,7 +66,7 @@
         padding: 0 var(--aimd-space-3);
         border-radius: var(--aimd-radius-full);
         background: var(--aimd-interactive-selected);
-        color: var(--aimd-interactive-primary);
+        color: var(--aimd-text-primary);
         font-size: var(--aimd-text-xs);
         font-weight: var(--aimd-font-semibold);
         letter-spacing: 0.01em;
@@ -134,11 +82,8 @@
         align-items: center;
         justify-content: space-between;
         gap: var(--aimd-space-3);
-        min-height: var(--aimd-size-action-row);
+        min-height: calc(var(--aimd-space-6) + var(--aimd-space-5));
         padding: 0 var(--aimd-space-4);
-        border-radius: var(--aimd-radius-lg);
-        border: 1px solid var(--aimd-border-default);
-        background: color-mix(in srgb, var(--aimd-bg-surface) 72%, transparent);
         color: var(--aimd-text-primary);
         font-size: var(--aimd-text-sm);
         font-weight: var(--aimd-font-medium);
@@ -147,12 +92,6 @@
           border-color var(--aimd-duration-fast) var(--aimd-ease-in-out),
           background var(--aimd-duration-fast) var(--aimd-ease-in-out),
           transform var(--aimd-duration-fast) var(--aimd-ease-in-out);
-      }
-
-      .popup-link:hover {
-        border-color: var(--aimd-border-strong);
-        background: color-mix(in srgb, var(--aimd-bg-surface) 94%, transparent);
-        transform: translateY(-1px);
       }
 
       .popup-link__meta {
@@ -212,7 +151,7 @@
     </style>
   </head>
   <body>
-    <main class="popup-shell">
+    <main class="popup-shell aimd-material-surface">
       <section class="popup-header">
         <div class="popup-note" data-i18n="popupSupportedSites">Supported sites</div>
         <div class="popup-brand">
@@ -224,28 +163,28 @@
       </section>
 
       <section class="popup-links">
-        <a class="popup-link" href="https://chatgpt.com/" target="_blank" rel="noreferrer">
+        <a class="popup-link aimd-material-button" href="https://chatgpt.com/" target="_blank" rel="noreferrer">
           <span class="popup-link__meta">
             <span class="popup-link__label">ChatGPT</span>
-            <span class="popup-link__hint" data-i18n="popupChatGptHint">Full AI-MarkDone workspace</span>
+            <span class="popup-link__hint" data-i18n="popupChatGptHint">Read, annotate, bookmark, and export replies</span>
           </span>
           <span class="popup-link__arrow" aria-hidden="true">→</span>
         </a>
-        <a class="popup-link" href="https://gemini.google.com/" target="_blank" rel="noreferrer">
+        <a class="popup-link aimd-material-button" href="https://gemini.google.com/" target="_blank" rel="noreferrer">
           <span class="popup-link__meta">
             <span class="popup-link__label">Gemini</span>
             <span class="popup-link__hint" data-i18n="popupFormulaCopyHint">Formula copy</span>
           </span>
           <span class="popup-link__arrow" aria-hidden="true">→</span>
         </a>
-        <a class="popup-link" href="https://claude.ai/" target="_blank" rel="noreferrer">
+        <a class="popup-link aimd-material-button" href="https://claude.ai/" target="_blank" rel="noreferrer">
           <span class="popup-link__meta">
             <span class="popup-link__label">Claude</span>
             <span class="popup-link__hint" data-i18n="popupFormulaCopyHint">Formula copy</span>
           </span>
           <span class="popup-link__arrow" aria-hidden="true">→</span>
         </a>
-        <a class="popup-link" href="https://chat.deepseek.com/" target="_blank" rel="noreferrer">
+        <a class="popup-link aimd-material-button" href="https://chat.deepseek.com/" target="_blank" rel="noreferrer">
           <span class="popup-link__meta">
             <span class="popup-link__label">DeepSeek</span>
             <span class="popup-link__hint" data-i18n="popupFormulaCopyHint">Formula copy</span>
@@ -256,7 +195,7 @@
 
       <footer class="popup-footer">
         <p class="popup-footer__text" data-i18n="popupUnsupportedPageFooter">
-          Open a supported site to use AI-MarkDone.
+          Open ChatGPT and use the toolbar below a reply. Click the extension icon for Library and Settings.
         </p>
       </footer>
     </main>

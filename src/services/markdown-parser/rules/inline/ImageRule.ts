@@ -7,11 +7,10 @@ export function createImageRule(): Rule {
         priority: 11,
         replacement: (_content, node) => {
             const el = node as HTMLImageElement;
-            const alt = el.getAttribute('alt') || '';
+            const alt = (el.getAttribute('alt') || '').replace(/[\[\]\\]/g, '\\$&').replace(/[\r\n]/g, ' ');
             const src = el.getAttribute('src') || '';
             if (!src) return '';
             return `![${alt}](${src})`;
         },
     };
 }
-

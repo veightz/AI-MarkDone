@@ -1,5 +1,6 @@
 import layoutCss from './bookmarkSaveDialogLayout.css?inline';
 import workspaceMaterials from '../ui/styles/workspaceMaterials.css?inline';
+import { getSurfaceMaterialCss } from '../../components/styles/surfaceMaterialCss';
 import { getModalHostShellCss } from '../../components/styles/modalHostCss';
 import { getPanelChromeCss } from '../../components/styles/panelChromeCss';
 import { getWorkflowDialogChromeCss } from '../../components/styles/workflowDialogChromeCss';
@@ -21,5 +22,5 @@ button, input, select, textarea {
 
 ${getPanelChromeCss()}
 ${getModalHostShellCss()}
-${getWorkflowDialogChromeCss()}` + layoutCss + workspaceMaterials;
+${getWorkflowDialogChromeCss()}` + layoutCss + workspaceMaterials + getSurfaceMaterialCss();
 }

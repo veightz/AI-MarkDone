@@ -1,7 +1,7 @@
 {
     "manifest_version": 2,
     "name": "__MSG_extName__",
-    "version": "6.0.0",
+    "version": "6.2.1",
     "description": "__MSG_extDescription__",
     "default_locale": "en",
     "homepage_url": "https://zhaoliangbin42.github.io/ai-markdone/en/",
@@ -67,6 +67,7 @@
         "vendor/katex/fonts/*",
         "vendor/latex-workshop/formula-snippets.json",
         "export-renderer.html",
+        "rich-asset-relay.html",
         "content-features.js",
         "content-feature-chunks/*.js",
         "page-bridges/chatgpt-conversation-bridge.js"

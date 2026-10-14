@@ -13,6 +13,7 @@ import {
 export type PdfPrintPlan = {
     containerId: string;
     html: string;
+    imageUnavailableLabel: string;
 };
 
 export type BuildPdfPrintPlanOptions = ExportDocumentBuildOptions;
@@ -60,6 +61,8 @@ ${tokens}
   #${CONTAINER_ID} {
     display: block !important;
     position: static !important;
+    max-width: none !important;
+    padding: 0 !important;
     font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC',
       'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif !important;
   }
@@ -72,7 +75,8 @@ ${tokens}
 @page { margin: 2cm; background: #ffffff; }
 
 #${CONTAINER_ID} {
-  display: none;
+  display: block;
+  box-sizing: border-box;
   max-width: 800px;
   margin: 0 auto;
   padding: 20px;
@@ -111,7 +115,7 @@ ${scopedMarkdownCss}
 .assistant-response-label {
   font-weight: 600;
   margin-bottom: 12px;
-  color: color-mix(in srgb, var(--aimd-state-success-border) 88%, var(--aimd-text-primary) 12%);
+  color: var(--aimd-text-secondary);
 }
 
 /* Typography normalization (legacy parity) */
@@ -124,7 +128,34 @@ ${scopedMarkdownCss}
 #${CONTAINER_ID} pre { margin: 16px 0; }
 #${CONTAINER_ID} blockquote { margin: 16px 0; padding-left: 16px; }
 
-.katex-display { break-inside: avoid; page-break-inside: avoid; }
+#${CONTAINER_ID} .reader-markdown :where(pre),
+#${CONTAINER_ID} .reader-markdown .reader-code-block,
+#${CONTAINER_ID} .reader-markdown .reader-code-block__scroll {
+  overflow: visible;
+  break-inside: auto;
+}
+#${CONTAINER_ID} .reader-markdown :where(pre code) {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+#${CONTAINER_ID} .reader-markdown :where(table) {
+  display: table;
+  table-layout: fixed;
+  overflow: visible;
+}
+#${CONTAINER_ID} .user-prompt,
+#${CONTAINER_ID} .reader-markdown :where(th, td, a) {
+  overflow-wrap: anywhere;
+}
+#${CONTAINER_ID} .reader-markdown :where(thead) { display: table-header-group; }
+#${CONTAINER_ID} :where(tr, .reader-code-block__header, img) { break-inside: avoid; }
+#${CONTAINER_ID} :where(h1, h2, h3, h4, h5, h6, .message-header, .reader-code-block__header) { break-after: avoid; }
+#${CONTAINER_ID} :where(p, li) { orphans: 3; widows: 3; }
+#${CONTAINER_ID} .reader-markdown .katex-display {
+  overflow: visible;
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
 `;
 
     let html = `
@@ -145,6 +176,8 @@ ${scopedMarkdownCss}
             index: section.sourceIndex,
             user: section.userText,
             assistant: section.assistantMarkdown,
+            richBlocks: section.richBlocks,
+            richImages: section.richImages,
         }, index + 1, (key, args) => {
             if (key === 'pdfMessagePrefix') return section.heading;
             if (key === 'pdfUserLabel') return document.labels.user;
@@ -156,5 +189,5 @@ ${scopedMarkdownCss}
         }).html;
     });
 
-    return { containerId: CONTAINER_ID, html };
+    return { containerId: CONTAINER_ID, html, imageUnavailableLabel: t('pdfImageUnavailable') };
 }

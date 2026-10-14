@@ -76,7 +76,7 @@ describe('BookmarkSaveDialog', () => {
 
         expect(shadow.querySelector('[data-role="overlay-backdrop-root"] .panel-stage__overlay')).toBeTruthy();
         expect(shadow.querySelector('[data-role="overlay-surface-root"] .panel-window.panel-window--dialog.panel-window--bookmark-save')).toBeTruthy();
-        expect(shadow.querySelector('.panel-window--bookmark-save .panel-header__meta--reader h2')?.textContent).toBe('Save Bookmark');
+        expect(shadow.querySelector('.panel-window--bookmark-save .panel-header__meta--reader h2')?.textContent).toBe('Save bookmark');
         expect(shadow.querySelector('.panel-window--bookmark-save .panel-footer')?.className).toContain('panel-footer--bookmark-save');
         expect(source).toContain('OverlaySession');
         expect(source).not.toContain('BookmarksOverlaySession');
@@ -193,7 +193,7 @@ describe('BookmarkSaveDialog', () => {
         expect(host).toBeTruthy();
         const shadow = host!.shadowRoot!;
 
-        expect(shadow.querySelector('.panel-window--bookmark-save .panel-header__meta--reader h2')?.textContent).toBe('Save Bookmark');
+        expect(shadow.querySelector('.panel-window--bookmark-save .panel-header__meta--reader h2')?.textContent).toBe('Save bookmark');
         expect(shadow.textContent).toContain('Folder');
 
         await setLocale('zh_CN');
@@ -473,7 +473,7 @@ describe('BookmarkSaveDialog', () => {
 
             const error = shadow.querySelector<HTMLElement>('[data-role="bookmark-save-title-error"]')!;
             expect(error.hidden).toBe(false);
-            expect(error.textContent).toBe('Title cannot contain: / ?');
+            expect(error.textContent).toBe('Remove these characters from the title: / ?');
         } finally {
             document.getElementById('aimd-bookmark-save-dialog-host')
                 ?.shadowRoot
@@ -514,7 +514,7 @@ describe('BookmarkSaveDialog', () => {
                 ?.dispatchEvent(new MouseEvent('click', { bubbles: true, composed: true }));
             await flushUi();
 
-            expect(shadow.querySelector<HTMLElement>('.error-text--inline')?.textContent).toBe('Folder name cannot contain "/".');
+            expect(shadow.querySelector<HTMLElement>('.error-text--inline')?.textContent).toBe('Remove “/” from the folder name.');
             expect(bookmarksClient.foldersCreate).not.toHaveBeenCalled();
         } finally {
             document.getElementById('aimd-bookmark-save-dialog-host')

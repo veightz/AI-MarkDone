@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { getPanelChromeCss } from '@/ui/content/components/styles/panelChromeCss';
+import { getSurfaceMaterialCss } from '@/ui/content/components/styles/surfaceMaterialCss';
 
 describe('panelChromeCss', () => {
     it('defines shared panel header, footer, and button chrome with canonical panel tokens', () => {
-        const css = getPanelChromeCss();
+        const css = getPanelChromeCss() + getSurfaceMaterialCss();
 
         expect(css).toContain('.panel-window');
         expect(css).toContain('.panel-header');
@@ -37,15 +38,15 @@ describe('panelChromeCss', () => {
         expect(css).toContain('background: var(--aimd-button-icon-hover);');
         expect(css).toContain('background: var(--aimd-button-icon-active);');
         expect(css).toContain('color: var(--aimd-button-icon-text-hover);');
-        expect(css).toContain('background: var(--aimd-button-secondary-bg);');
-        expect(css).toContain('background: var(--aimd-button-secondary-hover);');
-        expect(css).toContain('color: var(--aimd-button-secondary-text);');
+        expect(css).toContain('background: var(--aimd-workspace-card);');
+        expect(css).toContain('background: var(--aimd-workspace-surface);');
+        expect(css).toContain('color: var(--aimd-text-primary);');
         expect(css).toContain('font-size: var(--aimd-button-label-size);');
         expect(css).toContain('font-size: var(--aimd-button-label-size-compact);');
         expect(css).toContain('min-height: var(--aimd-size-control-compact);');
         expect(css).toContain('.panel-secondary-btn--ghost');
         expect(css).toContain('.secondary-btn--ghost');
-        expect(css).toContain('.panel-secondary-btn--danger:hover');
-        expect(css).toContain('.secondary-btn--danger:hover');
+        expect(css).toContain('.panel-secondary-btn--danger');
+        expect(css).toContain('.secondary-btn--danger');
     });
 });

@@ -12,9 +12,7 @@ export function buildMessageExportDocument(
     selectedIndices: readonly number[],
     options: BuildMessageExportDocumentOptions,
 ): ExportDocumentV1 | null {
-    const selectedPositions = Array.from(new Set(selectedIndices))
-        .filter((index) => Number.isInteger(index) && index >= 0 && index < turns.length)
-        .sort((left, right) => left - right);
+    const selectedPositions = selectMessageExportPositions(turns, selectedIndices);
     const sections = selectedPositions.map((sourcePosition, ordinalIndex) => {
         const turn = turns[sourcePosition];
         return {
@@ -22,6 +20,8 @@ export function buildMessageExportDocument(
             heading: options.formatHeading(ordinalIndex + 1, turn),
             userText: turn.user,
             assistantMarkdown: turn.assistant,
+            ...(turn.richBlocks?.length ? { richBlocks: turn.richBlocks } : {}),
+            ...(turn.richImages?.length ? { richImages: turn.richImages } : {}),
         };
     });
 
@@ -34,4 +34,10 @@ export function buildMessageExportDocument(
         labels: { ...options.labels },
         sections,
     };
+}
+
+export function selectMessageExportPositions(turns: readonly ChatTurn[], selectedIndices: readonly number[]): number[] {
+    return Array.from(new Set(selectedIndices))
+        .filter(index => Number.isInteger(index) && index >= 0 && index < turns.length)
+        .sort((left, right) => left - right);
 }

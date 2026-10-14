@@ -1,8 +1,45 @@
 import { describe, expect, it } from 'vitest';
 import { normalizeChatGPTReaderMarkdown } from '@/drivers/content/chatgpt/normalizeReaderMarkdown';
 import { renderMarkdownForReader, renderMarkdownToSanitizedHtml } from '@/services/renderer/renderMarkdown';
+import type { RichBlockV1 } from '@/contracts/richContent';
+
+const richDiagram: RichBlockV1 = {
+    id: 'diagram-1', kind: 'svg', label: 'System diagram',
+    fallbackMarkdown: '> [System diagram: static image unavailable]', visualDigest: 'diagram-v1',
+    source: { kind: 'unavailable', reason: 'not-rendered' },
+};
 
 describe('renderMarkdownToSanitizedHtml', () => {
+    it('renders only bound same-origin rich image assets without allowing blob images globally', () => {
+        const url = `blob:${window.location.origin}/diagram-1`;
+        const html = renderMarkdownToSanitizedHtml('Before\n\n![System diagram](aimd-rich:diagram-1)\n\nAfter', {
+            richContent: { blocks: [richDiagram], assets: [{ blockId: 'diagram-1', url, mimeType: 'image/png' }] },
+        });
+        expect(html).toContain(`src="${url}"`);
+        expect(html).toContain('data-aimd-rich-block="diagram-1"');
+        expect(html).not.toContain('aimd-rich:');
+        expect(renderMarkdownToSanitizedHtml(`![unbound](${url})`)).not.toContain(`src="${url}"`);
+    });
+
+    it('keeps unavailable rich blocks readable and leaves code literals untouched', () => {
+        const html = renderMarkdownToSanitizedHtml('![System diagram](aimd-rich:diagram-1)\n\n`![literal](aimd-rich:diagram-1)`', {
+            richContent: { blocks: [richDiagram] },
+        });
+        expect(html).toContain('static image unavailable');
+        expect(html).not.toContain('<img');
+        expect(html).toContain('<code>![literal](aimd-rich:diagram-1)</code>');
+    });
+
+    it.each(['blob:https://other.example/asset', 'data:image/svg+xml,<svg onload="x"/>', 'javascript:alert(1)'])(
+        'rejects a rich asset outside the bound local-image capability: %s', (url) => {
+            const html = renderMarkdownToSanitizedHtml('![System diagram](aimd-rich:diagram-1)', {
+                richContent: { blocks: [richDiagram], assets: [{ blockId: 'diagram-1', url, mimeType: 'image/png' }] },
+            });
+            expect(html).not.toContain('<img');
+            expect(html).toContain('static image unavailable');
+        },
+    );
+
     it('sanitizes dangerous HTML', () => {
         const html = renderMarkdownToSanitizedHtml(
             `<img src="x" onerror="alert(1)">\n<script>alert(1)</script>\n<a href="javascript:alert(1)">x</a>`

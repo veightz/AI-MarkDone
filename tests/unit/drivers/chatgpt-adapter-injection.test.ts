@@ -36,6 +36,43 @@ function withDom(html: string, url: string, fn: () => void): void {
 }
 
 describe('ChatGPTAdapter injection contract', () => {
+    it('fails closed for generation and scrolling when marked page owners nest', () => {
+        const html = `<div data-app-shell-active-page="true"><main>
+            <div data-message-author-role="assistant" data-message-id="current"><div class="markdown prose">Current answer</div></div>
+            <div data-app-shell-active-page="false"><button data-testid="stop-button">Retained stop</button></div>
+        </main></div>`;
+        withDom(html, 'https://chatgpt.com/c/current', () => {
+            const adapter = new ChatGPTAdapter();
+            const current = document.querySelector<HTMLElement>('[data-message-id="current"]')!;
+            expect(adapter.getLastMessageElement()).toBeNull();
+            expect(adapter.getConversationScrollRoot()).toBeNull();
+            expect(adapter.isComposerStreaming()).toBe(false);
+            expect(adapter.isStreamingMessage(current)).toBe(false);
+        });
+    });
+
+    it('keeps scroll and generation ownership inside the unique active app-shell page', () => {
+        const html = `
+            <div data-app-shell-active-page="true" id="current-page">
+                <main id="current-main"><div data-message-author-role="assistant" data-message-id="current"><div class="markdown prose">Current answer</div></div></main>
+            </div>
+            <div data-app-shell-active-page="false" style="display:none !important">
+                <main><div data-message-author-role="assistant" data-message-id="retained"><div class="markdown prose">Retained answer</div></div><button data-testid="stop-button">Stop</button></main>
+            </div>`;
+        withDom(html, 'https://chatgpt.com/c/current', () => {
+            const adapter = new ChatGPTAdapter();
+            const current = document.querySelector<HTMLElement>('[data-message-id="current"]')!;
+            expect(adapter.getObserverContainer()).toBe(document.getElementById('current-page'));
+            expect(adapter.getLastMessageElement()).toBe(current);
+            expect(adapter.getConversationScrollRoot()).toBe(document.getElementById('current-main'));
+            expect(adapter.isComposerStreaming()).toBe(false);
+            expect(adapter.isStreamingMessage(current)).toBe(false);
+            document.getElementById('current-page')!.insertAdjacentHTML('beforeend', '<button data-testid="stop-button">Stop</button>');
+            expect(adapter.isComposerStreaming()).toBe(true);
+            expect(adapter.isStreamingMessage(current)).toBe(true);
+        });
+    });
+
     it('injectToolbar inserts host into the action bar row when available', () => {
         const html = `
             <div data-testid="conversation-turn-1">

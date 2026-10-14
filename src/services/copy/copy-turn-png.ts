@@ -12,6 +12,7 @@ import {
 import type { ImageExportProgressEvent } from '../export/imageExportContracts';
 import type { ChatTurn, ConversationMetadata, TranslateFn } from '../export/saveMessagesTypes';
 import { nowMs, type CopyPngDebugSink } from './copy-png-debug';
+import { prepareRichOutput } from '../export/prepareRichOutput';
 
 export type CopyMessagePngResult =
     | { ok: true; noop: boolean; fallback?: 'download' }
@@ -34,10 +35,16 @@ export async function copyMessagePng(
         totalMs: Math.round(nowMs() - startedAt),
     });
 
+    let prepared: Awaited<ReturnType<typeof prepareRichOutput>> | null = null;
     try {
         throwIfAborted(options.signal);
         const buildStartedAt = nowMs();
-        const document = buildMessageExportDocument([turn], [0], {
+        prepared = await prepareRichOutput([turn], [0], {
+            target: 'visual', visuals: 'include', signal: options.signal,
+            onProgress: event => options.onProgress?.({ phase: 'preparing', completed: event.completed, total: event.total }),
+        });
+        throwIfAborted(options.signal);
+        const document = buildMessageExportDocument(prepared.turns, [0], {
             title: metadata.title,
             labels: {
                 user: options.t('pdfUserLabel'),
@@ -152,5 +159,5 @@ export async function copyMessagePng(
         }
         emit({ stage: 'copy_error', durationMs: 0, errorMessage: error?.message || String(error) });
         return { ok: false, error: { code: error?.code || 'INTERNAL_ERROR', message: error?.message || options.t('copyFailed') } };
-    }
+    } finally { prepared?.release(); }
 }

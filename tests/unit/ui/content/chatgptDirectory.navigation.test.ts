@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { SiteAdapter, type ConversationGroupRef, type ThemeDetector } from '@/drivers/content/adapters/base';
 import { ChatGPTAdapter } from '@/drivers/content/adapters/sites/chatgpt';
-import { invalidateChatGPTDomRoundSnapshot } from '@/drivers/content/chatgpt/domConversationDiscovery';
+import { disposeChatGPTPageIndex, invalidateChatGPTDomRoundSnapshot } from '@/drivers/content/chatgpt/domConversationDiscovery';
 import { ChatGPTConversationSurface } from '@/drivers/content/chatgpt/ChatGPTConversationSurface';
 import { createConversationContentSource } from '../../../helpers/chatgptContentFixtures';
 
@@ -133,6 +133,7 @@ function buildMaterializedRoundDom(): HTMLElement {
 const surfacesByAdapter = new WeakMap<SiteAdapter, ChatGPTConversationSurface>();
 const sourcesByAdapter = new WeakMap<SiteAdapter, ReturnType<typeof createConversationContentSource>>();
 const ownedSurfaces = new Set<ChatGPTConversationSurface>();
+const ownedAdapters = new Set<SiteAdapter>();
 
 function setCanonicalSnapshot(
     adapter: SiteAdapter,
@@ -147,6 +148,7 @@ function setCanonicalSnapshot(
     surfacesByAdapter.set(adapter, surface);
     sourcesByAdapter.set(adapter, source);
     ownedSurfaces.add(surface);
+    ownedAdapters.add(adapter);
     return surface;
 }
 
@@ -360,6 +362,10 @@ describe('ChatGPT directory navigation', () => {
         const source = createConversationContentSource(buildCanonicalSnapshot(3));
         const surface = new ChatGPTConversationSurface({ adapter, content: source });
         const controller = new ChatGPTDirectoryController(adapter, null, { surface });
+        const measureSlot = () => {
+            document.querySelectorAll<HTMLElement>('[data-content-search-turn-key], [data-chatgpt-search-unit-key], [data-markdown-text-style]').forEach(element => { element.getBoundingClientRect = vi.fn(() => ({ top: 100, bottom: 600 } as DOMRect)); });
+        };
+        measureSlot();
         controller.init('light');
         try {
             const activePosition = () => document.getElementById('aimd-chatgpt-directory-rail')?.shadowRoot
@@ -371,6 +377,7 @@ describe('ChatGPT directory navigation', () => {
                 <div data-markdown-text-style="assistant-message">Answer 3</div>
               </div>
             </div>`;
+            measureSlot();
             surface.refreshSurface();
             await vi.advanceTimersByTimeAsync(600);
             expect(activePosition()).toBe('3');
@@ -495,6 +502,9 @@ describe('ChatGPT directory navigation', () => {
 
     afterEach(() => {
         ownedSurfaces.forEach((surface) => surface.dispose());
+        // Fake adapters do not own ChatGPT's real adapter disposal boundary.
+        ownedAdapters.forEach((adapter) => disposeChatGPTPageIndex(adapter));
+        ownedAdapters.clear();
         ownedSurfaces.clear();
         vi.runOnlyPendingTimers();
         vi.useRealTimers();
@@ -1490,5 +1500,21 @@ describe('ChatGPT directory navigation', () => {
         ] as any;
 
         expect(resolveChatGPTActivePosition(rounds, 180)).toBe(21);
+    });
+
+    it('ignores zero-size contents markers instead of extending future messages into the viewport', async () => {
+        const { resolveChatGPTActivePosition } = await import('@/ui/content/chatgptDirectory/navigation');
+        const marker = document.createElement('div');
+        const future = document.createElement('div');
+        const current = document.createElement('div');
+        document.body.append(marker, future, current);
+        marker.style.display = 'contents';
+        marker.getBoundingClientRect = vi.fn(() => ({ top: 0, bottom: 0 } as DOMRect));
+        future.getBoundingClientRect = vi.fn(() => ({ top: 500, bottom: 900 } as DOMRect));
+        current.getBoundingClientRect = vi.fn(() => ({ top: 100, bottom: 300 } as DOMRect));
+        expect(resolveChatGPTActivePosition([
+            { position: 1, jumpAnchor: current, groupEls: [current] },
+            { position: 2, jumpAnchor: future, groupEls: [marker, future] },
+        ] as any, 350)).toBe(1);
     });
 });

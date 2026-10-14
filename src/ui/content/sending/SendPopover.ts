@@ -173,7 +173,7 @@ export class SendPopover {
         });
 
         const pop = document.createElement('div');
-        pop.className = 'send-popover';
+        pop.className = 'send-popover aimd-material-surface';
         pop.setAttribute('role', 'dialog');
         pop.setAttribute('aria-modal', 'false');
         pop.setAttribute('aria-label', t('send'));
@@ -185,20 +185,20 @@ export class SendPopover {
     <strong>${escapeHtml(t('send'))}</strong>
     <div class="send-popover__head-actions">
       ${params.commentInsert !== undefined
-        ? `<button class="icon-btn" type="button" data-action="insert-comments" aria-label="${escapeHtml(t('readerCommentInsertIntoSend'))}" ${this.canInsertPromptContent(params.commentInsert) ? '' : 'disabled'}>${createIcon(messageSquarePlusIcon).outerHTML}</button>`
+        ? `<button class="icon-btn aimd-material-button aimd-material-button--quiet" type="button" data-action="insert-comments" aria-label="${escapeHtml(t('readerCommentInsertIntoSend'))}" ${this.canInsertPromptContent(params.commentInsert) ? '' : 'disabled'}>${createIcon(messageSquarePlusIcon).outerHTML}</button>`
         : ''}
-      <button class="icon-btn" type="button" data-action="close" aria-label="${escapeHtml(t('btnClose'))}">${createIcon(xIcon).outerHTML}</button>
+      <button class="icon-btn aimd-material-button aimd-material-button--quiet" type="button" data-action="close" aria-label="${escapeHtml(t('btnClose'))}">${createIcon(xIcon).outerHTML}</button>
     </div>
   </div>
   <button class="send-popover__resize-handle" type="button" data-action="resize" aria-label="${escapeHtml(t('resizeSendPopover'))}">
     <span class="send-popover__resize-grip" aria-hidden="true"></span>
   </button>
-  <textarea class="send-popover__input aimd-field-control aimd-field-control--standalone" data-role="text" rows="5" placeholder="${escapeHtml(t('typeYourMessage'))}"></textarea>
+  <textarea class="send-popover__input aimd-field-control aimd-field-control--standalone aimd-material-field" data-role="text" rows="5" placeholder="${escapeHtml(t('typeYourMessage'))}"></textarea>
   <div class="send-popover__foot">
     <div class="status-line" data-role="status" data-tone="muted" role="status" aria-live="polite"></div>
     <div class="button-row">
-      <button class="studio-btn studio-btn--ghost" type="button" data-action="cancel" aria-label="${escapeHtml(t('btnCancel'))}">${escapeHtml(t('btnCancel'))}</button>
-      <button class="studio-btn studio-btn--primary" type="button" data-action="send" aria-label="${escapeHtml(t('send'))}">${createIcon(sendIcon).outerHTML}<span>${escapeHtml(t('send'))}</span></button>
+      <button class="studio-btn studio-btn--ghost aimd-material-button aimd-material-button--quiet" type="button" data-action="cancel" aria-label="${escapeHtml(t('btnCancel'))}">${escapeHtml(t('btnCancel'))}</button>
+      <button class="studio-btn studio-btn--primary aimd-material-button aimd-material-button--primary" type="button" data-action="send" aria-label="${escapeHtml(t('send'))}">${createIcon(sendIcon).outerHTML}<span>${escapeHtml(t('send'))}</span></button>
     </div>
   </div>
 `;

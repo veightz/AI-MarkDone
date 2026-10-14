@@ -1,5 +1,6 @@
 import { xIcon } from '../../../assets/icons';
 import { createIcon } from './Icon';
+import { getSurfaceMaterialCss } from './styles/surfaceMaterialCss';
 
 export type TaskProgressUpdate = {
     label?: string;
@@ -22,7 +23,7 @@ export class TaskProgressPanel {
 
     constructor(private readonly options: TaskProgressPanelOptions) {
         this.root = document.createElement('div');
-        this.root.className = 'task-progress';
+        this.root.className = 'task-progress aimd-material-surface';
         this.root.dataset.role = 'task-progress';
         this.root.dataset.open = '0';
         this.root.dataset.indeterminate = '0';
@@ -46,7 +47,7 @@ export class TaskProgressPanel {
 
         const cancel = document.createElement('button');
         cancel.type = 'button';
-        cancel.className = 'task-progress__cancel';
+        cancel.className = 'task-progress__cancel aimd-material-button aimd-material-button--quiet';
         cancel.dataset.action = 'cancel-task';
         cancel.dataset.tooltip = this.options.cancelLabel;
         cancel.setAttribute('aria-label', this.options.cancelLabel);
@@ -73,11 +74,6 @@ export class TaskProgressPanel {
   align-items: center;
   gap: var(--aimd-space-2);
   padding: var(--aimd-space-2);
-  border-radius: var(--aimd-radius-lg);
-  border: 1px solid color-mix(in srgb, var(--aimd-border-strong) 72%, transparent);
-  background: color-mix(in srgb, var(--aimd-bg-surface) 99%, var(--aimd-bg-primary));
-  color: var(--aimd-text-primary);
-  box-shadow: var(--aimd-shadow-lg);
   z-index: var(--aimd-z-tooltip);
 }
 .task-progress[data-open="1"] {
@@ -127,10 +123,6 @@ export class TaskProgressPanel {
   cursor: pointer;
   color: var(--aimd-button-icon-text);
 }
-.task-progress__cancel:hover {
-  background: var(--aimd-toolbar-hover);
-  color: var(--aimd-button-icon-text-hover);
-}
 .task-progress__cancel:focus-visible {
   outline: 2px solid var(--aimd-focus-ring);
   outline-offset: 2px;
@@ -146,6 +138,11 @@ export class TaskProgressPanel {
   0% { transform: translateX(-120%); }
   100% { transform: translateX(260%); }
 }
+@media (prefers-reduced-motion: reduce) {
+  .task-progress[data-indeterminate="1"] .task-progress__fill { animation: none; }
+  .task-progress__fill { transition: none; }
+}
+${getSurfaceMaterialCss()}
 `;
     }
 

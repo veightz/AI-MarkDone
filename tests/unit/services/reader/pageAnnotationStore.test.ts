@@ -77,6 +77,17 @@ describe('PageAnnotationStore', () => {
         store.dispose();
     });
 
+    it('keeps a late acknowledged write associated with its original conversation', async () => {
+        let finish!: (value: any) => void;
+        vi.mocked(client.create).mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+        const store = new PageAnnotationStore(client); store.setPersistEnabled(true); await store.bindDocument(document);
+        const saving = store.create(makeRecord(), target);
+        await store.bindDocument({ ...document, conversationId: 'conversation-2' });
+        finish({ ok: true, data: { annotation: { ...makeRecord({ revision: 1 }), target, lastKnownAnchorState: 'anchored' } } });
+        const saved = await saving;
+        expect(saved.document?.conversationId).toBe('conversation-1'); expect(store.listForConversation()).toEqual([]); store.dispose();
+    });
+
     it('subscribes before loading so a concurrent Reader save cannot be missed', async () => {
         let changed!: () => void;
         let finishOld!: (value: any) => void;

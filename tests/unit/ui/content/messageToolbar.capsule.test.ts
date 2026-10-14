@@ -3,13 +3,13 @@ import { MessageToolbar } from '@/ui/content/MessageToolbar';
 import { setLocale } from '@/ui/content/components/i18n';
 
 const mounted: MessageToolbar[] = [];
-function mount(onClick = vi.fn(async () => ({ ok: true as const }))) {
-    const toolbar = new MessageToolbar('light', [{ id: 'copy', label: 'Copy', icon: '<svg/>', onClick }], { collapsible: true, showStats: true });
+function mount(onClick = vi.fn(async () => ({ ok: true as const })), pinnedActions: readonly string[] = []) {
+    const toolbar = new MessageToolbar('light', [{ id: 'copy', label: 'Copy', icon: '<svg/>', onClick }], { collapsible: true, showStats: true, pinnedActions });
     mounted.push(toolbar); document.body.append(toolbar.getElement());
     const shadow = toolbar.getElement().shadowRoot!;
     return { toolbar, shadow, toggle: shadow.querySelector<HTMLButtonElement>('[data-action="toggle-capsule"]')!, action: shadow.querySelector<HTMLButtonElement>('[data-action="copy"]')! };
 }
-afterEach(() => { mounted.splice(0).forEach(toolbar => { toolbar.dispose(); toolbar.getElement().remove(); }); });
+afterEach(() => { mounted.splice(0).forEach(toolbar => { toolbar.dispose(); toolbar.getElement().remove(); }); vi.useRealTimers(); });
 
 describe('message capsule entry', () => {
     it('keeps actions always visible without requiring hover or a click to expand', async () => {
@@ -96,5 +96,56 @@ describe('message capsule entry', () => {
             vi.unstubAllGlobals();
             formatDate.mockRestore(); formatTime.mockRestore();
         }
+    });
+});
+
+describe('message action pins', () => {
+    // Fork keeps the capsule always expanded, so pinnedActions stay in the
+    // drawer rather than a collapsed pin strip. Still accept the option and
+    // keep hover / click / tooltip working on the single action node.
+    it('keeps pinned hover and focus independent while preserving its tooltip and click action', async () => {
+        vi.useFakeTimers();
+        const onClick = vi.fn(async () => ({ ok: true as const }));
+        const { toolbar, shadow, toggle, action } = mount(onClick, ['copy']);
+        const host = toolbar.getElement();
+        const drawer = shadow.querySelector<HTMLElement>('.capsule-actions')!;
+        vi.spyOn(action, 'getBoundingClientRect').mockReturnValue({ x: 100, y: 100, left: 100, top: 100, width: 24, height: 24, right: 124, bottom: 124, toJSON: () => ({}) } as DOMRect);
+
+        expect(host.dataset.alwaysExpanded).toBe('1');
+        expect(toggle.getAttribute('aria-expanded')).toBe('true');
+        expect(drawer.hasAttribute('inert')).toBe(false);
+        expect(action.closest('.capsule-actions')).toBeTruthy();
+
+        action.dispatchEvent(new Event('pointerover', { bubbles: true, composed: true }));
+        action.dispatchEvent(new MouseEvent('mouseenter'));
+        action.focus();
+        await vi.advanceTimersByTimeAsync(150);
+        expect(document.querySelector('.aimd-tooltip')?.textContent).toBe('Copy');
+
+        action.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true, composed: true }));
+        action.click();
+        await Promise.resolve();
+        expect(onClick).toHaveBeenCalledOnce();
+        expect(toggle.getAttribute('aria-expanded')).toBe('true');
+        expect(shadow.querySelectorAll('[data-action="copy"]')).toHaveLength(1);
+    });
+
+    it('uses the same action button once in the always-expanded drawer and keeps it clickable', async () => {
+        const onClick=vi.fn(async()=>undefined);
+        const toolbar=new MessageToolbar('light',[{id:'copy',label:'Copy',icon:'<svg/>',onClick},{id:'reader',label:'Reader',icon:'<svg/>',onClick:async()=>undefined}],{collapsible:true,pinnedActions:['copy'],showStats:true,showTimestamp:false});
+        mounted.push(toolbar);document.body.append(toolbar.getElement());const shadow=toolbar.getElement().shadowRoot!;
+        const host = toolbar.getElement();
+        const button=shadow.querySelector<HTMLButtonElement>('[data-action="copy"]')!;
+        expect(host.dataset.alwaysExpanded).toBe('1');
+        expect(button.closest('[inert]')).toBeNull();
+        expect(button.closest('.capsule-actions')).toBeTruthy();
+        expect(shadow.querySelector('time')).toBeNull();
+        button.click();await Promise.resolve();expect(onClick).toHaveBeenCalledOnce();
+        shadow.querySelector<HTMLButtonElement>('[data-action="toggle-capsule"]')!.click();
+        expect(button.closest('.capsule-actions')).toBeTruthy();
+        expect(shadow.querySelectorAll('[data-action="copy"]')).toHaveLength(1);
+        window.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape'}));
+        expect(host.dataset.expanded).toBe('true');
+        expect(button.closest('[inert]')).toBeNull();
     });
 });

@@ -1,5 +1,73 @@
 # Release Notes
 
+## v6.2.0 (2026-10-13)
+
+### 中文发布文案
+
+朋友们好！这次带来 6.2.0，主要想把写注释、复制内容和导出这些常用操作做得更顺手。最近 ChatGPT 网页改动比较多，切换对话后目录和工具栏不出现、保存书签失败，以及注释定位和 PDF 空白的问题，这次都针对已经复现的原因做了修复。
+
+另外，之前还有一些小窗口的样式没有跟上管理面板，我也一起整理了一遍。功能越来越多，希望它们看起来更统一，用起来也少一点折腾。
+
+1. 注释框现在是页面内可拖动的小窗口，支持最小化、展开和主动关闭。点击框外不会关掉，输入时不会自动保存，点击“保存”才会提交注释（感谢邮箱用户 @qds19100）。
+2. 支持的图表和卡片，可以随 Markdown 一起保存成带图片附件的离线 ZIP。PDF 和 PNG 可以选择保留静态图片，或改用文字占位；无法保存的部分会留下说明。
+3. 修复复制 Markdown 时代码围栏、语言标记、缩进、空行和行内代码丢失，以及代码和后面的段落粘在一起的问题（感谢邮箱用户 @oxwo277）。
+4. 修复保存书签期间加载旧消息、回复序号变化后，误报找不到内容的问题。
+5. 修复注释和高亮跳到错误段落的问题。从资料库打开原页时，也会先找到对应回复，再定位标记的原文（感谢小红书用户 @三分钟热度）。
+6. 修复了一个会导致消息 PDF 空白的打印冲突，并改善宽表格、长代码和公式的排版（感谢 QQ 用户 @成长！）。
+7. 修复切换会话后目录和回复工具栏不出现的问题，补上正文、按钮延迟加载和重新生成回复时的处理。新安装默认显示目录，已有用户的设置继续保留。
+8. 统一提示词、导出、发送、阅读器设置、注释、备份和插件弹出页等窗口的样式，改善窄窗口中的换行和按钮显示，也整理了中英文提示。
+
+### English
+
+Hello, friends! Version 6.2.0 focuses on the things we use often: writing annotations, copying content and exporting replies. ChatGPT has changed quite a bit recently. This update fixes the causes we reproduced behind missing directories and reply controls after conversation switches, failed bookmark saves, misplaced annotations and blank PDFs.
+
+Some smaller windows still looked different from the management panel, so I have brought them together too. As the extension grows, I want its everyday tools to feel consistent and easier to use.
+
+1. Write annotations in a movable in-page window with minimize, expand and explicit close controls. Clicking outside keeps it open. Text stays in the window while you write; only Save submits the annotation. Thanks to email user @qds19100.
+2. Save supported charts and cards in an offline Markdown ZIP with image attachments. Choose static images or text placeholders in PDF and PNG. Unavailable content keeps an explanation.
+3. Fix lost code fences, language labels, indentation, blank lines and inline code when copying Markdown, and prevent code from running into the following paragraph. Thanks to email user @oxwo277.
+4. Fix bookmark saves reporting missing content when older messages load and reply numbers change while the save dialog is open.
+5. Fix annotation and highlight jumps to the wrong passage. Opening a mark from Library now finds its reply, then the marked text. Thanks to Xiaohongshu user @三分钟热度.
+6. Fix an identified printing conflict that caused blank message PDFs, and improve wide tables, long code and formula layout. Thanks to QQ user @成长！
+7. Restore the directory and reply controls after conversation switches, including delayed content/buttons and regenerated replies. New installations show the directory by default; existing settings are preserved.
+8. Unify the appearance of Prompt, export, Send, Reader settings, annotation, backup and popup windows. Improve text wrapping and button visibility in narrow windows, and tidy Chinese and English guidance.
+
+## v6.1.0 (2026-10-02)
+
+### 中文发布文案
+
+朋友们好！啪的一下，很快啊，6.1.0 版本就要跟大家见面了。之前修复了目录条功能之后，很多朋友的反馈都非常正面，因为这是一个高频需求。这次我又加固了一下目录条，希望之前遇到目录条 bug 的朋友再反馈一下，看看问题有没有解决。另外，这次也做了很多大的更新。首先是工具条和右下角的那一排按钮，之前是全展开的，现在把它们收进去了。不过，在使用过程中发现，一些高频按钮可能多了一层入口，会导致效率降低。所以，这次将这些按钮全部改成了可以自定义常驻状态，顺便对设置页也做了一次大幅升级。
+
+另外，目前插件已经有大量功能了。不过，这些功能我都希望以最简洁、最符合使用直觉的方式呈现，但有一些可能确实不太容易被发现，所以这次还增加了一个功能全览页面。举个例子，比如说理工科学生可能经常需要写公式。那么，目前已经支持在输入框中输入公式时直接预览，并且在预览框里直接导出为 PNG 或 SVG 等格式，这样就能省去使用外部渲染工具的步骤。这种功能其实藏得挺深的，而且用户也不太容易发现，所以我希望这个功能全览页面能够帮到你，让你更全面地了解这个插件所支持的能力。
+
+这次的具体升级如下：
+
+1. 进一步大幅升级了设置页面，将所有可感知的按钮放在一个统一模块中管理，并增加了预览窗，可以直观地看到按钮开启／关闭、Pin／Unpin 状态对最终呈现效果的影响。
+2. 增加了更多的颜色主题，并且可以自定义颜色（感谢小红书用户 @Cindy）。
+3. 升级了输入框中的输入体验。之前是鼠标放在公式块里就会出现预览，现在改成只有光标进入公式块时才会出现预览，避免影响阅读。
+4. 在输入框输入公式时，公式预览支持直接导出为图片，并升级了公式预览的体验。
+5. 阅读器增加了 Markdown 清洗相关选项，用户可以很方便地选择不同的呈现效果（感谢 QQ 用户 @重量级知识分子）。
+6. 增加了开关，用于控制注释、高亮等悬浮按钮的启用与关闭（感谢 QQ 用户 @1）。
+7. 修复了发送消息后页面没有正确停留在当前位置的问题（感谢小红书用户 @123321）。
+8. 调整了一下上一条／下一条消息切换按钮的位置，现在在右下角纵向放置。
+
+### English
+
+Hello, friends! Just like that, 6.1.0 is about to arrive. After the earlier fix for the message directory, many of you shared very positive feedback—this is something people use often. This time, I have strengthened the directory again. If you previously ran into a directory bug, please let me know whether the problem is now resolved. There are also several big updates. First, the message toolbar and the row of buttons at the lower-right of the page used to be fully expanded, and are now tucked away. During use, however, I found that adding an extra step for frequently used buttons could slow things down. You can now choose which of these buttons stay visible, and Settings has received a major upgrade.
+
+The extension now has many features. I want to present them in the simplest, most intuitive way, but some are still easy to miss. That is why this update also adds a Feature overview page. For example, science and engineering students often need to write formulas. You can already preview formulas while typing in the input, then export PNG or SVG directly from that preview, without going through an external rendering tool. Features like this are tucked away and can be hard to discover. I hope Feature overview helps you get to know more of what the extension can do.
+
+Here are the specific updates:
+
+1. Further upgraded Settings, bringing the visible buttons into one place for management. Previews show how enabling, disabling, pinning, or unpinning buttons changes the result.
+2. Added more color themes and custom colors. Thanks to Xiaohongshu user @Cindy.
+3. Improved the input experience. Formula previews now appear when the text cursor enters a formula, rather than when the mouse hovers over it, so they do not interrupt reading.
+4. Added direct image export from input formula previews and improved the preview experience.
+5. Added Markdown cleanup options to Reader, making it easier to choose how content is presented. Thanks to QQ user @重量级知识分子.
+6. Added switches for enabling or disabling floating annotation and highlight buttons. Thanks to QQ user @1.
+7. Fixed the page losing its reading position after sending a message. Thanks to Xiaohongshu user @123321.
+8. Repositioned the previous/next message buttons in a vertical stack at the lower-right of the page.
+
 ## v6.0.0 (2026-09-25)
 
 AI-MarkDone 6.0.0 refreshes most of the extension interface and adapts to ChatGPT’s September 24 website update. It adds persistent color highlights, shared page/Reader annotations, searchable Settings, and a redesigned Library. Local Library files and Google Drive backups now include saved bookmarks, highlights, annotations, and folders, while older bookmark-only files remain readable.

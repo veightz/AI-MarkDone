@@ -1,5 +1,39 @@
 # Changelog
 
+# 6.2.0
+2026-10-13
+
+Hello, friends! Version 6.2.0 focuses on the things we use often: writing annotations, copying content and exporting replies. ChatGPT has changed quite a bit recently. This update fixes the causes we reproduced behind missing directories and reply controls after conversation switches, failed bookmark saves, misplaced annotations and blank PDFs.
+
+Some smaller windows still looked different from the management panel, so I have brought them together too. As the extension grows, I want its everyday tools to feel consistent and easier to use.
+
+1. Write annotations in a movable in-page window with minimize, expand and explicit close controls. Clicking outside keeps it open. Text stays in the window while you write; only Save submits the annotation. Thanks to email user @qds19100.
+2. Save supported charts and cards in an offline Markdown ZIP with image attachments. Choose static images or text placeholders in PDF and PNG. Unavailable content keeps an explanation.
+3. Fix lost code fences, language labels, indentation, blank lines and inline code when copying Markdown, and prevent code from running into the following paragraph. Thanks to email user @oxwo277.
+4. Fix bookmark saves reporting missing content when older messages load and reply numbers change while the save dialog is open.
+5. Fix annotation and highlight jumps to the wrong passage. Opening a mark from Library now finds its reply, then the marked text. Thanks to Xiaohongshu user @三分钟热度.
+6. Fix an identified printing conflict that caused blank message PDFs, and improve wide tables, long code and formula layout. Thanks to QQ user @成长！
+7. Restore the directory and reply controls after conversation switches, including delayed content/buttons and regenerated replies. New installations show the directory by default; existing settings are preserved.
+8. Unify the appearance of Prompt, export, Send, Reader settings, annotation, backup and popup windows. Improve text wrapping and button visibility in narrow windows, and tidy Chinese and English guidance.
+
+# 6.1.0
+2026-10-02
+
+Hello, friends! Just like that, 6.1.0 is about to arrive. After the earlier fix for the message directory, many of you shared very positive feedback—this is something people use often. This time, I have strengthened the directory again. If you previously ran into a directory bug, please let me know whether the problem is now resolved. There are also several big updates. First, the message toolbar and the row of buttons at the lower-right of the page used to be fully expanded, and are now tucked away. During use, however, I found that adding an extra step for frequently used buttons could slow things down. You can now choose which of these buttons stay visible, and Settings has received a major upgrade.
+
+The extension now has many features. I want to present them in the simplest, most intuitive way, but some are still easy to miss. That is why this update also adds a Feature overview page. For example, science and engineering students often need to write formulas. You can already preview formulas while typing in the input, then export PNG or SVG directly from that preview, without going through an external rendering tool. Features like this are tucked away and can be hard to discover. I hope Feature overview helps you get to know more of what the extension can do.
+
+Here are the specific updates:
+
+1. Further upgraded Settings, bringing the visible buttons into one place for management. Previews show how enabling, disabling, pinning, or unpinning buttons changes the result.
+2. Added more color themes and custom colors. Thanks to Xiaohongshu user @Cindy.
+3. Improved the input experience. Formula previews now appear when the text cursor enters a formula, rather than when the mouse hovers over it, so they do not interrupt reading.
+4. Added direct image export from input formula previews and improved the preview experience.
+5. Added Markdown cleanup options to Reader, making it easier to choose how content is presented. Thanks to QQ user @重量级知识分子.
+6. Added switches for enabling or disabling floating annotation and highlight buttons. Thanks to QQ user @1.
+7. Fixed the page losing its reading position after sending a message. Thanks to Xiaohongshu user @123321.
+8. Repositioned the previous/next message buttons in a vertical stack at the lower-right of the page.
+
 # 6.0.0
 2026-09-25
 
