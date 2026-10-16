@@ -3,8 +3,8 @@
 // @namespace    https://github.com/veightz/AI-MarkDone
 // @updateURL    https://raw.githubusercontent.com/veightz/AI-MarkDone/main/userscript/markdone-lite.user.js
 // @downloadURL  https://raw.githubusercontent.com/veightz/AI-MarkDone/main/userscript/markdone-lite.user.js
-// @version      0.1.202610161535
-// @description  ChatGPT 日用子集：视口跟随阅读器、大纲钉住、页面宽度、软刷新、Cmd/Ctrl+Enter 发送、设置面板（非全功能扩展）
+// @version      0.1.202610161715
+// @description  ChatGPT 日用子集：视口跟随阅读器、大纲钉住、页面宽度、软刷新、消息步进、字数统计、复制 Markdown、Cmd/Ctrl+Enter 发送、设置面板（非全功能扩展）
 // @author       veightz
 // @match        *://chatgpt.com/*
 // @match        *://chat.openai.com/*
@@ -27,7 +27,7 @@
   if (window.__mdliteBooted) return;
   window.__mdliteBooted = true;
 
-  var VERSION = '0.1.202610161535';
+  var VERSION = '0.1.202610161715';
   var NS = 'mdlite';
   var PIN_KEY = 'mdliteReaderOutlinePinned';
   var NARROW_PX = 720;
@@ -294,6 +294,14 @@
   var sendCmdEnter = storeGet(SEND_KEY, false) === true; // default OFF
   var showRefreshFab = storeGet(REFRESH_FAB_KEY, false) === true; // default OFF
   var showChip = storeGet(CHIP_KEY, true) !== false; // default ON
+  var STEP_KEY = 'mdliteStepNav';
+  var STEP_KEYS_KEY = 'mdliteStepKeys';
+  var WORDS_KEY = 'mdliteWordCount';
+  var COPYMD_KEY = 'mdliteCopyMd';
+  var stepNav = storeGet(STEP_KEY, true) !== false; // default ON
+  var stepKeys = storeGet(STEP_KEYS_KEY, true) !== false; // default ON (needs stepNav)
+  var showWords = storeGet(WORDS_KEY, true) !== false; // default ON
+  var copyMdOn = storeGet(COPYMD_KEY, true) !== false; // default ON
   var IS_MAC = /Mac|iPhone|iPad/i.test((navigator.platform || '') + ' ' + (navigator.userAgent || ''));
   var SEND_KEY_LABEL = IS_MAC ? '⌘+Enter' : 'Ctrl+Enter';
 
@@ -422,6 +430,12 @@
       P + '-chip[hidden],' + P + '-menu[hidden]{display:none!important}',
       P + '-chip[data-fixed="1"]{right:16px;bottom:96px;top:auto!important;left:auto!important}',
       P + '-chip:hover{background:#f6f7f9}',
+      P + '-chip{gap:2px;padding:3px 6px}',
+      P + '-chip button{border:0;background:transparent;color:inherit;font:inherit;cursor:pointer;padding:3px 6px;border-radius:999px}',
+      P + '-chip button:hover{background:rgba(127,127,127,.18)}',
+      P + '-chip button[hidden]{display:none!important}',
+      P + '-fab button.step{padding:8px 10px}',
+      P + '-panel__head small{opacity:.65;font-size:11px;white-space:nowrap}',
       P + '-fab{position:fixed;right:16px;bottom:40px;z-index:2147483000;',
       'display:inline-flex;gap:6px;align-items:center}',
       P + '-fab button{padding:8px 12px;border-radius:10px;border:1px solid rgba(0,0,0,.14);',
@@ -531,6 +545,8 @@
   var railList = null;
   var pinBtn = null;
   var readerWidthBtn = null;
+  var readerCountEl = null;
+  var readerCopyBtn = null;
   var currentRoot = null;
 
   function ensurePanel() {
@@ -563,7 +579,18 @@
       panel.hidden = true;
       scheduleChip();
     });
+    readerCountEl = document.createElement('small');
+    readerCopyBtn = document.createElement('button');
+    readerCopyBtn.type = 'button';
+    readerCopyBtn.className = NS + '-pin';
+    readerCopyBtn.textContent = '复制 MD';
+    readerCopyBtn.title = '复制这条回复的 Markdown';
+    readerCopyBtn.addEventListener('click', function () {
+      if (currentRoot) copyMarkdownOf(currentRoot);
+    });
     head.appendChild(title);
+    head.appendChild(readerCountEl);
+    head.appendChild(readerCopyBtn);
     head.appendChild(readerWidthBtn);
     head.appendChild(close);
 
@@ -657,6 +684,7 @@
     }
     panelBody.scrollTop = 0;
     panel.hidden = false;
+    syncReaderExtras();
     syncPinUi();
     syncReaderWidth();
     closeMenu();
@@ -679,28 +707,585 @@
     openReader(target);
   }
 
+
+  // ===================================================================
+  // Message step navigation / CJK word count / copy Markdown (Lite)
+  // All DOM discovery is scoped to the active page main via assistantRoots().
+  // ===================================================================
+
+  // ---- word count (CJK aware; code blocks, math and UI chrome excluded) ----
+  var CJK_RE = new RegExp('[\\u3400-\\u4dbf\\u4e00-\\u9fff\\uf900-\\ufaff\\u3040-\\u30ff\\u{20000}-\\u{2fa1f}]', 'gu');
+  var WORD_RE = /[A-Za-z0-9\u00C0-\u024F\uac00-\ud7af]+(?:['’\-.][A-Za-z0-9\u00C0-\u024F\uac00-\ud7af]+)*/g;
+  var SKIP_COUNT_SEL = 'pre, .katex, .katex-display, button, svg, script, style, [class*="' + NS + '-"]';
+
+  function markdownRoots(root) {
+    var all = root.querySelectorAll('.markdown');
+    var out = [];
+    for (var i = 0; i < all.length; i++) {
+      var m = all[i];
+      if (m.parentElement && m.parentElement.closest('.markdown') && root.contains(m.parentElement.closest('.markdown'))) continue;
+      out.push(m);
+    }
+    if (out.length) return out;
+    return [root.querySelector(CONTENT_SELECTOR) || root];
+  }
+
+  function countText(text) {
+    var cjk = (text.match(CJK_RE) || []).length;
+    var words = (text.replace(CJK_RE, ' ').match(WORD_RE) || []).length;
+    return { cjk: cjk, words: words, total: cjk + words };
+  }
+
+  var COUNT_SEP = { p: 1, div: 1, li: 1, tr: 1, td: 1, th: 1, br: 1, h1: 1, h2: 1, h3: 1, h4: 1, h5: 1, h6: 1, ul: 1, ol: 1, table: 1, blockquote: 1, section: 1, article: 1, hr: 1 };
+
+  // Collect countable text; block/cell boundaries become spaces, inline tags do not
+  // (so "foo<b>bar</b>" stays one word). Code blocks, math and UI chrome are skipped.
+  function collectCountText(node, out) {
+    if (node.nodeType === 3) {
+      out.push(node.nodeValue);
+      return;
+    }
+    if (node.nodeType !== 1) return;
+    if (node.matches(SKIP_COUNT_SEL)) return;
+    var sep = COUNT_SEP[node.tagName.toLowerCase()] ? ' ' : '';
+    if (sep) out.push(sep);
+    for (var c = node.firstChild; c; c = c.nextSibling) collectCountText(c, out);
+    if (sep) out.push(sep);
+  }
+
+  function countWordsOf(root) {
+    var cjk = 0;
+    var words = 0;
+    var roots = markdownRoots(root);
+    for (var r = 0; r < roots.length; r++) {
+      var parts = [];
+      collectCountText(roots[r], parts);
+      var c = countText(parts.join(''));
+      cjk += c.cjk;
+      words += c.words;
+    }
+    return { cjk: cjk, words: words, total: cjk + words };
+  }
+
+  var countCache = { root: null, at: 0, val: null };
+  function cachedCount(root) {
+    var now = Date.now();
+    if (countCache.root === root && now - countCache.at < 1000) return countCache.val;
+    countCache = { root: root, at: now, val: countWordsOf(root) };
+    return countCache.val;
+  }
+  function fmtCount(c) {
+    return c.total.toLocaleString('en-US') + ' 字';
+  }
+  function countTitle(c) {
+    return '中日文 ' + c.cjk + ' 字 + 英文 ' + c.words + ' 词（不含代码块与公式）';
+  }
+
+  function syncChipLabel(round) {
+    if (!chipMain) return;
+    var label = '📖 阅读器';
+    var title = 'MarkDone Lite：在侧栏阅读这条回复（含大纲）';
+    if (showWords && round && round.root) {
+      var c = cachedCount(round.root);
+      label += ' · ' + fmtCount(c);
+      title += '\n' + countTitle(c);
+    }
+    if (chipMain.textContent !== label) chipMain.textContent = label;
+    chipMain.title = title;
+    if (chipCopy) chipCopy.hidden = !copyMdOn;
+  }
+
+  function syncReaderExtras() {
+    if (readerCountEl) {
+      if (showWords && currentRoot && currentRoot.isConnected) {
+        var c = countWordsOf(currentRoot);
+        readerCountEl.textContent = fmtCount(c);
+        readerCountEl.title = countTitle(c);
+        readerCountEl.hidden = false;
+      } else {
+        readerCountEl.hidden = true;
+      }
+    }
+    if (readerCopyBtn) readerCopyBtn.hidden = !copyMdOn;
+  }
+
+  // ---- HTML -> Markdown (own converter for ChatGPT's rendered message DOM) ----
+  var BLOCK_TAGS = {
+    p: 1, div: 1, section: 1, article: 1, header: 1, footer: 1, main: 1, aside: 1, figure: 1, figcaption: 1,
+    h1: 1, h2: 1, h3: 1, h4: 1, h5: 1, h6: 1, ul: 1, ol: 1, li: 1, pre: 1, blockquote: 1, table: 1, hr: 1,
+    details: 1, summary: 1, dl: 1, dt: 1, dd: 1,
+  };
+  var SKIP_TAGS = { button: 1, svg: 1, script: 1, style: 1, noscript: 1, template: 1, textarea: 1, input: 1, select: 1 };
+
+  function texOf(el) {
+    var ann = el.querySelector('annotation[encoding="application/x-tex"]');
+    return ann ? (ann.textContent || '').trim() : '';
+  }
+
+  function isSkipped(el) {
+    var tag = el.tagName.toLowerCase();
+    if (SKIP_TAGS[tag]) return true;
+    var cls = typeof el.className === 'string' ? el.className : '';
+    if (cls.indexOf(NS + '-') >= 0) return true;
+    if (el.getAttribute('aria-hidden') === 'true' && !el.classList.contains('katex')) return true;
+    return false;
+  }
+
+  function codeLang(pre) {
+    var codeEl = pre.querySelector('code');
+    var holders = [codeEl, pre.querySelector('[class*="language-"]'), pre];
+    for (var i = 0; i < holders.length; i++) {
+      var h = holders[i];
+      if (!h) continue;
+      var m = /(?:^|\s)language-([\w+#.\-]+)/.exec(typeof h.className === 'string' ? h.className : '');
+      if (m && m[1] !== 'plaintext' && m[1] !== 'text') return m[1];
+    }
+    // ChatGPT header strip: a short single-word label before the code body.
+    var cand = pre.querySelectorAll('div, span');
+    for (var j = 0; j < cand.length && j < 6; j++) {
+      var el = cand[j];
+      if (el.querySelector('code, .cm-content, pre')) continue;
+      var t = '';
+      for (var k = 0; k < el.childNodes.length; k++) {
+        if (el.childNodes[k].nodeType === 3) t += el.childNodes[k].nodeValue;
+      }
+      t = t.trim();
+      if (t && t.length <= 24 && /^[A-Za-z][\w+#.\-]*$/.test(t)) return t.toLowerCase();
+    }
+    return '';
+  }
+
+  function codeText(pre) {
+    var lines = pre.querySelectorAll('.cm-line');
+    if (lines.length) {
+      var out = [];
+      for (var i = 0; i < lines.length; i++) out.push(lines[i].textContent || '');
+      return out.join('\n');
+    }
+    var codeEl = pre.querySelector('code');
+    var txt = (codeEl || pre).textContent || '';
+    return txt;
+  }
+
+  function fenceFor(code) {
+    var fence = '```';
+    while (code.indexOf(fence) >= 0) fence += '`';
+    return fence;
+  }
+
+  function inlineMd(node) {
+    if (node.nodeType === 3) return (node.nodeValue || '').replace(/\s+/g, ' ');
+    if (node.nodeType !== 1) return '';
+    if (isSkipped(node)) return '';
+    var tag = node.tagName.toLowerCase();
+    var cls = typeof node.className === 'string' ? node.className : '';
+    if (cls.indexOf('katex-display') >= 0) {
+      var td = texOf(node);
+      return td ? '\n\n$$\n' + td + '\n$$\n\n' : '';
+    }
+    if (node.classList.contains('katex')) {
+      var ti = texOf(node);
+      return ti ? '$' + ti + '$' : (node.textContent || '');
+    }
+    if (tag === 'br') return '  \n';
+    if (tag === 'code') {
+      var ct = node.textContent || '';
+      var tick = '`';
+      while (ct.indexOf(tick) >= 0) tick += '`';
+      var pad = ct.charAt(0) === '`' || ct.charAt(ct.length - 1) === '`' ? ' ' : '';
+      return tick + pad + ct + pad + tick;
+    }
+    var inner = inlineChildren(node);
+    if (tag === 'strong' || tag === 'b') return wrapInline(inner, '**');
+    if (tag === 'em' || tag === 'i') return wrapInline(inner, '*');
+    if (tag === 'del' || tag === 's' || tag === 'strike') return wrapInline(inner, '~~');
+    if (tag === 'a') {
+      var href = node.getAttribute('href') || '';
+      var txt = inner.trim();
+      if (!href || href.charAt(0) === '#' && !txt) return inner;
+      return '[' + (txt || href) + '](' + href.replace(/\)/g, '%29').replace(/\s/g, '%20') + ')';
+    }
+    if (tag === 'img') {
+      var src = node.getAttribute('src') || '';
+      return src ? '![' + (node.getAttribute('alt') || '') + '](' + src + ')' : '';
+    }
+    if (tag === 'sup') return '<sup>' + inner + '</sup>';
+    if (tag === 'sub') return '<sub>' + inner + '</sub>';
+    return inner;
+  }
+  function wrapInline(inner, mark) {
+    var t = inner.replace(/^(\s*)([\s\S]*?)(\s*)$/, function (_, a, b, c) {
+      return b ? a + mark + b + mark + c : a + c;
+    });
+    return t;
+  }
+  function inlineChildren(el) {
+    var out = '';
+    for (var i = 0; i < el.childNodes.length; i++) out += inlineMd(el.childNodes[i]);
+    return out;
+  }
+
+  function isBlockEl(n) {
+    if (n.nodeType !== 1) return false;
+    var tag = n.tagName.toLowerCase();
+    if (BLOCK_TAGS[tag]) return true;
+    return !!(n.classList && n.classList.contains('katex-display'));
+  }
+
+  // Convert the children of a container into an array of block strings.
+  function blocksMd(parent) {
+    var blocks = [];
+    var buf = '';
+    function flush() {
+      var t = buf.replace(/^[ \t]+/, '').replace(/[ \t]+$/g, '');
+      buf = '';
+      if (t.replace(/\s+/g, '') === '') return;
+      blocks.push(t.replace(/^\n+|\n+$/g, ''));
+    }
+    for (var i = 0; i < parent.childNodes.length; i++) {
+      var n = parent.childNodes[i];
+      if (n.nodeType === 1 && isSkipped(n)) continue;
+      if (isBlockEl(n)) {
+        flush();
+        var b = blockMd(n);
+        for (var k = 0; k < b.length; k++) blocks.push(b[k]);
+      } else {
+        buf += inlineMd(n);
+      }
+    }
+    flush();
+    return blocks;
+  }
+
+  function indentLines(text, pad) {
+    return text.split('\n').map(function (l, i) { return i === 0 || l === '' ? l : pad + l; }).join('\n');
+  }
+
+  function listMd(list, depthOrdered) {
+    var ordered = list.tagName.toLowerCase() === 'ol';
+    var start = ordered ? parseInt(list.getAttribute('start') || '1', 10) : 1;
+    if (!Number.isFinite(start)) start = 1;
+    var items = [];
+    var idx = 0;
+    for (var i = 0; i < list.children.length; i++) {
+      var li = list.children[i];
+      if (li.tagName.toLowerCase() !== 'li' || isSkipped(li)) continue;
+      var marker = ordered ? (start + idx) + '. ' : '- ';
+      idx++;
+      var parts = blocksMd(li);
+      var body = '';
+      for (var j = 0; j < parts.length; j++) {
+        if (j > 0) {
+          var prevIsList = /^(?:[-*] |\d+\. )/.test(parts[j]);
+          body += prevIsList || /^(?:[-*] |\d+\. )/.test(parts[j - 1]) ? '\n' : '\n\n';
+        }
+        body += parts[j];
+      }
+      var pad = new Array(marker.length + 1).join(' ');
+      items.push(marker + indentLines(body, pad));
+    }
+    return items.join('\n');
+  }
+
+  function tableMd(table) {
+    var rows = table.querySelectorAll('tr');
+    var data = [];
+    var aligns = [];
+    for (var i = 0; i < rows.length; i++) {
+      if (rows[i].closest('table') !== table) continue;
+      var cells = rows[i].children;
+      var row = [];
+      for (var j = 0; j < cells.length; j++) {
+        var c = cells[j];
+        var tag = c.tagName.toLowerCase();
+        if (tag !== 'th' && tag !== 'td') continue;
+        var txt = inlineChildren(c).replace(/\s*\n\s*/g, '<br>').replace(/\|/g, '\\|').replace(/\s+/g, ' ').trim();
+        row.push(txt);
+        if (data.length === 0) {
+          var al = (c.getAttribute('align') || (c.style && c.style.textAlign) || '').toLowerCase();
+          aligns.push(al === 'center' ? ':---:' : al === 'right' ? '---:' : al === 'left' ? ':---' : '---');
+        }
+      }
+      if (row.length) data.push(row);
+    }
+    if (!data.length) return '';
+    var cols = 0;
+    data.forEach(function (r) { if (r.length > cols) cols = r.length; });
+    while (aligns.length < cols) aligns.push('---');
+    var lines = [];
+    data.forEach(function (r, idx) {
+      while (r.length < cols) r.push('');
+      lines.push('| ' + r.join(' | ') + ' |');
+      if (idx === 0) lines.push('| ' + aligns.join(' | ') + ' |');
+    });
+    return lines.join('\n');
+  }
+
+  function blockMd(el) {
+    var tag = el.tagName.toLowerCase();
+    if (/^h[1-6]$/.test(tag)) {
+      var t = inlineChildren(el).replace(/\s+/g, ' ').trim();
+      return t ? ['#'.repeat(parseInt(tag.charAt(1), 10)) + ' ' + t] : [];
+    }
+    if (tag === 'p' || tag === 'dt' || tag === 'summary' || tag === 'figcaption') {
+      var pt = inlineChildren(el).replace(/^[ \t]+|[ \t]+$/g, '').replace(/^\n+|\n+$/g, '');
+      return pt.replace(/\s+/g, '') ? [pt] : [];
+    }
+    if (tag === 'ul' || tag === 'ol') {
+      var lt = listMd(el);
+      return lt ? [lt] : [];
+    }
+    if (tag === 'li') return blocksMd(el); // stray li outside a list
+    if (tag === 'pre') {
+      var code = codeText(el).replace(/\n$/, '');
+      var fence = fenceFor(code);
+      return [fence + codeLang(el) + '\n' + code + '\n' + fence];
+    }
+    if (tag === 'blockquote') {
+      var inner = blocksMd(el).join('\n\n');
+      return inner ? [inner.split('\n').map(function (l) { return l ? '> ' + l : '>'; }).join('\n')] : [];
+    }
+    if (tag === 'table') {
+      var tt = tableMd(el);
+      return tt ? [tt] : [];
+    }
+    if (tag === 'hr') return ['---'];
+    if (el.classList.contains('katex-display')) {
+      var tex = texOf(el);
+      return tex ? ['$$\n' + tex + '\n$$'] : [];
+    }
+    // generic container: div/section/...
+    return blocksMd(el);
+  }
+
+  function htmlToMarkdown(rootEl) {
+    var md = blocksMd(rootEl).join('\n\n');
+    return md.replace(/\n{3,}/g, '\n\n').trim() + '\n';
+  }
+
+  function messageMarkdown(root) {
+    var roots = markdownRoots(root);
+    var parts = [];
+    for (var i = 0; i < roots.length; i++) {
+      var md = htmlToMarkdown(roots[i]).trim();
+      if (md) parts.push(md);
+    }
+    return parts.join('\n\n') + (parts.length ? '\n' : '');
+  }
+
+  function writeClipboard(text) {
+    function legacy() {
+      var ta = document.createElement('textarea');
+      ta.value = text;
+      ta.setAttribute('readonly', '');
+      ta.style.cssText = 'position:fixed;left:-9999px;top:0;opacity:0';
+      document.documentElement.appendChild(ta);
+      ta.select();
+      var ok = false;
+      try { ok = document.execCommand('copy'); } catch (_) { ok = false; }
+      ta.remove();
+      return ok;
+    }
+    try {
+      if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+        return navigator.clipboard.writeText(text).then(function () { return true; }, function () { return legacy(); });
+      }
+    } catch (_) { /* fall through */ }
+    return Promise.resolve(legacy());
+  }
+
+  function copyMarkdownOf(root) {
+    closeMenu();
+    if (!root || !root.isConnected) {
+      toast('这条回复已不在页面里，请重新选择。', { durationMs: 3000 });
+      return Promise.resolve(false);
+    }
+    var md = messageMarkdown(root);
+    if (!md.trim()) {
+      toast('这条回复里没找到可复制的内容。', { durationMs: 3000 });
+      return Promise.resolve(false);
+    }
+    return writeClipboard(md).then(function (ok) {
+      toast(ok ? '已复制 Markdown（' + md.length.toLocaleString('en-US') + ' 字符）' : '复制失败：浏览器拒绝写入剪贴板（可先点一下页面再试）。', { durationMs: ok ? 2200 : 5000 });
+      return ok;
+    });
+  }
+
+  function copyCurrentMarkdown() {
+    var target = null;
+    if (panel && !panel.hidden && currentRoot && currentRoot.isConnected) target = currentRoot;
+    if (!target && bound && bound.root && bound.root.isConnected) target = bound.root;
+    if (!target) {
+      var p = resolvePrimary(collectRounds());
+      if (p) target = p.root;
+    }
+    if (!target) {
+      var all = assistantRoots();
+      if (all.length) target = all[all.length - 1];
+    }
+    if (!target) {
+      toast('没在当前页面找到助手回复。', { durationMs: 3000 });
+      return Promise.resolve(false);
+    }
+    return copyMarkdownOf(target);
+  }
+
+  // ---- message step navigation ----
+  function scrollContainerOf(el) {
+    var n = el.parentElement;
+    while (n && n !== document.documentElement) {
+      var oy = '';
+      try { oy = window.getComputedStyle(n).overflowY; } catch (_) { oy = ''; }
+      if ((oy === 'auto' || oy === 'scroll') && n.scrollHeight > n.clientHeight + 1) return n;
+      n = n.parentElement;
+    }
+    return null;
+  }
+
+  function scrollToMessage(root) {
+    var sc = scrollContainerOf(root);
+    var topPad = 72; // clear ChatGPT's sticky header
+    if (sc) {
+      var delta = root.getBoundingClientRect().top - sc.getBoundingClientRect().top - topPad;
+      try { sc.scrollTo({ top: sc.scrollTop + delta, behavior: 'smooth' }); return; } catch (_) { sc.scrollTop += delta; return; }
+    }
+    try { root.scrollIntoView({ block: 'start', behavior: 'smooth' }); } catch (_) { root.scrollIntoView(true); }
+  }
+
+  function stepTargets() {
+    var roots = assistantRoots();
+    var out = [];
+    for (var i = 0; i < roots.length; i++) {
+      var r = roots[i].getBoundingClientRect();
+      if (r.height <= 0 && r.width <= 0) continue;
+      out.push({ root: roots[i], top: r.top, bottom: r.bottom });
+    }
+    return out;
+  }
+
+  function stepMessage(dir) {
+    var list = stepTargets();
+    if (!list.length) {
+      toast('没在当前页面找到助手回复。', { durationMs: 2500 });
+      return false;
+    }
+    // Anchor = message at the reading line (35% down); fall back to first message below it.
+    var vh = window.innerHeight || 1;
+    var lineY = Math.round(vh * REF_RATIO);
+    var idx = -1;
+    var primary = resolvePrimary(collectRounds());
+    if (primary) {
+      for (var i = 0; i < list.length; i++) if (list[i].root === primary.root) { idx = i; break; }
+    }
+    if (idx < 0) {
+      for (var j = 0; j < list.length; j++) if (list[j].bottom > lineY) { idx = j; break; }
+      if (idx < 0) idx = list.length - 1;
+    }
+    var target = null;
+    if (dir < 0) {
+      // Mid-way through a tall message: first jump to its own start.
+      target = list[idx].top < -24 ? list[idx] : list[idx - 1];
+    } else {
+      target = list[idx].top > lineY + 8 && idx === 0 ? list[idx] : list[idx + 1];
+    }
+    if (!target) {
+      toast(dir < 0 ? '已经是第一条回复' : '已经是最后一条回复', { durationMs: 1400 });
+      return false;
+    }
+    scrollToMessage(target.root);
+    if (panel && !panel.hidden) openReader(target.root);
+    closeMenu();
+    return true;
+  }
+
+  function isTypingTarget(t) {
+    if (!(t instanceof Element)) return false;
+    if (t.closest('input, textarea, select, [contenteditable=""], [contenteditable="true"], [contenteditable="plaintext-only"]')) return true;
+    if (t.closest('[role="textbox"], [role="combobox"], [role="searchbox"], [role="slider"], [role="spinbutton"], [role="listbox"], [role="menu"], [role="dialog"]')) return true;
+    return false;
+  }
+
+  function onStepKeydown(e) {
+    if (!stepNav || !stepKeys) return;
+    if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+    if (e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey || e.shiftKey) return;
+    if (e.isComposing || e.keyCode === 229 || imeComposing) return;
+    if (isTypingTarget(e.target) || isTypingTarget(document.activeElement)) return;
+    if (settingsEl && !settingsEl.hidden) return;
+    var sel = window.getSelection && window.getSelection();
+    if (sel && !sel.isCollapsed && String(sel).length > 0) return; // don't fight text-selection extension
+    if (!stepTargets().length) return;
+    e.preventDefault();
+    stepMessage(e.key === 'ArrowLeft' ? -1 : 1);
+  }
+
+  function setStepNav(v) {
+    stepNav = !!v;
+    storeSet(STEP_KEY, stepNav);
+    syncFab();
+    syncMenu();
+    syncSettings();
+  }
+  function setStepKeys(v) {
+    stepKeys = !!v;
+    storeSet(STEP_KEYS_KEY, stepKeys);
+    syncSettings();
+  }
+  function setShowWords(v) {
+    showWords = !!v;
+    storeSet(WORDS_KEY, showWords);
+    countCache = { root: null, at: 0, val: null };
+    syncReaderExtras();
+    scheduleChip();
+    syncSettings();
+  }
+  function setCopyMd(v) {
+    copyMdOn = !!v;
+    storeSet(COPYMD_KEY, copyMdOn);
+    syncReaderExtras();
+    if (chipCopy) chipCopy.hidden = !copyMdOn;
+    syncMenu();
+    syncSettings();
+  }
+
   // ---- viewport chip ----
   var chip = null;
   var pending = null;
   var pendingSince = 0;
   var bound = null;
   var raf = 0;
+  var chipMain = null;
+  var chipCopy = null;
 
   function ensureChip() {
     if (chip) {
       if (!chip.isConnected) document.documentElement.appendChild(chip);
       return chip;
     }
-    chip = document.createElement('button');
-    chip.type = 'button';
+    chip = document.createElement('div');
     chip.className = NS + '-chip';
-    chip.textContent = '📖 阅读器';
-    chip.title = 'MarkDone Lite：在侧栏阅读这条回复（含大纲）';
     chip.hidden = true;
-    chip.addEventListener('click', function () {
+    chipMain = document.createElement('button');
+    chipMain.type = 'button';
+    chipMain.className = NS + '-chip__main';
+    chipMain.textContent = '📖 阅读器';
+    chipMain.title = 'MarkDone Lite：在侧栏阅读这条回复（含大纲）';
+    chipMain.addEventListener('click', function () {
       if (!bound || !bound.root) return;
       openReader(bound.root);
     });
+    chipCopy = document.createElement('button');
+    chipCopy.type = 'button';
+    chipCopy.className = NS + '-chip__copy';
+    chipCopy.textContent = '📋 MD';
+    chipCopy.title = '复制这条回复的 Markdown';
+    chipCopy.addEventListener('click', function (e) {
+      e.stopPropagation();
+      if (!bound || !bound.root) return;
+      copyMarkdownOf(bound.root);
+    });
+    chip.appendChild(chipMain);
+    chip.appendChild(chipCopy);
     document.documentElement.appendChild(chip);
     return chip;
   }
@@ -712,6 +1297,7 @@
       return;
     }
     chip.hidden = false;
+    syncChipLabel(round);
     if (fixed) {
       chip.dataset.fixed = '1';
       chip.style.top = '';
@@ -807,6 +1393,8 @@
   var fab = null;
   var fabWidthBtn = null;
   var fabRefreshBtn = null;
+  var fabPrevBtn = null;
+  var fabNextBtn = null;
   var menu = null;
 
   function mkBtn(text, title, onClick, cls) {
@@ -839,6 +1427,14 @@
     fabRefreshBtn.setAttribute('data-role', 'refresh');
     var more = mkBtn('Lite ☰', 'MarkDone Lite 菜单', toggleMenu);
     more.setAttribute('data-role', 'menu');
+    fabPrevBtn = mkBtn('▲', '上一条助手回复（←）', function () { stepMessage(-1); }, 'secondary step');
+    fabPrevBtn.setAttribute('data-role', 'step-prev');
+    fabPrevBtn.setAttribute('aria-label', '上一条助手回复');
+    fabNextBtn = mkBtn('▼', '下一条助手回复（→）', function () { stepMessage(1); }, 'secondary step');
+    fabNextBtn.setAttribute('data-role', 'step-next');
+    fabNextBtn.setAttribute('aria-label', '下一条助手回复');
+    fab.appendChild(fabPrevBtn);
+    fab.appendChild(fabNextBtn);
     fab.appendChild(reader);
     fab.appendChild(fabWidthBtn);
     fab.appendChild(fabRefreshBtn);
@@ -852,6 +1448,8 @@
     fabWidthBtn.textContent = '↔ 宽度·' + WIDTH_LABEL[pageWidth];
     fabWidthBtn.setAttribute('aria-label', '页面宽度：' + WIDTH_LABEL[pageWidth]);
     if (fabRefreshBtn) fabRefreshBtn.hidden = !showRefreshFab;
+    if (fabPrevBtn) fabPrevBtn.hidden = !stepNav;
+    if (fabNextBtn) fabNextBtn.hidden = !stepNav;
   }
 
   function ensureMenu() {
@@ -874,6 +1472,26 @@
     ensureMenu();
     menu.innerHTML = '';
     menu.appendChild(mkBtn('📖 阅读器（当前回复）', '在侧栏打开视口内主读回复', openReaderForCurrent));
+    if (copyMdOn) {
+      var cp = mkBtn('📋 复制当前回复 Markdown', '复制视口内主读回复（或阅读器里这条）的 Markdown', copyCurrentMarkdown);
+      cp.setAttribute('data-role', 'copy-md');
+      menu.appendChild(cp);
+    }
+    if (stepNav) {
+      var srow = document.createElement('div');
+      srow.className = NS + '-menu__row';
+      var slab = document.createElement('span');
+      slab.className = NS + '-menu__label';
+      slab.textContent = '消息步进';
+      srow.appendChild(slab);
+      var sp = mkBtn('▲ 上一条', '上一条助手回复', function () { stepMessage(-1); });
+      sp.setAttribute('data-role', 'menu-step-prev');
+      var sn = mkBtn('▼ 下一条', '下一条助手回复', function () { stepMessage(1); });
+      sn.setAttribute('data-role', 'menu-step-next');
+      srow.appendChild(sp);
+      srow.appendChild(sn);
+      menu.appendChild(srow);
+    }
     var pin = mkBtn(
       (outlinePinned ? '📌 大纲钉住：开' : '📍 大纲钉住：关'),
       '阅读器右侧大纲常显 / 悬停展开',
@@ -1075,6 +1693,10 @@
 
   function resetSettings() {
     setSendCmdEnter(false, true);
+    setStepNav(true);
+    setStepKeys(true);
+    setShowWords(true);
+    setCopyMd(true);
     setShowRefreshFab(false);
     setShowChip(true);
     setOutlinePinned(false, true);
@@ -1177,6 +1799,14 @@
       segCtl(pageWidth, 'pageWidth', function (m) { setPageWidth(m); })));
     card.appendChild(settingRow('阅读器宽度', '侧栏阅读器自身宽度。',
       segCtl(readerWidth, 'readerWidth', function (m) { setReaderWidth(m); })));
+    card.appendChild(settingRow('消息步进', '右下角 ▲▼ 按钮：跳到上一条/下一条助手回复。',
+      toggleCtl(stepNav, 'stepNav', function (v) { setStepNav(v); })));
+    card.appendChild(settingRow('←/→ 键步进', '不在输入框里打字、没选中文字时，← 上一条、→ 下一条。需先开「消息步进」。',
+      toggleCtl(stepKeys, 'stepKeys', function (v) { setStepKeys(v); })));
+    card.appendChild(settingRow('字数统计', '阅读器小标签和侧栏顶部显示本条回复字数（中日文按字、英文按词，不含代码块和公式）。',
+      toggleCtl(showWords, 'showWords', function (v) { setShowWords(v); })));
+    card.appendChild(settingRow('复制 Markdown', '小标签上的「📋 MD」、侧栏顶部「复制 MD」、菜单项；保留代码围栏/语言、表格、列表、标题、链接。',
+      toggleCtl(copyMdOn, 'copyMd', function (v) { setCopyMd(v); })));
     card.appendChild(settingRow('软刷新按钮', '在右下角显示「🔄 软刷新」；关＝只在 Lite ☰ 菜单里。',
       toggleCtl(showRefreshFab, 'showRefreshFab', function (v) { setShowRefreshFab(v); })));
     card.appendChild(settingRow('跟随阅读小标签', '滚动时跟在当前回复旁的「📖 阅读器」小标签；关＝只用右下按钮。',
@@ -1241,6 +1871,7 @@
     });
     document.addEventListener('click', closeMenu);
     window.addEventListener('keydown', onSendKeydown, true);
+    window.addEventListener('keydown', onStepKeydown);
     window.addEventListener('compositionstart', function () { imeComposing = true; }, true);
     window.addEventListener('compositionend', function () { imeComposing = false; imeEndedAt = Date.now(); }, true);
     try {
