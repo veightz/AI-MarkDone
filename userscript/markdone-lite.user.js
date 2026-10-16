@@ -3,13 +3,14 @@
 // @namespace    https://github.com/veightz/AI-MarkDone
 // @updateURL    https://raw.githubusercontent.com/veightz/AI-MarkDone/main/userscript/markdone-lite.user.js
 // @downloadURL  https://raw.githubusercontent.com/veightz/AI-MarkDone/main/userscript/markdone-lite.user.js
-// @version      0.1.202610141220
-// @description  ChatGPT 日用子集：视口跟随阅读器、大纲钉住、页面宽度、软刷新消息导航（非全功能扩展）
+// @version      0.1.202610161535
+// @description  ChatGPT 日用子集：视口跟随阅读器、大纲钉住、页面宽度、软刷新、Cmd/Ctrl+Enter 发送、设置面板（非全功能扩展）
 // @author       veightz
 // @match        *://chatgpt.com/*
 // @match        *://chat.openai.com/*
 // @grant        GM_getValue
 // @grant        GM_setValue
+// @grant        GM_registerMenuCommand
 // @run-at       document-idle
 // @inject-into  content
 // ==/UserScript==
@@ -26,7 +27,7 @@
   if (window.__mdliteBooted) return;
   window.__mdliteBooted = true;
 
-  var VERSION = '0.1.202610141220';
+  var VERSION = '0.1.202610161535';
   var NS = 'mdlite';
   var PIN_KEY = 'mdliteReaderOutlinePinned';
   var NARROW_PX = 720;
@@ -286,6 +287,15 @@
   var pageWidth = normWidth(storeGet(WIDTH_KEY, 'normal'));
   var readerWidth = normWidth(storeGet(READER_WIDTH_KEY, 'normal'));
   var outlinePinned = storeGet(PIN_KEY, false) === true;
+  // Extra Lite settings (all have explicit defaults; "重置" restores them).
+  var SEND_KEY = 'mdliteSendCmdEnter';
+  var REFRESH_FAB_KEY = 'mdliteShowRefreshFab';
+  var CHIP_KEY = 'mdliteShowChip';
+  var sendCmdEnter = storeGet(SEND_KEY, false) === true; // default OFF
+  var showRefreshFab = storeGet(REFRESH_FAB_KEY, false) === true; // default OFF
+  var showChip = storeGet(CHIP_KEY, true) !== false; // default ON
+  var IS_MAC = /Mac|iPhone|iPad/i.test((navigator.platform || '') + ' ' + (navigator.userAgent || ''));
+  var SEND_KEY_LABEL = IS_MAC ? '⌘+Enter' : 'Ctrl+Enter';
 
   // ---- styles ----
   // Page-width: mirror extension ChatGPTPageWidthController + 2026 ChatGPT CSS vars.
@@ -400,6 +410,8 @@
         Q + '-menu button{color:#f2f2f2}',
         Q + '-menu button[aria-pressed="true"],' + Q + '-menu button[aria-checked="true"]{background:#f2f2f2;color:#111}',
         Q + '-menu small{color:#aaa}',
+        Q + '-settings__card{background:#1e1e1e;color:#f2f2f2;border-color:rgba(255,255,255,.14)}',
+        Q + '-settings button[aria-pressed="true"],' + Q + '-settings button[aria-checked="true"]{background:#f2f2f2;color:#111;border-color:#f2f2f2}',
       ].join('');
     }
     s.textContent = [
@@ -457,6 +469,23 @@
       P + '-rail__list button[data-level="3"]{padding-left:14px;opacity:.9}',
       P + '-pin{border:0;background:transparent;color:inherit;cursor:pointer;padding:4px 6px;border-radius:6px;font:12px/1.2 system-ui,sans-serif}',
       P + '-pin[aria-pressed="true"]{background:#111;color:#fff}',
+      P + '-fab button[hidden]{display:none!important}',
+      P + '-settings[hidden]{display:none!important}',
+      P + '-settings{position:fixed;inset:0;z-index:2147483003;display:flex;align-items:center;',
+      'justify-content:center;background:rgba(0,0,0,.35);font:14px/1.45 system-ui,sans-serif}',
+      P + '-settings__card{width:min(440px,94vw);max-height:90vh;overflow:auto;border-radius:14px;',
+      'background:#fff;color:#111;border:1px solid rgba(0,0,0,.12);box-shadow:0 16px 48px rgba(0,0,0,.3);padding:14px 16px}',
+      P + '-settings__head{display:flex;align-items:center;gap:8px;margin-bottom:6px}',
+      P + '-settings__head strong{flex:1;font-size:15px}',
+      P + '-settings__row{display:flex;align-items:center;gap:10px;padding:9px 0;border-top:1px solid rgba(127,127,127,.18)}',
+      P + '-settings__txt{flex:1;min-width:0}',
+      P + '-settings__txt small{display:block;opacity:.65;font-size:11px;margin-top:2px}',
+      P + '-settings button{border:1px solid rgba(127,127,127,.35);background:transparent;color:inherit;',
+      'border-radius:8px;padding:5px 10px;cursor:pointer;font:12px/1.2 system-ui,sans-serif}',
+      P + '-settings button[aria-pressed="true"],' + P + '-settings button[aria-checked="true"]{background:#111;color:#fff;border-color:#111}',
+      P + '-settings__seg{display:inline-flex;gap:4px}',
+      P + '-settings__foot{display:flex;align-items:center;gap:8px;padding-top:10px;border-top:1px solid rgba(127,127,127,.18)}',
+      P + '-settings__foot small{flex:1;opacity:.6;font-size:11px}',
       P + '-toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);z-index:2147483002;',
       'display:flex;gap:10px;align-items:center;max-width:min(520px,92vw);padding:10px 14px;',
       'border-radius:10px;background:#111;color:#fff;font:13px/1.3 system-ui,sans-serif;',
@@ -487,6 +516,7 @@
     applyPageWidth();
     syncFab();
     syncMenu();
+    syncSettings();
     scheduleChip();
     if (!silent) {
       var note = pageWidth === 'normal' ? '' : (widthFoundCache ? '' : '（未找到宽度容器，若没变宽请截图）');
@@ -578,6 +608,7 @@
     storeSet(PIN_KEY, outlinePinned);
     syncPinUi();
     syncMenu();
+    syncSettings();
     if (!silent) toast(outlinePinned ? '大纲已钉住（阅读器右侧常显）' : '大纲改为悬停展开', { durationMs: 2000 });
   }
 
@@ -676,7 +707,7 @@
 
   function placeChip(round, fixed) {
     ensureChip();
-    if (!round || (panel && !panel.hidden)) {
+    if (!showChip || !round || (panel && !panel.hidden)) {
       chip.hidden = true;
       return;
     }
@@ -775,6 +806,7 @@
   // ---- FAB + Lite menu ----
   var fab = null;
   var fabWidthBtn = null;
+  var fabRefreshBtn = null;
   var menu = null;
 
   function mkBtn(text, title, onClick, cls) {
@@ -803,10 +835,13 @@
       setPageWidth(nextWidth(pageWidth));
     }, 'secondary');
     fabWidthBtn.setAttribute('data-role', 'width');
+    fabRefreshBtn = mkBtn('🔄 软刷新', '重扫已挂载消息，不整页刷新', softRefresh, 'secondary');
+    fabRefreshBtn.setAttribute('data-role', 'refresh');
     var more = mkBtn('Lite ☰', 'MarkDone Lite 菜单', toggleMenu);
     more.setAttribute('data-role', 'menu');
     fab.appendChild(reader);
     fab.appendChild(fabWidthBtn);
+    fab.appendChild(fabRefreshBtn);
     fab.appendChild(more);
     document.documentElement.appendChild(fab);
     syncFab();
@@ -816,6 +851,7 @@
     if (!fabWidthBtn) return;
     fabWidthBtn.textContent = '↔ 宽度·' + WIDTH_LABEL[pageWidth];
     fabWidthBtn.setAttribute('aria-label', '页面宽度：' + WIDTH_LABEL[pageWidth]);
+    if (fabRefreshBtn) fabRefreshBtn.hidden = !showRefreshFab;
   }
 
   function ensureMenu() {
@@ -848,6 +884,17 @@
     pin.setAttribute('aria-checked', outlinePinned ? 'true' : 'false');
     pin.setAttribute('role', 'menuitemcheckbox');
     menu.appendChild(pin);
+    var send = mkBtn(
+      (sendCmdEnter ? '⌨ ' + SEND_KEY_LABEL + ' 发送：开（Enter 换行）' : '⌨ ' + SEND_KEY_LABEL + ' 发送：关'),
+      'ChatGPT 输入框：Enter 换行，' + SEND_KEY_LABEL + ' 发送；Shift+Enter 仍是换行',
+      function () {
+        setSendCmdEnter(!sendCmdEnter);
+      },
+    );
+    send.setAttribute('data-role', 'send-toggle');
+    send.setAttribute('role', 'menuitemcheckbox');
+    send.setAttribute('aria-checked', sendCmdEnter ? 'true' : 'false');
+    menu.appendChild(send);
     var row = document.createElement('div');
     row.className = NS + '-menu__row';
     var lab = document.createElement('span');
@@ -864,6 +911,9 @@
     });
     menu.appendChild(row);
     menu.appendChild(mkBtn('🔄 软刷新导航', '重扫已挂载消息，不整页刷新', softRefresh));
+    var gear = mkBtn('⚙ 设置…', '打开 MarkDone Lite 设置面板', openSettings);
+    gear.setAttribute('data-role', 'settings');
+    menu.appendChild(gear);
     menu.appendChild(document.createElement('hr'));
     var info = document.createElement('small');
     var widthOk = hasWidthContainer();
@@ -872,7 +922,8 @@
       'Lite v' + VERSION + ' · 检测到 ' + assistantRoots().length + ' 条助手回复' +
       (activeMain ? ' · 已锁定当前页 main' : ' · 未找到 active main') +
       (widthOk ? ' · 宽度容器已命中' : ' · 未找到宽度容器') +
-      ' · 宽度=' + WIDTH_LABEL[pageWidth];
+      ' · 宽度=' + WIDTH_LABEL[pageWidth] +
+      ' · 发送键=' + (sendCmdEnter ? SEND_KEY_LABEL : '默认');
     menu.appendChild(info);
   }
 
@@ -892,6 +943,270 @@
     if (menu) menu.hidden = true;
   }
 
+
+  // ---- Cmd/Ctrl+Enter to send (Enter = newline) ----
+  // Own implementation of the same idea as the extension's ChatGPT input enhancement
+  // (setting enterKeyNewline): Enter -> newline, Cmd/Ctrl+Enter -> send, Shift+Enter untouched.
+  // One capture-phase listener on window => survives SPA nav / composer re-render.
+  var COMPOSER_SELECTOR = '#prompt-textarea, form[data-type="unified-composer"] [contenteditable="true"], form[data-type="unified-composer"] textarea';
+  var SEND_BTN_SELECTOR = [
+    'button[data-testid="send-button"]',
+    'button[data-testid="composer-submit-button"]',
+    'button[aria-label="Send prompt"]',
+    'button[aria-label="发送提示"]',
+    'button[aria-label="Send message"]',
+  ].join(',');
+  var imeComposing = false;
+  var imeEndedAt = 0;
+  var synthetic = false; // true while we re-dispatch a key to the page's own handler
+
+  function composerFromTarget(t) {
+    if (!(t instanceof Element)) return null;
+    var el = t.closest(COMPOSER_SELECTOR);
+    if (el) return el;
+    return null;
+  }
+
+  function isImeKey(e) {
+    return e.isComposing || e.keyCode === 229 || imeComposing || Date.now() - imeEndedAt < 30;
+  }
+
+  function fireKey(target, type, init) {
+    var ev = new KeyboardEvent(type, Object.assign({ key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true, cancelable: true, composed: true }, init));
+    target.dispatchEvent(ev);
+    return ev;
+  }
+
+  function insertNewline(target) {
+    if (target instanceof HTMLTextAreaElement || target instanceof HTMLInputElement) {
+      var st = target.selectionStart == null ? target.value.length : target.selectionStart;
+      var en = target.selectionEnd == null ? st : target.selectionEnd;
+      target.value = target.value.slice(0, st) + '\n' + target.value.slice(en);
+      target.selectionStart = target.selectionEnd = st + 1;
+      target.dispatchEvent(new Event('input', { bubbles: true }));
+      return;
+    }
+    // ProseMirror: its own Shift+Enter binding inserts a hard break. If nothing handled
+    // the synthetic key, fall back to the browser's native line-break command.
+    synthetic = true;
+    try {
+      var ev = fireKey(target, 'keydown', { shiftKey: true });
+      if (!ev.defaultPrevented) {
+        var ok = false;
+        try { ok = document.execCommand('insertLineBreak'); } catch (_) { /* ignore */ }
+        if (!ok) { try { document.execCommand('insertParagraph'); } catch (_) { /* ignore */ } }
+      }
+      fireKey(target, 'keyup', { shiftKey: true });
+    } finally {
+      synthetic = false;
+    }
+  }
+
+  function triggerSend(target) {
+    var form = target.closest('form') || document;
+    var btn = form.querySelector(SEND_BTN_SELECTOR);
+    if (btn && !btn.disabled && btn.getAttribute('aria-disabled') !== 'true') {
+      btn.click();
+      return;
+    }
+    // No (enabled) send button found: replay a plain Enter into the page's own handler.
+    synthetic = true;
+    try {
+      fireKey(target, 'keydown', {});
+      fireKey(target, 'keyup', {});
+    } finally {
+      synthetic = false;
+    }
+  }
+
+  function onSendKeydown(e) {
+    if (!sendCmdEnter || synthetic || e.defaultPrevented) return;
+    if (e.key !== 'Enter') return;
+    if (e.shiftKey || e.altKey) return; // Shift+Enter: native newline; Alt: leave alone
+    if (isImeKey(e)) return; // never touch IME confirm-Enter
+    var target = composerFromTarget(e.target);
+    if (!target) return;
+    var mod = e.metaKey || e.ctrlKey;
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    if (mod) {
+      if (e.repeat) return;
+      triggerSend(target);
+    } else {
+      insertNewline(target);
+    }
+  }
+
+  function setSendCmdEnter(v, silent) {
+    sendCmdEnter = !!v;
+    storeSet(SEND_KEY, sendCmdEnter);
+    syncMenu();
+    syncSettings();
+    if (!silent) {
+      toast(
+        sendCmdEnter
+          ? '已开启：' + SEND_KEY_LABEL + ' 发送，Enter 换行（仅 ChatGPT 输入框）'
+          : '已关闭：恢复 ChatGPT 默认（Enter 发送）',
+        { durationMs: 2600 },
+      );
+    }
+  }
+
+  function setShowRefreshFab(v) {
+    showRefreshFab = !!v;
+    storeSet(REFRESH_FAB_KEY, showRefreshFab);
+    syncFab();
+    syncSettings();
+  }
+
+  function setShowChip(v) {
+    showChip = !!v;
+    storeSet(CHIP_KEY, showChip);
+    scheduleChip();
+    syncSettings();
+  }
+
+  function setReaderWidth(mode) {
+    readerWidth = normWidth(mode);
+    storeSet(READER_WIDTH_KEY, readerWidth);
+    syncReaderWidth();
+    syncSettings();
+  }
+
+  function resetSettings() {
+    setSendCmdEnter(false, true);
+    setShowRefreshFab(false);
+    setShowChip(true);
+    setOutlinePinned(false, true);
+    setPageWidth('normal', true);
+    setReaderWidth('normal');
+    toast('已恢复 Lite 默认设置', { durationMs: 2000 });
+  }
+
+  // ---- settings panel ----
+  var settingsEl = null;
+
+  function ensureSettings() {
+    if (settingsEl) {
+      if (!settingsEl.isConnected) document.documentElement.appendChild(settingsEl);
+      return settingsEl;
+    }
+    settingsEl = document.createElement('div');
+    settingsEl.className = NS + '-settings';
+    settingsEl.id = NS + '-settings';
+    settingsEl.hidden = true;
+    settingsEl.setAttribute('role', 'dialog');
+    settingsEl.setAttribute('aria-label', 'MarkDone Lite 设置');
+    settingsEl.addEventListener('click', function (e) {
+      if (e.target === settingsEl) closeSettings();
+    });
+    document.documentElement.appendChild(settingsEl);
+    return settingsEl;
+  }
+
+  function settingRow(label, hint, control) {
+    var row = document.createElement('div');
+    row.className = NS + '-settings__row';
+    var txt = document.createElement('div');
+    txt.className = NS + '-settings__txt';
+    txt.appendChild(document.createTextNode(label));
+    if (hint) {
+      var sm = document.createElement('small');
+      sm.textContent = hint;
+      txt.appendChild(sm);
+    }
+    row.appendChild(txt);
+    row.appendChild(control);
+    return row;
+  }
+
+  function toggleCtl(on, key, onChange) {
+    var b = document.createElement('button');
+    b.type = 'button';
+    b.setAttribute('role', 'switch');
+    b.setAttribute('data-setting', key);
+    b.setAttribute('aria-checked', on ? 'true' : 'false');
+    b.textContent = on ? '开' : '关';
+    b.addEventListener('click', function (e) {
+      e.stopPropagation();
+      onChange(!on);
+    });
+    return b;
+  }
+
+  function segCtl(current, key, onPick) {
+    var wrap = document.createElement('div');
+    wrap.className = NS + '-settings__seg';
+    WIDTH_ORDER.forEach(function (m) {
+      var b = document.createElement('button');
+      b.type = 'button';
+      b.textContent = WIDTH_LABEL[m];
+      b.setAttribute('data-setting', key);
+      b.setAttribute('data-value', m);
+      b.setAttribute('aria-pressed', current === m ? 'true' : 'false');
+      b.addEventListener('click', function (e) {
+        e.stopPropagation();
+        onPick(m);
+      });
+      wrap.appendChild(b);
+    });
+    return wrap;
+  }
+
+  function renderSettings() {
+    var el = ensureSettings();
+    el.innerHTML = '';
+    var card = document.createElement('div');
+    card.className = NS + '-settings__card';
+    var head = document.createElement('div');
+    head.className = NS + '-settings__head';
+    var title = document.createElement('strong');
+    title.textContent = 'MarkDone Lite 设置';
+    var close = document.createElement('button');
+    close.type = 'button';
+    close.textContent = '关闭';
+    close.addEventListener('click', closeSettings);
+    head.appendChild(title);
+    head.appendChild(close);
+    card.appendChild(head);
+    card.appendChild(settingRow(SEND_KEY_LABEL + ' 发送', '开启后：Enter 换行，' + SEND_KEY_LABEL + ' 发送；Shift+Enter 仍是换行；输入法选字不受影响。默认关。',
+      toggleCtl(sendCmdEnter, 'sendCmdEnter', function (v) { setSendCmdEnter(v); })));
+    card.appendChild(settingRow('大纲钉住', '阅读器右侧大纲常显（关＝悬停展开）。',
+      toggleCtl(outlinePinned, 'outlinePinned', function (v) { setOutlinePinned(v); })));
+    card.appendChild(settingRow('默认页面宽度', '对话主栏宽度，会记住。',
+      segCtl(pageWidth, 'pageWidth', function (m) { setPageWidth(m); })));
+    card.appendChild(settingRow('阅读器宽度', '侧栏阅读器自身宽度。',
+      segCtl(readerWidth, 'readerWidth', function (m) { setReaderWidth(m); })));
+    card.appendChild(settingRow('软刷新按钮', '在右下角显示「🔄 软刷新」；关＝只在 Lite ☰ 菜单里。',
+      toggleCtl(showRefreshFab, 'showRefreshFab', function (v) { setShowRefreshFab(v); })));
+    card.appendChild(settingRow('跟随阅读小标签', '滚动时跟在当前回复旁的「📖 阅读器」小标签；关＝只用右下按钮。',
+      toggleCtl(showChip, 'showChip', function (v) { setShowChip(v); })));
+    var foot = document.createElement('div');
+    foot.className = NS + '-settings__foot';
+    var small = document.createElement('small');
+    small.textContent = 'Lite v' + VERSION;
+    var reset = document.createElement('button');
+    reset.type = 'button';
+    reset.textContent = '恢复默认';
+    reset.addEventListener('click', resetSettings);
+    foot.appendChild(small);
+    foot.appendChild(reset);
+    card.appendChild(foot);
+    el.appendChild(card);
+  }
+
+  function openSettings() {
+    closeMenu();
+    renderSettings();
+    settingsEl.hidden = false;
+  }
+  function closeSettings() {
+    if (settingsEl) settingsEl.hidden = true;
+  }
+  function syncSettings() {
+    if (settingsEl && !settingsEl.hidden) renderSettings();
+  }
+
   // ---- watchdog: survive SPA navigation / React re-render ----
   var lastHref = location.href;
   function ensureAll() {
@@ -900,6 +1215,7 @@
     ensureFab();
     if (menu && !menu.isConnected) document.documentElement.appendChild(menu);
     if (panel && !panel.isConnected) document.documentElement.appendChild(panel);
+    if (settingsEl && !settingsEl.isConnected) document.documentElement.appendChild(settingsEl);
     applyPageWidth();
     if (location.href !== lastHref) {
       lastHref = location.href;
@@ -924,8 +1240,18 @@
       scheduleChip();
     });
     document.addEventListener('click', closeMenu);
+    window.addEventListener('keydown', onSendKeydown, true);
+    window.addEventListener('compositionstart', function () { imeComposing = true; }, true);
+    window.addEventListener('compositionend', function () { imeComposing = false; imeEndedAt = Date.now(); }, true);
+    try {
+      if (typeof GM_registerMenuCommand === 'function') {
+        GM_registerMenuCommand('MarkDone Lite 设置', openSettings);
+        GM_registerMenuCommand('MarkDone Lite：' + SEND_KEY_LABEL + ' 发送 开/关', function () { setSendCmdEnter(!sendCmdEnter); });
+      }
+    } catch (_) { /* ignore */ }
     document.addEventListener('keydown', function (e) {
       if (e.key !== 'Escape') return;
+      if (settingsEl && !settingsEl.hidden) { closeSettings(); return; }
       if (menu && !menu.hidden) closeMenu();
       else if (panel && !panel.hidden) {
         panel.hidden = true;
@@ -961,7 +1287,7 @@
     console.info(
       '[MarkDone Lite]', VERSION, 'booted;',
       assistantRoots().length, 'assistant nodes; width=' + pageWidth + ';',
-      'activeMain=', am ? (am.id || am.tagName) : 'none',
+      'activeMain=', am ? (am.id || am.tagName) : 'none', 'sendCmdEnter=' + sendCmdEnter,
     );
   }
 
