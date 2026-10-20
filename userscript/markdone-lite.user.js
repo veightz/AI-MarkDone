@@ -3,8 +3,8 @@
 // @namespace    https://github.com/veightz/AI-MarkDone
 // @updateURL    https://raw.githubusercontent.com/veightz/AI-MarkDone/main/userscript/markdone-lite.user.js
 // @downloadURL  https://raw.githubusercontent.com/veightz/AI-MarkDone/main/userscript/markdone-lite.user.js
-// @version      0.1.202610161715
-// @description  ChatGPT 日用子集：视口跟随阅读器、大纲钉住、页面宽度、软刷新、消息步进、字数统计、复制 Markdown、Cmd/Ctrl+Enter 发送、设置面板（非全功能扩展）
+// @version      0.1.202610210105
+// @description  ChatGPT 日用子集：右侧对话目录（两级、跟随滚动、可钉住）、页面宽度、软刷新、消息步进、字数统计、复制 Markdown、Cmd/Ctrl+Enter 发送、设置面板（非全功能扩展）
 // @author       veightz
 // @match        *://chatgpt.com/*
 // @match        *://chat.openai.com/*
@@ -27,7 +27,7 @@
   if (window.__mdliteBooted) return;
   window.__mdliteBooted = true;
 
-  var VERSION = '0.1.202610161715';
+  var VERSION = '0.1.202610210105';
   var NS = 'mdlite';
   var PIN_KEY = 'mdliteReaderOutlinePinned';
   var NARROW_PX = 720;
@@ -302,6 +302,13 @@
   var stepKeys = storeGet(STEP_KEYS_KEY, true) !== false; // default ON (needs stepNav)
   var showWords = storeGet(WORDS_KEY, true) !== false; // default ON
   var copyMdOn = storeGet(COPYMD_KEY, true) !== false; // default ON
+  var TOC_PIN_KEY = 'mdliteTocPinned';
+  var TOC_OPEN_KEY = 'mdliteTocOpen';
+  var TOC_W_KEY = 'mdliteTocWidth';
+  var TOC_WIDTHS = [240, 280, 320];
+  var tocPinned = storeGet(TOC_PIN_KEY, false) === true; // default: not pinned, opens on click
+  var tocOpenPref = storeGet(TOC_OPEN_KEY, true) !== false; // only used while pinned
+  var tocWidth = TOC_WIDTHS.indexOf(storeGet(TOC_W_KEY, 280)) >= 0 ? storeGet(TOC_W_KEY, 280) : 280;
   var IS_MAC = /Mac|iPhone|iPad/i.test((navigator.platform || '') + ' ' + (navigator.userAgent || ''));
   var SEND_KEY_LABEL = IS_MAC ? '⌘+Enter' : 'Ctrl+Enter';
 
@@ -418,6 +425,8 @@
         Q + '-menu button{color:#f2f2f2}',
         Q + '-menu button[aria-pressed="true"],' + Q + '-menu button[aria-checked="true"]{background:#f2f2f2;color:#111}',
         Q + '-menu small{color:#aaa}',
+        Q + '-toc,' + Q + '-toc-tab{background:#1b1b1b;color:#eee;border-color:rgba(255,255,255,.14)}',
+        Q + '-toc__head button[aria-pressed="true"]{background:#eee;color:#111;border-color:#eee}',
         Q + '-settings__card{background:#1e1e1e;color:#f2f2f2;border-color:rgba(255,255,255,.14)}',
         Q + '-settings button[aria-pressed="true"],' + Q + '-settings button[aria-checked="true"]{background:#f2f2f2;color:#111;border-color:#f2f2f2}',
       ].join('');
@@ -500,6 +509,45 @@
       P + '-settings__seg{display:inline-flex;gap:4px}',
       P + '-settings__foot{display:flex;align-items:center;gap:8px;padding-top:10px;border-top:1px solid rgba(127,127,127,.18)}',
       P + '-settings__foot small{flex:1;opacity:.6;font-size:11px}',
+      P + '-toc{position:fixed;top:0;right:0;bottom:0;box-sizing:border-box;width:var(--mdlite-toc-w,280px);z-index:2147483000;',
+      'display:flex;flex-direction:column;background:#fbfbfc;color:#111;border-left:1px solid rgba(0,0,0,.12);',
+      'box-shadow:-6px 0 18px rgba(0,0,0,.08);font:13px/1.35 system-ui,sans-serif}',
+      P + '-toc[hidden],' + P + '-toc-tab[hidden]{display:none!important}',
+      P + '-toc__head{display:flex;align-items:center;gap:6px;padding:10px 10px 8px;border-bottom:1px solid rgba(127,127,127,.18)}',
+      P + '-toc__head strong{flex:1;font-size:13px}',
+      P + '-toc__head button{border:1px solid rgba(127,127,127,.3);background:transparent;color:inherit;border-radius:7px;',
+      'padding:3px 7px;cursor:pointer;font:12px/1.2 system-ui,sans-serif}',
+      P + '-toc__head button[aria-pressed="true"]{background:#111;color:#fff;border-color:#111}',
+      P + '-toc__list{flex:1;overflow:auto;padding:6px 6px 24px}',
+      P + '-toc__empty{padding:12px;opacity:.6}',
+      P + '-toc__turn{border-radius:8px;margin:1px 0}',
+      P + '-toc__row{display:flex;align-items:center;gap:2px;border-radius:8px}',
+      P + '-toc__row:hover{background:rgba(127,127,127,.12)}',
+      P + '-toc__turn[data-active="1"]>' + P + '-toc__row{background:rgba(16,163,127,.14)}',
+      P + '-toc button{font:inherit;color:inherit}',
+      P + '-toc__tw{flex:0 0 18px;border:0;background:transparent;cursor:pointer;padding:4px 0;opacity:.6}',
+      P + '-toc__tw[data-empty="1"]{visibility:hidden}',
+      P + '-toc__q{flex:1;min-width:0;text-align:left;border:0;background:transparent;cursor:pointer;padding:5px 2px;',
+      'white-space:nowrap;overflow:hidden;text-overflow:ellipsis}',
+      P + '-toc__turn[data-active="1"] ' + P + '-toc__q{font-weight:600}',
+      P + '-toc__n{flex:0 0 auto;font-size:11px;opacity:.55;padding:0 2px}',
+      P + '-toc__md{flex:0 0 auto;border:1px solid rgba(127,127,127,.3);background:transparent;border-radius:6px;',
+      'cursor:pointer;padding:1px 5px;font-size:11px!important;opacity:.75}',
+      P + '-toc__md:hover{opacity:1}',
+      P + '-toc__heads{display:none;padding:0 0 4px 18px}',
+      P + '-toc__turn[data-open="1"] ' + P + '-toc__heads{display:block}',
+      P + '-toc__h{display:block;width:100%;text-align:left;border:0;background:transparent;cursor:pointer;',
+      'padding:3px 6px;border-radius:6px;font-size:12px!important;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;opacity:.85}',
+      P + '-toc__h:hover{background:rgba(127,127,127,.12)}',
+      P + '-toc__h[data-level="3"]{padding-left:16px}',
+      P + '-toc__h[data-level="4"]{padding-left:26px;opacity:.75}',
+      P + '-toc__h[data-active="1"]{background:rgba(16,163,127,.14);opacity:1;font-weight:600}',
+      P + '-toc-tab{position:fixed;right:0;top:40%;z-index:2147483000;writing-mode:vertical-rl;padding:10px 5px;',
+      'border:1px solid rgba(0,0,0,.14);border-right:0;border-radius:8px 0 0 8px;background:#fff;color:#111;cursor:pointer;',
+      'font:12px/1 system-ui,sans-serif;box-shadow:-2px 2px 8px rgba(0,0,0,.12)}',
+      'html[data-mdlite-toc-dock] body{margin-right:var(--mdlite-toc-w,280px)!important}',
+      'html[data-mdlite-toc-dock] ' + P + '-fab,html[data-mdlite-toc-dock] ' + P + '-menu{right:calc(var(--mdlite-toc-w,280px) + 16px)}',
+      'html[data-mdlite-toc-dock] ' + P + '-chip[data-fixed="1"]{right:calc(var(--mdlite-toc-w,280px) + 16px)}',
       P + '-toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);z-index:2147483002;',
       'display:flex;gap:10px;align-items:center;max-width:min(520px,92vw);padding:10px 14px;',
       'border-radius:10px;background:#111;color:#fff;font:13px/1.3 system-ui,sans-serif;',
@@ -782,17 +830,14 @@
   }
 
   function syncChipLabel(round) {
-    if (!chipMain) return;
-    var label = '📖 阅读器';
-    var title = 'MarkDone Lite：在侧栏阅读这条回复（含大纲）';
+    if (!chipCopy) return;
+    chipCopy.hidden = !copyMdOn;
     if (showWords && round && round.root) {
       var c = cachedCount(round.root);
-      label += ' · ' + fmtCount(c);
-      title += '\n' + countTitle(c);
+      chipCopy.title = '复制这条回复的 Markdown（' + fmtCount(c) + '；' + countTitle(c) + '）';
+    } else {
+      chipCopy.title = '复制这条回复的 Markdown';
     }
-    if (chipMain.textContent !== label) chipMain.textContent = label;
-    chipMain.title = title;
-    if (chipCopy) chipCopy.hidden = !copyMdOn;
   }
 
   function syncReaderExtras() {
@@ -1236,6 +1281,7 @@
     storeSet(WORDS_KEY, showWords);
     countCache = { root: null, at: 0, val: null };
     syncReaderExtras();
+    if (tocOpen) rebuildToc(true);
     scheduleChip();
     syncSettings();
   }
@@ -1244,8 +1290,422 @@
     storeSet(COPYMD_KEY, copyMdOn);
     syncReaderExtras();
     if (chipCopy) chipCopy.hidden = !copyMdOn;
+    scheduleChip();
+    syncMenu();
+    if (tocOpen) rebuildToc(true);
+    syncSettings();
+  }
+
+
+  // ===================================================================
+  // Conversation directory (right-docked, two levels, scroll-spy)
+  // L1 = one row per turn (user question), L2 = headings of that turn's reply.
+  // Scoped to the active page main; rebuilt (debounced) on DOM mutations.
+  // ===================================================================
+  var USER_SELECTOR = '[data-message-author-role="user"]';
+  var TOC_LABEL_MAX = 20;
+  var toc = null;
+  var tocList = null;
+  var tocTitle = null;
+  var tocPinBtn = null;
+  var tocTab = null;
+  var tocOpen = false;
+  var tocModel = [];
+  var tocSig = '';
+  var tocActive = -1;
+  var tocActiveHead = null;
+  var tocUserExpanded = {};
+  var tocHover = false;
+  var tocTimer = 0;
+  var tocLastBuild = 0;
+  var wordCache = typeof WeakMap === 'function' ? new WeakMap() : null;
+
+  function textOneLine(el) {
+    return (el && el.textContent ? el.textContent : '').replace(/\s+/g, ' ').trim();
+  }
+  function truncLabel(t) {
+    var chars = Array.from(t);
+    return chars.length > TOC_LABEL_MAX ? chars.slice(0, TOC_LABEL_MAX).join('') + '…' : t;
+  }
+
+  function wordsCached(root) {
+    if (!wordCache) return countWordsOf(root);
+    var len = (root.textContent || '').length;
+    var hit = wordCache.get(root);
+    if (hit && hit.len === len) return hit.val;
+    var val = countWordsOf(root);
+    wordCache.set(root, { len: len, val: val });
+    return val;
+  }
+
+  function headingsOf(assistant) {
+    var out = [];
+    var roots = markdownRoots(assistant);
+    for (var r = 0; r < roots.length; r++) {
+      var hs = roots[r].querySelectorAll('h1,h2,h3,h4');
+      for (var i = 0; i < hs.length; i++) {
+        var h = hs[i];
+        if (h.closest('pre, [class*="' + NS + '-"]')) continue;
+        var t = textOneLine(h);
+        if (!t) continue;
+        out.push({ el: h, text: t, level: parseInt(h.tagName.charAt(1), 10) });
+        if (out.length >= 60) return out;
+      }
+    }
+    return out;
+  }
+
+  function buildTurns() {
+    var scope = getActiveMain() || document;
+    var assistants = assistantRoots();
+    var users = [];
+    var un = scope.querySelectorAll(USER_SELECTOR);
+    for (var u = 0; u < un.length; u++) {
+      var n = un[u];
+      if (!(n instanceof HTMLElement) || !n.isConnected) continue;
+      if (n.closest('[class*="' + NS + '-"]')) continue;
+      if (n.parentElement && n.parentElement.closest(USER_SELECTOR)) continue;
+      users.push(n);
+    }
+    var all = users.map(function (x) { return { el: x, user: true }; })
+      .concat(assistants.map(function (x) { return { el: x, user: false }; }));
+    all.sort(function (a, b) {
+      if (a.el === b.el) return 0;
+      return a.el.compareDocumentPosition(b.el) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1;
+    });
+    var turns = [];
+    var cur = null;
+    for (var i = 0; i < all.length; i++) {
+      var it = all[i];
+      if (it.user) {
+        cur = { user: it.el, assistants: [] };
+        turns.push(cur);
+      } else {
+        if (!cur) {
+          cur = { user: null, assistants: [] };
+          turns.push(cur);
+        }
+        cur.assistants.push(it.el);
+      }
+    }
+    turns.forEach(function (t, idx) {
+      var full = t.user ? textOneLine(t.user) : '';
+      t.full = full || '（无提问）';
+      t.label = truncLabel(t.full);
+      t.heads = [];
+      var c = { cjk: 0, words: 0, total: 0 };
+      for (var k = 0; k < t.assistants.length; k++) {
+        t.heads = t.heads.concat(headingsOf(t.assistants[k]));
+        var w = wordsCached(t.assistants[k]);
+        c.cjk += w.cjk;
+        c.words += w.words;
+        c.total += w.total;
+      }
+      t.count = c;
+      t.idx = idx;
+      t.start = t.user || t.assistants[0];
+    });
+    return turns;
+  }
+
+  function turnsSig(turns) {
+    return turns.map(function (t) {
+      return t.full + '\u0001' + t.count.total + '\u0001' + t.heads.map(function (h) { return h.level + h.text; }).join('\u0002');
+    }).join('\u0003');
+  }
+
+  function modelStale() {
+    for (var i = 0; i < tocModel.length; i++) {
+      var t = tocModel[i];
+      if (t.start && !t.start.isConnected) return true;
+      for (var j = 0; j < t.heads.length; j++) if (!t.heads[j].el.isConnected) return true;
+    }
+    return false;
+  }
+
+  function ensureToc() {
+    if (toc) {
+      if (!toc.isConnected) document.documentElement.appendChild(toc);
+      if (tocTab && !tocTab.isConnected) document.documentElement.appendChild(tocTab);
+      return toc;
+    }
+    toc = document.createElement('aside');
+    toc.className = NS + '-toc';
+    toc.id = NS + '-toc';
+    toc.hidden = true;
+    toc.setAttribute('aria-label', 'MarkDone Lite 对话目录');
+    var head = document.createElement('div');
+    head.className = NS + '-toc__head';
+    tocTitle = document.createElement('strong');
+    tocTitle.textContent = '目录';
+    tocPinBtn = document.createElement('button');
+    tocPinBtn.type = 'button';
+    tocPinBtn.setAttribute('data-role', 'toc-pin');
+    tocPinBtn.addEventListener('click', function () { setTocPinned(!tocPinned); });
+    var collapse = document.createElement('button');
+    collapse.type = 'button';
+    collapse.setAttribute('data-role', 'toc-collapse');
+    collapse.textContent = '»';
+    collapse.title = '收起目录';
+    collapse.addEventListener('click', function () { closeToc(); });
+    head.appendChild(tocTitle);
+    head.appendChild(tocPinBtn);
+    head.appendChild(collapse);
+    tocList = document.createElement('div');
+    tocList.className = NS + '-toc__list';
+    toc.appendChild(head);
+    toc.appendChild(tocList);
+    toc.addEventListener('mouseenter', function () { tocHover = true; });
+    toc.addEventListener('mouseleave', function () { tocHover = false; });
+    document.documentElement.appendChild(toc);
+
+    tocTab = document.createElement('button');
+    tocTab.type = 'button';
+    tocTab.className = NS + '-toc-tab';
+    tocTab.textContent = '目录 «';
+    tocTab.title = '展开对话目录';
+    tocTab.hidden = true;
+    tocTab.addEventListener('click', function () { openToc(); });
+    document.documentElement.appendChild(tocTab);
+    syncTocChrome();
+    return toc;
+  }
+
+  function syncTocChrome() {
+    var html = document.documentElement;
+    html.style.setProperty('--mdlite-toc-w', tocWidth + 'px');
+    var dock = tocOpen && tocPinned && window.innerWidth >= 900;
+    if (dock) html.setAttribute('data-mdlite-toc-dock', '1');
+    else if (html.hasAttribute('data-mdlite-toc-dock')) html.removeAttribute('data-mdlite-toc-dock');
+    if (toc) toc.hidden = !tocOpen;
+    if (tocTab) tocTab.hidden = tocOpen || !tocPinned;
+    if (tocPinBtn) {
+      tocPinBtn.textContent = tocPinned ? '📌 已钉住' : '📍 钉住';
+      tocPinBtn.title = tocPinned ? '已钉住：停靠右侧、不遮挡对话、刷新后保持；点击取消' : '钉住：停靠在对话右侧（不遮挡），刷新后保持打开';
+      tocPinBtn.setAttribute('aria-pressed', tocPinned ? 'true' : 'false');
+    }
+    if (fabTocBtn) fabTocBtn.setAttribute('aria-pressed', tocOpen ? 'true' : 'false');
+  }
+
+  function openToc() {
+    ensureToc();
+    tocOpen = true;
+    if (tocPinned) storeSet(TOC_OPEN_KEY, true);
+    closeMenu();
+    rebuildToc(true);
+    syncTocChrome();
+    tocSpy(true);
+  }
+  function closeToc() {
+    tocOpen = false;
+    if (tocPinned) storeSet(TOC_OPEN_KEY, false);
+    syncTocChrome();
+    scheduleChip();
+  }
+  function toggleToc() {
+    if (tocOpen) closeToc();
+    else openToc();
+  }
+  function setTocPinned(v) {
+    tocPinned = !!v;
+    storeSet(TOC_PIN_KEY, tocPinned);
+    if (tocPinned) storeSet(TOC_OPEN_KEY, tocOpen);
+    syncTocChrome();
     syncMenu();
     syncSettings();
+  }
+  function setTocWidth(px) {
+    tocWidth = TOC_WIDTHS.indexOf(px) >= 0 ? px : 280;
+    storeSet(TOC_W_KEY, tocWidth);
+    syncTocChrome();
+    syncSettings();
+  }
+
+  function scheduleTocRebuild() {
+    if (!tocOpen || tocTimer) return;
+    var wait = Math.max(300, 800 - (Date.now() - tocLastBuild));
+    tocTimer = setTimeout(function () {
+      tocTimer = 0;
+      rebuildToc(false);
+    }, wait);
+  }
+
+  function rebuildToc(force) {
+    if (!tocOpen && !force) return;
+    ensureToc();
+    tocLastBuild = Date.now();
+    var turns = buildTurns();
+    var sig = turnsSig(turns);
+    if (!force && sig === tocSig && !modelStale()) return;
+    if (sig !== tocSig && tocModel.length && turns.length && tocModel[0].full !== turns[0].full) tocUserExpanded = {};
+    tocModel = turns;
+    tocSig = sig;
+    renderToc();
+    tocSpy(true);
+  }
+
+  function renderToc() {
+    var keep = tocList.scrollTop;
+    tocList.innerHTML = '';
+    tocTitle.textContent = '目录 · ' + tocModel.length + ' 轮';
+    if (!tocModel.length) {
+      var empty = document.createElement('div');
+      empty.className = NS + '-toc__empty';
+      empty.textContent = '当前页面还没有对话（或 ChatGPT DOM 改版：可点 Lite ☰ → 软刷新）。';
+      tocList.appendChild(empty);
+      return;
+    }
+    tocModel.forEach(function (t) {
+      var wrap = document.createElement('div');
+      wrap.className = NS + '-toc__turn';
+      wrap.setAttribute('data-idx', String(t.idx));
+      var row = document.createElement('div');
+      row.className = NS + '-toc__row';
+      var tw = document.createElement('button');
+      tw.type = 'button';
+      tw.className = NS + '-toc__tw';
+      tw.textContent = '▸';
+      tw.title = '展开 / 收起本轮标题';
+      if (!t.heads.length) tw.setAttribute('data-empty', '1');
+      tw.addEventListener('click', function (e) {
+        e.stopPropagation();
+        tocUserExpanded[t.idx] = !turnExpanded(t.idx);
+        applyTocState();
+      });
+      var q = document.createElement('button');
+      q.type = 'button';
+      q.className = NS + '-toc__q';
+      q.textContent = (t.idx + 1) + '. ' + t.label;
+      q.title = t.full.length > 600 ? t.full.slice(0, 600) + '…' : t.full;
+      q.addEventListener('click', function () {
+        if (t.start && t.start.isConnected) scrollToMessage(t.start);
+        else rebuildToc(true);
+      });
+      row.appendChild(tw);
+      row.appendChild(q);
+      if (showWords && t.assistants.length) {
+        var n = document.createElement('span');
+        n.className = NS + '-toc__n';
+        n.textContent = t.count.total.toLocaleString('en-US') + '字';
+        n.title = countTitle(t.count);
+        row.appendChild(n);
+      }
+      if (copyMdOn && t.assistants.length) {
+        var md = document.createElement('button');
+        md.type = 'button';
+        md.className = NS + '-toc__md';
+        md.textContent = 'MD';
+        md.title = '复制本轮回复的 Markdown';
+        md.addEventListener('click', function (e) {
+          e.stopPropagation();
+          copyTurnMarkdown(t);
+        });
+        row.appendChild(md);
+      }
+      wrap.appendChild(row);
+      if (t.heads.length) {
+        var hs = document.createElement('div');
+        hs.className = NS + '-toc__heads';
+        t.heads.forEach(function (h, hi) {
+          var hb = document.createElement('button');
+          hb.type = 'button';
+          hb.className = NS + '-toc__h';
+          hb.setAttribute('data-level', String(Math.max(2, h.level)));
+          hb.setAttribute('data-h', String(hi));
+          hb.textContent = h.text;
+          hb.title = h.text;
+          hb.addEventListener('click', function () {
+            if (h.el.isConnected) scrollToMessage(h.el);
+            else rebuildToc(true);
+          });
+          hs.appendChild(hb);
+        });
+        wrap.appendChild(hs);
+      }
+      tocList.appendChild(wrap);
+    });
+    tocList.scrollTop = keep;
+    applyTocState();
+  }
+
+  function turnExpanded(i) {
+    return tocUserExpanded[i] !== undefined ? tocUserExpanded[i] : i === tocActive;
+  }
+
+  function applyTocState() {
+    if (!tocList) return;
+    var turnsEl = tocList.children;
+    for (var i = 0; i < turnsEl.length; i++) {
+      var el = turnsEl[i];
+      var idx = parseInt(el.getAttribute('data-idx'), 10);
+      if (!Number.isFinite(idx)) continue;
+      var open = turnExpanded(idx);
+      el.setAttribute('data-open', open ? '1' : '0');
+      el.setAttribute('data-active', idx === tocActive ? '1' : '0');
+      var tw = el.querySelector('.' + NS + '-toc__tw');
+      if (tw) tw.textContent = open ? '▾' : '▸';
+      var hbs = el.querySelectorAll('.' + NS + '-toc__h');
+      for (var j = 0; j < hbs.length; j++) {
+        var on = idx === tocActive && tocActiveHead === j;
+        hbs[j].setAttribute('data-active', on ? '1' : '0');
+      }
+    }
+  }
+
+  function readingLineY() {
+    return Math.max(96, Math.round((window.innerHeight || 800) * 0.3));
+  }
+
+  function tocSpy(forceReveal) {
+    if (!tocOpen || !tocModel.length) return;
+    var lineY = readingLineY();
+    var act = 0;
+    for (var i = 0; i < tocModel.length; i++) {
+      var st = tocModel[i].start;
+      if (!st || !st.isConnected) continue;
+      if (st.getBoundingClientRect().top <= lineY) act = i;
+      else break;
+    }
+    var head = null;
+    var heads = tocModel[act].heads;
+    for (var j = 0; j < heads.length; j++) {
+      if (!heads[j].el.isConnected) continue;
+      if (heads[j].el.getBoundingClientRect().top <= lineY) head = j;
+      else break;
+    }
+    var changed = act !== tocActive || head !== tocActiveHead;
+    tocActive = act;
+    tocActiveHead = head;
+    if (changed) applyTocState();
+    if ((changed || forceReveal) && !tocHover) revealActive();
+  }
+
+  function revealActive() {
+    if (!tocList) return;
+    var turnEl = tocList.querySelector('[data-idx="' + tocActive + '"]');
+    if (!turnEl) return;
+    var target = (tocActiveHead != null && turnEl.querySelector('[data-h="' + tocActiveHead + '"]')) || turnEl.firstChild;
+    var lr = tocList.getBoundingClientRect();
+    var tr = target.getBoundingClientRect();
+    if (tr.top < lr.top + 8 || tr.bottom > lr.bottom - 8) {
+      tocList.scrollTop += tr.top - lr.top - lr.height / 3;
+    }
+  }
+
+  function copyTurnMarkdown(t) {
+    var live = t.assistants.filter(function (a) { return a.isConnected; });
+    if (!live.length) {
+      toast('这一轮的回复已不在页面里，请软刷新后再试。', { durationMs: 3000 });
+      return;
+    }
+    var md = live.map(messageMarkdown).map(function (x) { return x.trim(); }).filter(Boolean).join('\n\n') + '\n';
+    if (!md.trim()) {
+      toast('这一轮回复里没找到可复制的内容。', { durationMs: 3000 });
+      return;
+    }
+    writeClipboard(md).then(function (ok) {
+      toast(ok ? '已复制第 ' + (t.idx + 1) + ' 轮 Markdown（' + md.length.toLocaleString('en-US') + ' 字符）' : '复制失败：浏览器拒绝写入剪贴板。', { durationMs: ok ? 2200 : 5000 });
+    });
   }
 
   // ---- viewport chip ----
@@ -1254,7 +1714,6 @@
   var pendingSince = 0;
   var bound = null;
   var raf = 0;
-  var chipMain = null;
   var chipCopy = null;
 
   function ensureChip() {
@@ -1265,15 +1724,6 @@
     chip = document.createElement('div');
     chip.className = NS + '-chip';
     chip.hidden = true;
-    chipMain = document.createElement('button');
-    chipMain.type = 'button';
-    chipMain.className = NS + '-chip__main';
-    chipMain.textContent = '📖 阅读器';
-    chipMain.title = 'MarkDone Lite：在侧栏阅读这条回复（含大纲）';
-    chipMain.addEventListener('click', function () {
-      if (!bound || !bound.root) return;
-      openReader(bound.root);
-    });
     chipCopy = document.createElement('button');
     chipCopy.type = 'button';
     chipCopy.className = NS + '-chip__copy';
@@ -1284,7 +1734,6 @@
       if (!bound || !bound.root) return;
       copyMarkdownOf(bound.root);
     });
-    chip.appendChild(chipMain);
     chip.appendChild(chipCopy);
     document.documentElement.appendChild(chip);
     return chip;
@@ -1292,7 +1741,7 @@
 
   function placeChip(round, fixed) {
     ensureChip();
-    if (!showChip || !round || (panel && !panel.hidden)) {
+    if (!showChip || !copyMdOn || !round || (panel && !panel.hidden)) {
       chip.hidden = true;
       return;
     }
@@ -1314,6 +1763,7 @@
     var top = Math.min(Math.max(rect.top, 64), Math.min(rect.bottom - ch, vh - ch - 110));
     if (!Number.isFinite(top)) top = 64;
     var left = rect.right + 8;
+    if (document.documentElement.hasAttribute('data-mdlite-toc-dock') || (tocOpen && toc)) vw -= tocWidth;
     if (left + cw > vw - 8) left = Math.max(8, Math.min(rect.right, vw - 8) - cw - 8);
     chip.style.top = Math.round(top) + 'px';
     chip.style.left = Math.round(left) + 'px';
@@ -1321,6 +1771,7 @@
 
   function refreshChip() {
     raf = 0;
+    tocSpy(false);
     var rounds = collectRounds();
     var primary = resolvePrimary(rounds);
     var narrow = window.innerWidth < NARROW_PX;
@@ -1366,6 +1817,7 @@
     lastRoundCount = rounds.length;
     applyPageWidth();
     scheduleChip();
+    if (tocOpen) rebuildToc(true);
     if (currentRoot && !currentRoot.isConnected && panel && !panel.hidden) {
       toast('当前阅读消息已离开 DOM，请重新打开阅读器。', { durationMs: 4000 });
     }
@@ -1394,6 +1846,7 @@
   var fabWidthBtn = null;
   var fabRefreshBtn = null;
   var fabPrevBtn = null;
+  var fabTocBtn = null;
   var fabNextBtn = null;
   var menu = null;
 
@@ -1418,7 +1871,8 @@
     fab = document.createElement('div');
     fab.id = NS + '-fab';
     fab.className = NS + '-fab';
-    var reader = mkBtn('📖 阅读器', '在侧栏阅读当前回复（含大纲）', openReaderForCurrent, 'secondary');
+    fabTocBtn = mkBtn('☰ 目录', '对话目录：每轮提问 + 回复标题，点击跳转（右侧停靠，可钉住）', toggleToc, 'secondary');
+    fabTocBtn.setAttribute('data-role', 'toc');
     fabWidthBtn = mkBtn('', '页面宽度：标准 → 较宽 → 铺满（会记住）', function () {
       setPageWidth(nextWidth(pageWidth));
     }, 'secondary');
@@ -1435,7 +1889,7 @@
     fabNextBtn.setAttribute('aria-label', '下一条助手回复');
     fab.appendChild(fabPrevBtn);
     fab.appendChild(fabNextBtn);
-    fab.appendChild(reader);
+    fab.appendChild(fabTocBtn);
     fab.appendChild(fabWidthBtn);
     fab.appendChild(fabRefreshBtn);
     fab.appendChild(more);
@@ -1471,7 +1925,17 @@
   function renderMenu() {
     ensureMenu();
     menu.innerHTML = '';
-    menu.appendChild(mkBtn('📖 阅读器（当前回复）', '在侧栏打开视口内主读回复', openReaderForCurrent));
+    var tb = mkBtn(tocOpen ? '☰ 目录：开（点击收起）' : '☰ 目录', '右侧对话目录：每轮提问 + 回复标题', toggleToc);
+    tb.setAttribute('data-role', 'menu-toc');
+    menu.appendChild(tb);
+    var tp = mkBtn(tocPinned ? '📌 目录钉住：开' : '📍 目录钉住：关', '钉住后目录停靠在对话右侧、不遮挡，刷新后保持', function () {
+      setTocPinned(!tocPinned);
+      if (tocPinned && !tocOpen) openToc();
+    });
+    tp.setAttribute('data-role', 'menu-toc-pin');
+    tp.setAttribute('role', 'menuitemcheckbox');
+    tp.setAttribute('aria-checked', tocPinned ? 'true' : 'false');
+    menu.appendChild(tp);
     if (copyMdOn) {
       var cp = mkBtn('📋 复制当前回复 Markdown', '复制视口内主读回复（或阅读器里这条）的 Markdown', copyCurrentMarkdown);
       cp.setAttribute('data-role', 'copy-md');
@@ -1493,7 +1957,7 @@
       menu.appendChild(srow);
     }
     var pin = mkBtn(
-      (outlinePinned ? '📌 大纲钉住：开' : '📍 大纲钉住：关'),
+      (outlinePinned ? '📌 正文阅读器大纲钉住：开' : '📍 正文阅读器大纲钉住：关'),
       '阅读器右侧大纲常显 / 悬停展开',
       function () {
         setOutlinePinned(!outlinePinned);
@@ -1528,6 +1992,9 @@
       row.appendChild(b);
     });
     menu.appendChild(row);
+    var rd = mkBtn('📖 正文阅读器（当前回复）', '可选：在侧栏阅读当前回复正文（带大纲）', openReaderForCurrent);
+    rd.setAttribute('data-role', 'menu-reader');
+    menu.appendChild(rd);
     menu.appendChild(mkBtn('🔄 软刷新导航', '重扫已挂载消息，不整页刷新', softRefresh));
     var gear = mkBtn('⚙ 设置…', '打开 MarkDone Lite 设置面板', openSettings);
     gear.setAttribute('data-role', 'settings');
@@ -1700,6 +2167,8 @@
     setShowRefreshFab(false);
     setShowChip(true);
     setOutlinePinned(false, true);
+    setTocPinned(false);
+    setTocWidth(280);
     setPageWidth('normal', true);
     setReaderWidth('normal');
     toast('已恢复 Lite 默认设置', { durationMs: 2000 });
@@ -1793,23 +2262,38 @@
     card.appendChild(head);
     card.appendChild(settingRow(SEND_KEY_LABEL + ' 发送', '开启后：Enter 换行，' + SEND_KEY_LABEL + ' 发送；Shift+Enter 仍是换行；输入法选字不受影响。默认关。',
       toggleCtl(sendCmdEnter, 'sendCmdEnter', function (v) { setSendCmdEnter(v); })));
-    card.appendChild(settingRow('大纲钉住', '阅读器右侧大纲常显（关＝悬停展开）。',
+    card.appendChild(settingRow('目录钉住', '钉住＝目录停靠在对话右侧、不遮挡对话，刷新后保持；不钉＝点「☰ 目录」才打开，浮在右侧。默认不钉。',
+      toggleCtl(tocPinned, 'tocPinned', function (v) { setTocPinned(v); if (v && !tocOpen) openToc(); })));
+    var tw = document.createElement('div');
+    tw.className = NS + '-settings__seg';
+    TOC_WIDTHS.forEach(function (px) {
+      var b = document.createElement('button');
+      b.type = 'button';
+      b.textContent = String(px);
+      b.setAttribute('data-setting', 'tocWidth');
+      b.setAttribute('data-value', String(px));
+      b.setAttribute('aria-pressed', tocWidth === px ? 'true' : 'false');
+      b.addEventListener('click', function (e) { e.stopPropagation(); setTocWidth(px); });
+      tw.appendChild(b);
+    });
+    card.appendChild(settingRow('目录宽度', '右侧目录宽度（px）。', tw));
+    card.appendChild(settingRow('正文阅读器：大纲钉住', '可选的正文阅读器（Lite ☰ 菜单里打开）右侧大纲常显。',
       toggleCtl(outlinePinned, 'outlinePinned', function (v) { setOutlinePinned(v); })));
     card.appendChild(settingRow('默认页面宽度', '对话主栏宽度，会记住。',
       segCtl(pageWidth, 'pageWidth', function (m) { setPageWidth(m); })));
-    card.appendChild(settingRow('阅读器宽度', '侧栏阅读器自身宽度。',
+    card.appendChild(settingRow('正文阅读器宽度', '可选正文阅读器的宽度。',
       segCtl(readerWidth, 'readerWidth', function (m) { setReaderWidth(m); })));
     card.appendChild(settingRow('消息步进', '右下角 ▲▼ 按钮：跳到上一条/下一条助手回复。',
       toggleCtl(stepNav, 'stepNav', function (v) { setStepNav(v); })));
     card.appendChild(settingRow('←/→ 键步进', '不在输入框里打字、没选中文字时，← 上一条、→ 下一条。需先开「消息步进」。',
       toggleCtl(stepKeys, 'stepKeys', function (v) { setStepKeys(v); })));
-    card.appendChild(settingRow('字数统计', '阅读器小标签和侧栏顶部显示本条回复字数（中日文按字、英文按词，不含代码块和公式）。',
+    card.appendChild(settingRow('字数统计', '目录每轮后面和正文阅读器顶部显示回复字数（中日文按字、英文按词，不含代码块和公式）。',
       toggleCtl(showWords, 'showWords', function (v) { setShowWords(v); })));
-    card.appendChild(settingRow('复制 Markdown', '小标签上的「📋 MD」、侧栏顶部「复制 MD」、菜单项；保留代码围栏/语言、表格、列表、标题、链接。',
+    card.appendChild(settingRow('复制 Markdown', '目录每轮的「MD」、回复旁的「📋 MD」、菜单项；保留代码围栏/语言、表格、列表、标题、链接。',
       toggleCtl(copyMdOn, 'copyMd', function (v) { setCopyMd(v); })));
     card.appendChild(settingRow('软刷新按钮', '在右下角显示「🔄 软刷新」；关＝只在 Lite ☰ 菜单里。',
       toggleCtl(showRefreshFab, 'showRefreshFab', function (v) { setShowRefreshFab(v); })));
-    card.appendChild(settingRow('跟随阅读小标签', '滚动时跟在当前回复旁的「📖 阅读器」小标签；关＝只用右下按钮。',
+    card.appendChild(settingRow('回复旁「📋 MD」', '滚动时跟在当前回复旁的小「📋 MD」按钮；关＝用目录里的「MD」或菜单。',
       toggleCtl(showChip, 'showChip', function (v) { setShowChip(v); })));
     var foot = document.createElement('div');
     foot.className = NS + '-settings__foot';
@@ -1846,6 +2330,8 @@
     if (menu && !menu.isConnected) document.documentElement.appendChild(menu);
     if (panel && !panel.isConnected) document.documentElement.appendChild(panel);
     if (settingsEl && !settingsEl.isConnected) document.documentElement.appendChild(settingsEl);
+    if (toc) ensureToc();
+    syncTocChrome();
     applyPageWidth();
     if (location.href !== lastHref) {
       lastHref = location.href;
@@ -1854,6 +2340,9 @@
       pending = null;
       closeMenu();
       if (panel && !panel.hidden && currentRoot && !currentRoot.isConnected) panel.hidden = true;
+      tocUserExpanded = {};
+      tocSig = '';
+      if (tocOpen) rebuildToc(true);
     }
   }
 
@@ -1861,10 +2350,11 @@
   function boot() {
     ensureAll();
     lastRoundCount = collectRounds().length;
+    if (tocPinned && tocOpenPref) openToc();
     scheduleChip();
     window.addEventListener('scroll', scheduleChip, { capture: true, passive: true });
     document.addEventListener('scroll', scheduleChip, { capture: true, passive: true });
-    window.addEventListener('resize', scheduleChip, { passive: true });
+    window.addEventListener('resize', function () { syncTocChrome(); scheduleChip(); }, { passive: true });
     window.addEventListener('popstate', function () {
       setTimeout(ensureAll, 0);
       scheduleChip();
@@ -1877,6 +2367,7 @@
     try {
       if (typeof GM_registerMenuCommand === 'function') {
         GM_registerMenuCommand('MarkDone Lite 设置', openSettings);
+        GM_registerMenuCommand('MarkDone Lite：目录 开/关', toggleToc);
         GM_registerMenuCommand('MarkDone Lite：' + SEND_KEY_LABEL + ' 发送 开/关', function () { setSendCmdEnter(!sendCmdEnter); });
       }
     } catch (_) { /* ignore */ }
@@ -1887,7 +2378,7 @@
       else if (panel && !panel.hidden) {
         panel.hidden = true;
         scheduleChip();
-      }
+      } else if (tocOpen && !tocPinned && !isTypingTarget(e.target)) closeToc();
     });
     var moTimer = 0;
     var mo = new MutationObserver(function (mutations) {
@@ -1899,7 +2390,17 @@
           break;
         }
       }
-      if (surfaceChanged) invalidateActiveMain();
+      if (surfaceChanged) {
+        invalidateActiveMain();
+        tocSig = '';
+      }
+      var external = surfaceChanged;
+      for (var q = 0; q < mutations.length && !external; q++) {
+        var tg = mutations[q].target;
+        if (!(tg instanceof Element) || !tg.closest('[class*="' + NS + '-"]')) external = true;
+      }
+      if (!external) return;
+      if (tocOpen) scheduleTocRebuild();
       scheduleChip();
       if (moTimer) return;
       moTimer = setTimeout(function () {
